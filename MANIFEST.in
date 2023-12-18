@@ -1,0 +1,5 @@
+include LICENSE
+include README.md
+recursive-include layers/static *
+recursive-include layers/templates *
+recursive-include docs *
