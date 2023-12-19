@@ -884,3 +884,53 @@ class DataManagerLayerStatusTest(APITestCase):
         self.assertIsInstance(result["layers"][f"{layer2uuid}"]["name"], str)
         self.assertIsInstance(result["layers"][f"{layer2uuid}"]["date_modified"], str)
 
+class DataManagerLayerDetailsTest(APITestCase):
+    def setUp(self):
+        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
+        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
+        theme1.site.set([1])
+        theme2 = Theme.objects.create(id=2, name="companion2", display_name="companion2", visible=True)
+        theme2.site.set([1])
+        # This test layer will have attributes defined to test data type when filled out
+        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
+                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
+                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
+                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
+        layer1.site.set([1])
+        layer1.themes.set([1])
+        # Create a test sublayer
+        layer2 = Layer.objects.create(id=2, name="sublayer", layer_type="arcgis", is_sublayer=True)
+        layer2.site.set([1])
+        layer2.themes.set([1])
+        layer1.sublayers.set([layer2])
+    
+    def test_layer_details(self):
+        layer2 = Layer.objects.get(id=2)
+        layer2dict = layer2.toDict
+        layer2dict["uuid"] = str(layer2dict["uuid"])
+        layer2uuid = layer2dict["uuid"]
+        layer1 = Layer.objects.get(id=1)
+        layer1dict = layer1.toDict
+        layer1dict["uuid"] = str(layer1dict["uuid"])
+        layer1uuid = layer1dict["uuid"]
+
+        client = APIClient()
+        response = client.post("/data_manager/migration/layer_details", {"layers": [layer1uuid, layer2uuid]})
+        self.assertEqual(response.status_code, 200)
+        result = json.loads(response.content)
+        
+        self.assertIn("status", result)
+        self.assertIn("message", result)
+        self.assertIn("themes", result)
+        self.assertIn("layers", result)
+
+        self.assertIsInstance(result, dict)
+        self.assertIsInstance(result["status"], str)
+        self.assertIsInstance(result["message"], str)
+        self.assertIsInstance(result["themes"], dict)
+        self.assertIsInstance(result["layers"], dict)
+
+        self.assertEqual(result["status"], "Success")
+        self.assertEqual(result["message"], "layer(s) details retrieved")
+        self.assertEqual(len(result["layers"]), 2)
