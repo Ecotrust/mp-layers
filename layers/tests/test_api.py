@@ -1,7 +1,6 @@
-from django.test import TestCase
-from data_manager.models import Layer, Theme, Site
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
+from layers.models import Layer, Theme
 from collections.abc import Collection, Mapping
 import requests
 import json
@@ -768,7 +767,7 @@ class DataManagerWMSRequestCapabilities(APITestCase):
         self.assertEqual(len(result["layers"]), len(result["time"]))
         self.assertEqual(result["capabilities"]["featureInfo"]["available"], True)
 
-class DataManagerGetLayerCatalogContent(TestCase):
+class DataManagerGetLayerCatalogContent(APITestCase):
     def setUp(self):
         congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
         theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
@@ -851,7 +850,6 @@ class DataManagerLayerStatusTest(APITestCase):
         response = client.get("/data_manager/migration/layer_status")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
-        print(result)
 
         # Get Layers and Themes and prepare a dictionary for comparison
         layer2 = Layer.objects.get(id=2)
