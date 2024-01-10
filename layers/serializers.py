@@ -28,7 +28,7 @@ class LayerArcGISSerializer(serializers.ModelSerializer):
     wms_time_item = serializers.CharField(default=None, read_only=True)
     wms_styles = serializers.CharField(default=None, read_only=True)
     wms_additional = serializers.CharField(default=None, read_only=True)
-    wms_info = serializers.CharField(default=False, read_only=True)
+    wms_info = serializers.BooleanField(default=False, read_only=True)
     wms_info_format = serializers.CharField(default=None, read_only=True)
 
     class Meta:

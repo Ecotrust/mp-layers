@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.conf import settings
 import uuid
 
 # Review widgets for ITK database (how are relationships set up)
@@ -36,6 +37,8 @@ class Theme(models.Model):
 class Layer(models.Model):
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    slug_name = models.CharField(max_length=200, blank=True, null=True)
+    layer_type = models.CharField(max_length=50, choices=settings.LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
 
 class LayerWMS(Layer):
     WMS_VERSION_CHOICES = (
