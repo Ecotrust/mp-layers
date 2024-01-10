@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.contenttypes.models import ContentType
-from layers.models import Theme, ChildOrder, LayerWMS, LayerArcGIS
+from layers.models import Theme, ChildOrder, LayerWMS, LayerArcREST
 
 #inherit v2 serializer to make v1 serializer
 class LayerWMSSerializer(serializers.ModelSerializer):
@@ -18,7 +18,7 @@ class LayerWMSSerializer(serializers.ModelSerializer):
                    "wms_styles", "wms_additional", "wms_info", "wms_info_format", "arcgis_layers", "password_protected", "query_by_point", 
                    "disable_arcgis_attributes"]
 
-class LayerArcGISSerializer(serializers.ModelSerializer):
+class LayerArcRESTSerializer(serializers.ModelSerializer):
     # order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
     wms_version = serializers.CharField(default=None, read_only=True)
