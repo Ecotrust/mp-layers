@@ -32,7 +32,7 @@ class LayerArcRESTSerializer(serializers.ModelSerializer):
     wms_info_format = serializers.CharField(default=None, read_only=True)
 
     class Meta:
-        model = LayerArcGIS
+        model = LayerArcREST
         fields = ["id", "name", "arcgis_layers", "password_protected", "query_by_point", "disable_arcgis_attributes", "wms_slug", 
                   "wms_version", "wms_format", "wms_srs", "wms_timing", "wms_time_item", "wms_styles", "wms_additional", "wms_info", 
                   "wms_info_format"]
@@ -46,8 +46,8 @@ class ChildOrderSerializer(serializers.ModelSerializer):
         # Serialize the related object based on its class
         if isinstance(related_object, LayerWMS):
             serializer = LayerWMSSerializer(related_object)
-        elif isinstance(related_object, LayerArcGIS):
-            serializer = LayerArcGISSerializer(related_object)
+        elif isinstance(related_object, LayerArcREST):
+            serializer = LayerArcRESTSerializer(related_object)
         elif isinstance(related_object, Theme):
             # Using a simplified serializer for Theme to avoid deep nesting
             serializer = ThemeSerializer(related_object)

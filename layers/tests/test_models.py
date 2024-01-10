@@ -1,6 +1,6 @@
 from django.test import TestCase
-from layers.models import Theme, LayerWMS, LayerArcGIS, ChildOrder
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, LayerArcGISSerializer
+from layers.models import Theme, LayerWMS, LayerArcREST, ChildOrder
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, LayerArcRESTSerializer
 from collections.abc import Collection
 from django.contrib.contenttypes.models import ContentType
 # request to get data from live site, mung it and make it into v2
@@ -18,7 +18,7 @@ class ThemeTest(TestCase):
 
         # Create layers
         self.wms_layer1 = LayerWMS.objects.create(name="WMS Layer")
-        self.arcgis_layer1 = LayerArcGIS.objects.create(name="ArcGIS Layer")
+        self.arcgis_layer1 = LayerArcREST.objects.create(name="ArcGIS Layer")
 
         # Create ChildOrders with same order but different names
         ChildOrder.objects.create(parent_theme=self.parent_theme1, content_object=self.child_theme1, order=1)
@@ -192,15 +192,15 @@ class WMSLayerTest(TestCase):
         self.assertEqual(layer2_actual_Data["wms_info"], True)
         self.assertEqual(layer2_actual_Data["wms_info_format"], "test")
 
-class ArcGISLayerTest(TestCase):
+class ArcRESTLayerTest(TestCase):
     def setUp(self):
         self.theme1 = Theme.objects.create(name="test")
         self.theme2 = Theme.objects.create(name="test2")
 
        # Create layers
-        self.layer1 = LayerArcGIS.objects.create(name="testlayer")
-        self.layer2 = LayerArcGIS.objects.create(name="testlayer2", arcgis_layers="19", password_protected=True, query_by_point=True, disable_arcgis_attributes=True)
-        self.layer3 = LayerArcGIS.objects.create(name="testlayer3")
+        self.layer1 = LayerArcREST.objects.create(name="testlayer")
+        self.layer2 = LayerArcREST.objects.create(name="testlayer2", arcgis_layers="19", password_protected=True, query_by_point=True, disable_arcgis_attributes=True)
+        self.layer3 = LayerArcREST.objects.create(name="testlayer3")
 
         # Create layer orders
         ChildOrder.objects.create(parent_theme=self.theme1, content_object=self.layer1, order=2)
@@ -208,8 +208,8 @@ class ArcGISLayerTest(TestCase):
         ChildOrder.objects.create(parent_theme=self.theme2, content_object=self.layer1, order=1)
     
     def test_layer_attributes(self):
-        layer1_actual_Data = LayerArcGISSerializer(self.layer1).data
-        layer2_actual_Data = LayerArcGISSerializer(self.layer2).data
+        layer1_actual_Data = LayerArcRESTSerializer(self.layer1).data
+        layer2_actual_Data = LayerArcRESTSerializer(self.layer2).data
         print(layer1_actual_Data)
 
         # Check that ArcGIS specific attributes exist
@@ -268,3 +268,4 @@ class ArcGISLayerTest(TestCase):
         self.assertEqual(layer2_actual_Data["password_protected"], True)
         self.assertEqual(layer2_actual_Data["query_by_point"], True)
         self.assertEqual(layer2_actual_Data["disable_arcgis_attributes"], True)
+
