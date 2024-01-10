@@ -2,7 +2,7 @@ name: Django CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "ci_testing" ]
   pull_request:
     branches: [ "main" ]
 
@@ -24,7 +24,8 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install -r ci_testing/test_requirements.txt
         pip install -r requirements.txt
     - name: Run Tests
       run: |
-        python layers/manage.py test
+        python ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
