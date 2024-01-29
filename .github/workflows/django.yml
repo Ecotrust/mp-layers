@@ -28,4 +28,12 @@ jobs:
         pip install -r requirements.txt
     - name: Run Tests
       run: |
-        python ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
+        coverage run --source='.' ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
+        COV=`coverage report --format=total`
+        echo "{'coverage':$COV}" > /tmp/coverage_badge.json
+    - name: Archive test coverage results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-coverage-report
+        path: /tmp/coverage_badge.json
+
