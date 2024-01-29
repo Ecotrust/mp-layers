@@ -34,6 +34,6 @@ jobs:
     - name: Archive test coverage results
       uses: actions/upload-artifact@v4
       with:
-        name: test-coverage-report
+        name: test-coverage-report_py-${{ matrix.python-version }}
         path: /tmp/coverage_badge.json
 
