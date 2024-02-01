@@ -1,4 +1,4 @@
-name: Testing
+name: Tests
 
 on:
   push:
@@ -29,11 +29,25 @@ jobs:
     - name: Run Tests
       run: |
         coverage run --source='.' ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
+    - name: Set Coverage
+      id: set_coverage
+      run: |
         COV=`coverage report --format=total`
-        echo "{'coverage':$COV}" > /tmp/coverage_badge.json
-    - name: Archive test coverage results
-      uses: actions/upload-artifact@v4
+        echo "::set-output name=coverage::$COV"
+    #    echo "$COV%"
+    #    echo "{'coverage':$COV}" > /tmp/coverage_badge.json
+    # - name: Archive test coverage results
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: test-coverage-report_py-${{ matrix.python-version }}
+    #     path: /tmp/coverage_badge.json
+    - name: Create Coverage Badge
+      uses: schneegans/dynamic-badges-action@v1.7.0
       with:
-        name: test-coverage-report_py-${{ matrix.python-version }}
-        path: /tmp/coverage_badge.json
+        auth: ${{ secrets.COVERAGE_GIST_SECRET }}
+        gistID: 20cd92a8df1c63f3e6447540e67cddfd
+        filename: mpl_coverage.json
+        label: Coverage
+        message: "${{ steps.set_coverage.outputs.coverage }}"
+        color: green
 
