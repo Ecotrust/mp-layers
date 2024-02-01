@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.conf import settings
 from colorfield.fields import ColorField
 import uuid
 
@@ -20,9 +19,15 @@ def get_domain(port=8010):
     return domain
 
 class Theme(models.Model):
+    LAYER_TYPE_CHOICES = (
+    ('radio', 'radio'),
+    ('checkbox', 'checkbox'),
+    )
     name = models.CharField(max_length=100)
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    display_name = models.CharField(max_length=100)
     parent_theme = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='child_themes')
-
+    layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
     order = models.PositiveIntegerField(null=True, blank=True) 
 
@@ -31,6 +36,11 @@ class Theme(models.Model):
     ######################################################
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
+
+    is_visible = models.BooleanField(default=True)
+
+    # need to add overview, data_source, data_notes, source, data_url, catalog_html to match v1 subtheme/parent layer creation
+    description = models.TextField(blank=True, null=True)
 
     @property
     def learn_link(self):
@@ -42,15 +52,26 @@ class Theme(models.Model):
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
 class Layer(models.Model):
+    LAYER_TYPE_CHOICES = (
+    ('XYZ', 'XYZ'),
+    ('WMS', 'WMS'),
+    ('ArcRest', 'ArcRest'),
+    ('ArcFeatureServer', 'ArcFeatureServer'),
+    ('radio', 'radio'),
+    ('checkbox', 'checkbox'),
+    ('Vector', 'Vector'),
+    ('VectorTile', 'VectorTile'),
+    ('placeholder', 'placeholder'),
+    )
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     slug_name = models.CharField(max_length=200, blank=True, null=True)
-    layer_type = models.CharField(max_length=50, choices=settings.LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
-    url = models.TextField(blank=True, null=True)
+    layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
+    url = models.TextField(blank=True, default="")
     proxy_url = models.BooleanField(default=False, help_text="proxy layer url through marine planner")
     shareable_url = models.BooleanField(default=True, help_text='Indicates whether the data layer (e.g. map tiles) can be shared with others (through the Map Tiles Link)')
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
-    disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
+    disabled_message = models.CharField(max_length=255, blank=True, null=True, default="")
    
     ######################################################
     #                        LEGEND                      #
@@ -66,10 +87,10 @@ class Layer(models.Model):
     ######################################################
     #                        METADATA                    #
     ######################################################
-    description = models.TextField(blank=True, null=True)
-    data_overview = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, default="")
+    data_overview = models.TextField(blank=True, default="")
     data_source = models.CharField(max_length=255, blank=True, null=True)
-    data_notes = models.TextField(blank=True, null=True)
+    data_notes = models.TextField(blank=True, default="")
     data_publish_date = models.DateField(auto_now=False, auto_now_add=False, null=True, blank=True, default=None, verbose_name='Date published', help_text='YYYY-MM-DD')
     
     #data catalog links
@@ -128,6 +149,77 @@ class Layer(models.Model):
     minZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Minimum zoom")
     maxZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Maximum zoom")
 
+    ######################################################
+    #          COMPANION LAYERS                          #
+    ######################################################
+    @property
+    def has_companion(self):
+        for companionship in self.companionships.all():
+            if companionship.companions.exists():
+                return True
+        return False
+
+    def dimensionRecursion(self, dimensions, associations):
+        associationArray = {}
+        dimension = dimensions.pop(0)
+        for value in sorted(dimension.multilayerdimensionvalue_set.all(), key=lambda x: x.order):
+            value_associations = associations.filter(pk__in=[x.pk for x in value.associations.all()])
+            print(f"Processing value: {value.value}, Associations: {[str(a)  for a in value_associations]}")
+
+            if len(dimensions) > 0:
+                associationArray[str(value.value)] = self.dimensionRecursion(list(dimensions), value_associations)
+            else:
+                if len(value_associations) == 1 and value_associations[0].layer:
+                    associationArray[str(value.value)] = value_associations[0].layer.pk
+                else:
+                    associationArray[str(value.value)] = None
+        return associationArray
+
+    @property
+    def is_multilayer_parent(self):
+        return len(self.multilayerdimension_set.all()) > 0
+
+    @property
+    def is_multilayer(self):
+        return len(self.associated_layer.all()) > 0
+
+    @property
+    def dimensions(self):
+        return sorted([
+            {
+                'label': x.label,
+                'name': x.name,
+                'order': x.order,
+                'animated': x.animated,
+                'angle_labels': x.angle_labels,
+                'nodes': sorted([
+                    {
+                        'value': y.value,
+                        'label': y.label,
+                        'order': y.order
+                    }
+                    for y in x.multilayerdimensionvalue_set.all()
+                ], key=lambda y: y['order'])
+            }
+            for x in self.multilayerdimension_set.all()
+        ], key=lambda x: x['order'])
+    
+    @property
+    def associated_multilayers(self):
+        if len(self.multilayerdimension_set.all()) > 0:
+            return self.dimensionRecursion(sorted(self.multilayerdimension_set.all(), key=lambda x: x.order), self.parent_layer.all())
+        else:
+            return {}
+
+class Companionship(models.Model):
+    # ForeignKey creates a one-to-many relationship
+    # (Each companionship relates to one Layer)
+    layer = models.ForeignKey(Layer, on_delete=models.CASCADE, related_name='companionships')
+
+    # ManyToManyField creates a many-to-many relationship
+    # (Each companionship can relate to multiple Layers and vice versa)
+    companions = models.ManyToManyField(Layer, related_name='companion_to')
+
 class VectorType(Layer):
     #feature level attribute used in mouseover display
     mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
@@ -181,8 +273,9 @@ class VectorType(Layer):
     vector_graphic = models.CharField(max_length=255, blank=True, null=True, default=None, verbose_name="Vector Graphic", help_text="address of image to use for point data")
     #if you need to resize vector graphic image so it looks appropriate on map
     #to make image smaller, use value less than 1, to make image larger, use values larger than 1
-    vector_graphic_scale = models.FloatField(blank=True, null=True, default=True, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
+    vector_graphic_scale = models.FloatField(blank=True, null=True, default=1.0, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
     opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
+
 
     class Meta:
         abstract = True
@@ -202,16 +295,28 @@ class ArcServer(Layer):
         abstract = True
 
 class LayerArcREST(ArcServer, RasterType):
-    pass 
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer_type = 'ArcRest'
+        super(LayerArcREST, self).save(*args, **kwargs)
 
 class LayerArcFeatureService(ArcServer, VectorType):
-    pass
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer_type = 'ArcFeatureServer'
+        super(LayerArcFeatureService, self).save(*args, **kwargs)
 
 class LayerXYZ(RasterType):
-    pass
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer_type = 'XYZ'
+        super(LayerXYZ, self).save(*args, **kwargs)
 
 class LayerVector(VectorType):
-    pass
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer_type = 'Vector'
+        super(LayerVector, self).save(*args, **kwargs)
 
 class LayerWMS(RasterType):
     # Are we using wms_help for anything? 
@@ -230,9 +335,13 @@ class LayerWMS(RasterType):
     wms_timing = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='http://docs.geoserver.org/stable/en/user/services/wms/time.html#specifying-a-time', verbose_name='WMS Time')
     wms_time_item = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='Time Attribute Field, if different from "TIME". Proxy only.', verbose_name='WMS Time Field')
     wms_styles = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='pre-determined styles, if exist', verbose_name='WMS Styles')
-    wms_additional = models.TextField(blank=True, null=True, default=None, help_text='additional WMS key-value pairs: &key=value...', verbose_name='WMS Additional Fields')
+    wms_additional = models.TextField(blank=True, null=True, default="", help_text='additional WMS key-value pairs: &key=value...', verbose_name='WMS Additional Fields')
     wms_info = models.BooleanField(default=False, help_text='enable Feature Info requests on click')
     wms_info_format = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='Available supported feature info formats')
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer_type = 'WMS'
+        super(LayerWMS, self).save(*args, **kwargs)
 
 class Library(Layer):
     search_query = models.BooleanField(default=False, help_text='Select when layers are queryable - e.g. MDAT and CAS')
@@ -257,4 +366,117 @@ class ChildOrder(models.Model):
         ordering = ['order']
 
 
+class MultilayerDimension(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    name = models.CharField(max_length=200, help_text='name to be used for selection in admin tool forms')
+    label = models.CharField(max_length=50, help_text='label to be used in mapping tool slider')
+    order = models.IntegerField(default=100, help_text='the order in which this dimension will be presented among other dimensions on this layer')
+    animated = models.BooleanField(default=False, help_text='enable auto-toggling of layers across this dimension')
+    angle_labels = models.BooleanField(default=False, help_text='display labels at an angle to make more fit')
+    layer = models.ForeignKey(Layer, on_delete=models.CASCADE)
 
+    def __unicode__(self):
+        return self.name
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        ordering = ('order',)
+
+    def save(self, *args, **kwargs):
+        super(MultilayerDimension, self).save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if len(self.layer.dimensions) == 1:
+            last = True
+        else:
+            last = False
+        for value in self.multilayerdimensionvalue_set.all().order_by('-order'):
+            value.delete((),last=last)
+        super(MultilayerDimension, self).delete(*args, **kwargs)
+
+class MultilayerAssociation(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    name = models.CharField(max_length=200)
+    parentLayer = models.ForeignKey(Layer, related_name="parent_layer",
+            db_column='parentlayer', on_delete=models.CASCADE)
+    layer = models.ForeignKey(Layer, null=True, blank=True, default=None,
+            related_name="associated_layer", db_column='associatedlayer',
+            on_delete=models.SET_NULL)
+
+    def __unicode__(self):
+        return self.name
+
+    def __str__(self):
+        return str(self.name)
+
+class MultilayerDimensionValue(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    dimension = models.ForeignKey(MultilayerDimension, on_delete=models.CASCADE)
+    value = models.CharField(max_length=200, help_text="Actual value of selection")
+    label = models.CharField(max_length=50, help_text="Label for this selection seen in mapping tool slider")
+    order = models.IntegerField(default=100)
+    associations = models.ManyToManyField(MultilayerAssociation)
+
+    def __unicode__(self):
+        return '%s: %s' % (self.dimension, self.value)
+
+    def __str__(self):
+        return '%s: %s' % (self.dimension, self.value)
+
+    class Meta:
+        ordering = ('order',)
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            super(MultilayerDimensionValue, self).save(*args, **kwargs)
+            parentLayer = self.dimension.layer
+            associations = MultilayerAssociation.objects.filter(parentLayer=parentLayer)
+            if len(associations) == 0:
+                MultilayerAssociation.objects.create(name=str(self), parentLayer=parentLayer)
+                associations.update()
+            siblingValues = [x for x in self.dimension.multilayerdimensionvalue_set.all() if x != self]
+            if len(siblingValues) == 0:
+                for association in associations:
+                    self.associations.add(association)
+            else:
+                # If this is not the first value saved to this dimension, choosing
+                # an arbitrary sibling value and copying all of its associations
+                # is the closest thing we can do to smart generation of associations
+                from copy import deepcopy
+                siblingValue = siblingValues[0]
+                for association in siblingValue.associations.all():
+                    dimensionValues = [x for x in association.multilayerdimensionvalue_set.all() if x.dimension != self.dimension]
+                    # create a clone of association
+                    newAssociation = deepcopy(association)
+                    newAssociation.id = None
+                    newAssociation.name = 'NEW'
+                    newAssociation.uuid = uuid.uuid4()
+                    newAssociation.save()
+                    # restore value/association relationships
+                    for value in dimensionValues:
+                        value.associations.add(newAssociation)
+                    self.associations.add(newAssociation)
+
+        else:
+            super(MultilayerDimensionValue, self).save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        delete_all = False
+        if 'last' in kwargs.keys():
+            if kwargs['last']:
+                delete_all = True
+            kwargs.pop('last', None)
+        try:
+            for association in self.associations.all():
+                if delete_all or len(self.dimension.multilayerdimensionvalue_set.all()) > 1 or len(self.dimension.layer.parent_layer.all()) == 1:
+                    association.multilayerdimensionvalue_set.clear()
+                    association.delete()
+        except ValueError:
+            # ValueError: "<MultilayerDimensionValue: Threshold: 10>" needs to have a value for field "multilayerdimensionvalue" before this many-to-many relationship can be used.
+            pass
+
+        if self.id:
+            # AssertionError: MultilayerDimensionValue object can't be deleted because its id attribute is set to None.
+            super(MultilayerDimensionValue, self).delete(*args, **kwargs)
