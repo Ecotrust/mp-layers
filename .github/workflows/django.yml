@@ -48,6 +48,12 @@ jobs:
         gistID: 20cd92a8df1c63f3e6447540e67cddfd
         filename: mpl_coverage.json
         label: Coverage
-        message: "${{ steps.set_coverage.outputs.coverage }}"
+        message: "${{ steps.set_coverage.outputs.coverage }}%"
         color: green
+    # TODO: Set IF sections to change colors:
+    # >= 95: 'green'
+    # >= 90: 'yellow'
+    # >= 80: 'orange'
+    # <80: 'red'
+    
 
