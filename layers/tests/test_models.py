@@ -7,9 +7,9 @@ from django.contrib.contenttypes.models import ContentType
 class ThemeTest(TestCase):
     def setUp(self):
         #NEED TO ADD MORE PARENT_THEME, CHILD_THEME AND LAYERS TO TEST ORDERING BY ID WHEN NAME IS SAME AS WELL
-        self.parent_theme1 = Theme.objects.create(name="Parent Theme A", order=2, slug_name="test")
-        self.parent_theme2 = Theme.objects.create(name="Parent Theme B", order=1)
-        self.parent_theme3 = Theme.objects.create(name="Parent Theme B", order=1)
+        self.parent_themeA1 = Theme.objects.create(name="Parent Theme A", order=2, slug_name="test")
+        self.parent_themeB2 = Theme.objects.create(name="Parent Theme B", order=1)
+        self.parent_themeB3 = Theme.objects.create(name="Parent Theme B", order=1)
 
         # Create child themes and set their parent_theme
         self.child_theme1 = Theme.objects.create(name="Child Theme A", layer_type="radio")
