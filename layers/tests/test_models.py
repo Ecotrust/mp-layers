@@ -56,17 +56,17 @@ class ThemeTest(TestCase):
 
         # Serialize the parent themes
         serialized_data = ThemeSerializer(parent_themes, many=True).data
-
+        print(serialized_data)
         # Extract the names and ids for testing
         serialized_name_ids = [theme.get('id', 0) for theme in serialized_data]
-
+        print(serialized_name_ids)
         # Define the expected order based on name and id
         expected_order = [
             (self.parent_theme2.id),  
             (self.parent_theme3.id), 
             (self.parent_theme1.id)  
         ]
-
+        
         # Assert the order
         self.assertEqual(serialized_name_ids, expected_order)
     
