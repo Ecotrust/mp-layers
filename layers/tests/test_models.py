@@ -49,7 +49,7 @@ class ThemeTest(TestCase):
     def test_parent_theme_ordering(self):
         # Fetch all Theme IDs that are referenced as a child in ChildOrder
         child_theme_ids = ChildOrder.objects.values_list('object_id', flat=True)
-
+        print(child_theme_ids)
         # Fetch all themes that are not in the list of child theme IDs
         parent_themes = Theme.objects.exclude(id__in=child_theme_ids).order_by('order')
 
@@ -66,7 +66,7 @@ class ThemeTest(TestCase):
             (self.parent_theme3.id), 
             (self.parent_theme1.id)  
         ]
-        
+
         # Assert the order
         self.assertEqual(serialized_name_ids, expected_order)
     
@@ -209,7 +209,7 @@ class CompanionLayerTest(TestCase):
         self.assertTrue(self.layer1.has_companion)
     def test_companion_parent(self):
         serialized_layer1_data = LayerWMSSerializer(self.layer1).data
-        print(serialized_layer1_data)
+
         serialized_layer2_data = LayerWMSSerializer(self.layer2).data
 
         self.assertIsNone(serialized_layer1_data["parent"])
@@ -217,7 +217,7 @@ class CompanionLayerTest(TestCase):
         self.assertEqual(serialized_layer1_data["companion_layers"][0]["parent"], self.layer1.id)
     def test_serialized_companion_data(self):
         serialized_layer1_data = LayerWMSSerializer(self.layer1).data
-        print(serialized_layer1_data)
+
         self.assertIn("catalog_html", serialized_layer1_data)
         self.assertIn("data_url", serialized_layer1_data)
         self.assertIn("attributes", serialized_layer1_data)
@@ -292,7 +292,7 @@ class SubThemeSerializerTest(TestCase):
 
         serializer = SubThemeSerializer(self.sub_theme)
         serialized_subtheme_data = serializer.data
-        print(serialized_subtheme_data)
+
         serialized_layer_data = LayerWMSSerializer(self.layer3).data
         verify_serializer_v1_output(self, serialized_subtheme_data, name=self.sub_theme.name, layer_type=self.sub_theme.layer_type, order=1)
 
@@ -430,7 +430,7 @@ class XYZLayerTest(TestCase):
     def test_layer_attributes(self):
         layer1_actual_data = LayerXYZSerializer(self.layer1).data
         layer2_actual_data = LayerXYZSerializer(self.layer2).data
-        print(self.layer1.data_url)
+
         verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="XYZ", order=2)
         verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="XYZ", query_by_point=True, order=1)
 
