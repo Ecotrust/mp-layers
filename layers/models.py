@@ -2,6 +2,9 @@ from django.db import models
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.template.defaultfilters import slugify
+from django.urls import reverse
+from django.conf import settings
 from colorfield.fields import ColorField
 import uuid
 
@@ -26,7 +29,6 @@ class Theme(models.Model):
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     display_name = models.CharField(max_length=100)
-    parent_theme = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='child_themes')
     layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
     order = models.PositiveIntegerField(null=True, blank=True) 
@@ -39,13 +41,30 @@ class Theme(models.Model):
 
     is_visible = models.BooleanField(default=True)
 
-    # need to add overview, data_source, data_notes, source, data_url, catalog_html to match v1 subtheme/parent layer creation
+    # need to add data_source, data_notes, source, data_url, catalog_html to match v1 subtheme/parent layer creation
     description = models.TextField(blank=True, null=True)
-
+    overview = models.TextField(blank=True, null=True, default="")
+    data_source = models.CharField(max_length=255, blank=True, null=True)
+    data_notes = models.TextField(blank=True, default="")
+    source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
+    slug_name = models.CharField(max_length=200, blank=True, null=True)
     @property
     def learn_link(self):
         domain = get_domain(8000)
         return '%s/learn/%s' %(domain, self.name)
+    
+    @property
+    def parent(self):
+        
+        # Get the ContentType for the Theme model
+        content_type = ContentType.objects.get_for_model(self.__class__)
+
+        # Find the ChildOrder instance that refers to this theme
+        child_order = ChildOrder.objects.filter(object_id=self.id, content_type=content_type).first()
+
+        if child_order:
+            return child_order.parent_theme
+        return None
     
     class Meta:
         ordering = ['order']
@@ -88,7 +107,7 @@ class Layer(models.Model):
     #                        METADATA                    #
     ######################################################
     description = models.TextField(blank=True, default="")
-    data_overview = models.TextField(blank=True, default="")
+    overview = models.TextField(blank=True, default="")
     data_source = models.CharField(max_length=255, blank=True, null=True)
     data_notes = models.TextField(blank=True, default="")
     data_publish_date = models.DateField(auto_now=False, auto_now_add=False, null=True, blank=True, default=None, verbose_name='Date published', help_text='YYYY-MM-DD')
@@ -120,14 +139,15 @@ class Layer(models.Model):
     # RDH: Adds a 'title' to the serialize_attributes dict - not sure if that's used.
     # attribute_title = models.CharField(max_length=255, blank=True, null=True)
     attribute_event = models.CharField(max_length=35, choices=EVENT_CHOICES, default='click')
-    # attribute_fields = models.ManyToManyField('AttributeInfo', blank=True)
-    is_annotated = models.BooleanField(default=False)
+    attribute_fields = models.ManyToManyField('AttributeInfo', blank=True)
+    annotated = models.BooleanField(default=False)
     compress_display = models.BooleanField(default=False)
-
+    mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
+    
     #use field to specify attribute on layer that you wish to be considered in adding conditional style formatting
     lookup_field = models.CharField(max_length=255, blank=True, null=True, help_text="To override the style based on specific attributes, provide the attribute name here and define your attributes in the Lookup table below.")
     #use widget along with creating Lookup Info records to apply conditional styling to your layer
-    # lookup_table = models.ManyToManyField('LookupInfo', blank=True)
+    lookup_table = models.ManyToManyField('LookupInfo', blank=True)
 
     ######################################################
     #           ESPIS                                    #
@@ -149,6 +169,7 @@ class Layer(models.Model):
     minZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Minimum zoom")
     maxZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Maximum zoom")
 
+    utfurl = models.CharField(max_length=255, blank=True, null=True)
     ######################################################
     #          COMPANION LAYERS                          #
     ######################################################
@@ -159,12 +180,59 @@ class Layer(models.Model):
                 return True
         return False
 
+    @property
+    def data_url(self):
+     
+        parent_theme = self.parent
+        
+        if parent_theme:
+            # Format the parent theme's name to be URL-friendly
+            # This can be custom tailored if you store slugs differently
+            parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
+            
+            # Ensure there's a slug_name to use for constructing the URL
+            if self.slug_name:
+                # Construct the URL
+                
+                data_catalog_url = "/data-catalog/{}/{}".format(parent_theme_slug, self.slug_name)
+                return data_catalog_url
+
+    # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
+        return None
+    
+    @property
+    def attributes(self):
+        return {'compress_attributes': self.compress_display,
+                'event': self.attribute_event,
+                'attributes': [{'display': attr.display_name, 'field': attr.field_name, 'precision': attr.precision} for attr in self.attribute_fields.all().order_by('order')],
+                'mouseover_attribute': self.mouseover_field,
+                'preserved_format_attributes': [attr.field_name for attr in self.attribute_fields.filter(preserve_format=True)]
+        }
+    
+    @property
+    def catalog_html(self):
+        from django.template.loader import render_to_string
+        try:
+            return render_to_string(
+                "data_catalog/includes/cacheless_layer_info.html",
+                {
+                    'layer': self,
+                    # 'sub_layers': self.sublayers.exclude(layer_type="placeholder")
+                }
+            )
+        except Exception as e:
+            print(e)
+
+    @property
+    def lookups(self):
+        return {'field': self.lookup_field,
+                'details': [{'value': lookup.value, 'color': lookup.color, 'stroke_color': lookup.stroke_color, 'stroke_width': lookup.stroke_width, 'dashstyle': lookup.dashstyle, 'fill': lookup.fill, 'graphic': lookup.graphic, 'graphic_scale': lookup.graphic_scale} for lookup in self.lookup_table.all()]}
+
     def dimensionRecursion(self, dimensions, associations):
         associationArray = {}
         dimension = dimensions.pop(0)
         for value in sorted(dimension.multilayerdimensionvalue_set.all(), key=lambda x: x.order):
             value_associations = associations.filter(pk__in=[x.pk for x in value.associations.all()])
-            print(f"Processing value: {value.value}, Associations: {[str(a)  for a in value_associations]}")
 
             if len(dimensions) > 0:
                 associationArray[str(value.value)] = self.dimensionRecursion(list(dimensions), value_associations)
@@ -210,6 +278,35 @@ class Layer(models.Model):
             return self.dimensionRecursion(sorted(self.multilayerdimension_set.all(), key=lambda x: x.order), self.parent_layer.all())
         else:
             return {}
+        
+    @property
+    def data_overview_text(self):
+        if not self.overview and self.parent:
+            return self.parent.overview
+        else:
+            return self.overview
+    
+    @property
+    def tooltip(self):
+        if self.description and self.description.strip() != '':
+            return self.description
+        elif self.parent and self.parent.description and self.parent.description.strip() != '':
+            return self.parent.description
+        else:
+            return self.data_overview_text
+    
+    @property
+    def parent(self):
+        
+        # Get the ContentType for the Layer model
+        layer_content_type = ContentType.objects.get_for_model(self.__class__)
+
+        # Find the ChildOrder instance that refers to this layer
+        child_order = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type).first()
+
+        if child_order:
+            return child_order.parent_theme
+        return None
 
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
@@ -221,8 +318,6 @@ class Companionship(models.Model):
     companions = models.ManyToManyField(Layer, related_name='companion_to')
 
 class VectorType(Layer):
-    #feature level attribute used in mouseover display
-    mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
     CUSTOM_STYLE_CHOICES = (
         (None, '------'),
         ('color', 'color'),
@@ -235,7 +330,7 @@ class VectorType(Layer):
         help_text="Apply a custom styling rule: i.e. 'color' for Native-Land.ca layers, or 'random' to assign arbitary colors"
     )
     #width of layer's features' lines/outlines in pixels
-    vector_outline_width = models.IntegerField(blank=True, null=True, default=None, verbose_name="Vector Stroke Width")
+    outline_width = models.IntegerField(blank=True, null=True, default=None, verbose_name="Vector Stroke Width")
     COLOR_PALETTE = []
 
     COLOR_PALETTE.append(("#FFFFFF", 'white'))
@@ -248,7 +343,7 @@ class VectorType(Layer):
     COLOR_PALETTE.append(("#0000FF", 'blue'))
     COLOR_PALETTE.append(("#FF00FF", 'magenta'))
     #sets the color of the layer's features' lines or outlines, can be either color's name or hex value (Starts with #)
-    vector_outline_color = ColorField(
+    outline_color = ColorField(
         blank=True,
         null=True,
         default=None,
@@ -256,11 +351,11 @@ class VectorType(Layer):
         samples=COLOR_PALETTE,
     )
     # RDH 20191106 - This is not a thing.
-    vector_outline_opacity = models.FloatField(blank=True, null=True, default=None, verbose_name="Vector Stroke Opacity")
+    outline_opacity = models.FloatField(blank=True, null=True, default=None, verbose_name="Vector Stroke Opacity")
    
     #set the color to fill any polygons or circle-icons for points
-    vector_fill = models.FloatField(blank=True, null=True, default=None, verbose_name="Vector Fill Opacity")
-    vector_color = ColorField(
+    fill_opacity = models.FloatField(blank=True, null=True, default=None, verbose_name="Vector Fill Opacity")
+    color = ColorField(
         blank=True,
         null=True,
         default=None,
@@ -270,10 +365,10 @@ class VectorType(Layer):
     #set radius of circle in pixels, only applies to point data with no graphics
     point_radius = models.IntegerField(blank=True, null=True, default=None, help_text='Used only for for Point layers (default is 2)')
     #enter URL for image from online for layer's point data
-    vector_graphic = models.CharField(max_length=255, blank=True, null=True, default=None, verbose_name="Vector Graphic", help_text="address of image to use for point data")
+    graphic = models.CharField(max_length=255, blank=True, null=True, default=None, verbose_name="Vector Graphic", help_text="address of image to use for point data")
     #if you need to resize vector graphic image so it looks appropriate on map
     #to make image smaller, use value less than 1, to make image larger, use values larger than 1
-    vector_graphic_scale = models.FloatField(blank=True, null=True, default=1.0, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
+    graphic_scale = models.FloatField(blank=True, null=True, default=1.0, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
     opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
 
 
@@ -344,7 +439,7 @@ class LayerWMS(RasterType):
         super(LayerWMS, self).save(*args, **kwargs)
 
 class Library(Layer):
-    search_query = models.BooleanField(default=False, help_text='Select when layers are queryable - e.g. MDAT and CAS')
+    queryable = models.BooleanField(default=False, help_text='Select when layers are queryable - e.g. MDAT and CAS')
 
 class ChildOrder(models.Model):
     parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')
@@ -480,3 +575,71 @@ class MultilayerDimensionValue(models.Model):
         if self.id:
             # AssertionError: MultilayerDimensionValue object can't be deleted because its id attribute is set to None.
             super(MultilayerDimensionValue, self).delete(*args, **kwargs)
+
+class AttributeInfo(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    display_name = models.CharField(max_length=255, blank=True, null=True)
+    field_name = models.CharField(max_length=255, blank=True, null=True)
+    precision = models.IntegerField(blank=True, null=True)
+    order = models.IntegerField(default=1)
+    preserve_format = models.BooleanField(default=False, help_text='Prevent portal from making any changes to the data to make it human-readable')
+
+    def __unicode__(self):
+        return unicode('%s' % (self.field_name))
+
+    def __str__(self):
+        return str(self.field_name)
+
+class LookupInfo(models.Model):
+    DASH_CHOICES = (
+        ('dot', 'dot'),
+        ('dash', 'dash'),
+        ('dashdot', 'dashdot'),
+        ('longdash', 'longdash'),
+        ('longdashdot', 'longdashdot'),
+        ('solid', 'solid')
+    )
+    COLOR_PALETTE = []
+
+    COLOR_PALETTE.append(("#FFFFFF", 'white'))
+    COLOR_PALETTE.append(("#888888", 'gray'))
+    COLOR_PALETTE.append(("#000000", 'black'))
+    COLOR_PALETTE.append(("#FF0000", 'red'))
+    COLOR_PALETTE.append(("#FFFF00", 'yellow'))
+    COLOR_PALETTE.append(("#00FF00", 'green'))
+    COLOR_PALETTE.append(("#00FFFF", 'cyan'))
+    COLOR_PALETTE.append(("#0000FF", 'blue'))
+    COLOR_PALETTE.append(("#FF00FF", 'magenta'))
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    value = models.CharField(max_length=255, blank=True, null=True)
+    description = models.CharField(max_length=255, blank=True, null=True, default=None)
+    color = ColorField(
+        blank=True,
+        null=True,
+        default=None,
+        verbose_name="Fill Color",
+        samples=COLOR_PALETTE,
+    )
+    stroke_color = ColorField(
+        blank=True,
+        null=True,
+        default=None,
+        verbose_name="Stroke Color",
+        samples=COLOR_PALETTE,
+    )
+    stroke_width = models.IntegerField(null=True, blank=True, default=None, verbose_name="Stroke Width")
+    dashstyle = models.CharField(max_length=11, choices=DASH_CHOICES, default='solid')
+    fill = models.BooleanField(default=False)
+    graphic = models.CharField(max_length=255, blank=True, null=True)
+    graphic_scale = models.FloatField(null=True, blank=True, default=None, verbose_name="Graphic Scale", help_text="Scale the graphic from its original size.")
+
+    def __unicode__(self):
+        if self.description:
+            return unicode('{}: {}'.format(self.value, self.description))
+        return unicode('%s' % (self.value))
+
+    def __str__(self):
+        if self.description:
+            return '{}: {}'.format(self.value, self.description)
+        return str(self.value)
