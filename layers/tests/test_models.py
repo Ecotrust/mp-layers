@@ -47,9 +47,11 @@ class ThemeTest(TestCase):
         self.assertEqual(parent2_children, [self.arcgis_layer1.id, self.child_theme2.id, self.child_theme3.id])
 
     def test_parent_theme_ordering(self):
-        # Fetch all Theme IDs that are referenced as a child in ChildOrder
-        child_theme_ids = ChildOrder.objects.values_list('object_id', flat=True)
-        print(child_theme_ids)
+        # Get the ContentType for the Theme model
+        theme_content_type = ContentType.objects.get_for_model(Theme)
+
+        # Fetch all Theme IDs that are referenced as a child in ChildOrder, specifically filtering by the Theme ContentType
+        child_theme_ids = ChildOrder.objects.filter(content_type=theme_content_type).values_list('object_id', flat=True)
         # Fetch all themes that are not in the list of child theme IDs
         parent_themes = Theme.objects.exclude(id__in=child_theme_ids).order_by('order')
 
