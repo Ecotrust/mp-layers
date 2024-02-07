@@ -22,11 +22,11 @@ class ThemeTest(TestCase):
 
         # Create ChildOrders with same order but different names
         
-        ChildOrder.objects.create(parent_theme=self.parent_theme1, content_object=self.child_theme1, order=1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme1, content_object=self.wms_layer1, order=1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme2, content_object=self.child_theme2, order=1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme2, content_object=self.child_theme3, order=1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme2, content_object=self.arcgis_layer1, order=1)
+        ChildOrder.objects.create(parent_theme=self.parent_themeA1, content_object=self.child_theme1, order=1)
+        ChildOrder.objects.create(parent_theme=self.parent_themeA1, content_object=self.wms_layer1, order=1)
+        ChildOrder.objects.create(parent_theme=self.parent_themeB2, content_object=self.child_theme2, order=1)
+        ChildOrder.objects.create(parent_theme=self.parent_themeB2, content_object=self.child_theme3, order=1)
+        ChildOrder.objects.create(parent_theme=self.parent_themeB2, content_object=self.arcgis_layer1, order=1)
 
         # Create sub-child theme
         sub_child_theme = Theme.objects.create(name="Sub-Child Theme")
@@ -35,9 +35,9 @@ class ThemeTest(TestCase):
     def test_theme_hierarchy(self):
         # Test parent-child relationships
         # Serialize the parent themes
-        serialized_data1 = ThemeSerializer(self.parent_theme1).data
+        serialized_data1 = ThemeSerializer(self.parent_themeA1).data
 
-        serialized_data2 = ThemeSerializer(self.parent_theme2).data
+        serialized_data2 = ThemeSerializer(self.parent_themeB2).data
 
         # Extract the ordered children's names and ids for testing
         parent1_children = serialized_data1["layers"]
@@ -62,16 +62,16 @@ class ThemeTest(TestCase):
         print(serialized_name_ids)
         # Define the expected order based on name and id
         expected_order = [
-            (self.parent_theme2.id),  
-            (self.parent_theme3.id), 
-            (self.parent_theme1.id)  
+            (self.parent_themeB2.id),  
+            (self.parent_themeB3.id), 
+            (self.parent_themeA1.id)  
         ]
 
         # Assert the order
         self.assertEqual(serialized_name_ids, expected_order)
     
     def test_attributes(self):
-        theme = ThemeSerializer(self.parent_theme1).data
+        theme = ThemeSerializer(self.parent_themeA1).data
 
         self.assertIn("name", theme)
         self.assertIn("id", theme)
