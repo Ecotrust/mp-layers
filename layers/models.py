@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.sites.managers import CurrentSiteManager
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -21,15 +22,31 @@ def get_domain(port=8010):
     #print(domain)
     return domain
 
-class Theme(models.Model):
+class SiteFlags(object):#(models.Model):
+    """Add-on class for displaying sites in the list_display
+    in the admin.
+    """
+    def primary_site(self):
+        return self.site.filter(id=1).exists()
+    primary_site.boolean = True
+
+    def preview_site(self):
+        return self.site.filter(id=2).exists()
+    preview_site.boolean = True
+
+class AllObjectsManager(models.Manager):
+    use_in_migrations = True
+
+class Theme(models.Model, SiteFlags):
     LAYER_TYPE_CHOICES = (
     ('radio', 'radio'),
     ('checkbox', 'checkbox'),
     )
+    site = models.ManyToManyField(Site,  related_name='%(class)s_site')
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     display_name = models.CharField(max_length=100)
-    layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
+    layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
     order = models.PositiveIntegerField(null=True, blank=True) 
 
@@ -44,10 +61,22 @@ class Theme(models.Model):
     # need to add data_source, data_notes, source, data_url, catalog_html to match v1 subtheme/parent layer creation
     description = models.TextField(blank=True, null=True)
     overview = models.TextField(blank=True, null=True, default="")
-    data_source = models.CharField(max_length=255, blank=True, null=True)
-    data_notes = models.TextField(blank=True, default="")
-    source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
+    
     slug_name = models.CharField(max_length=200, blank=True, null=True)
+
+    header_image = models.CharField(max_length=255, blank=True, null=True)
+    header_attrib = models.CharField(max_length=255, blank=True, null=True)
+    thumbnail = models.URLField(max_length=255, blank=True, null=True)
+
+    factsheet_thumb = models.CharField(max_length=255, blank=True, null=True)
+    factsheet_link = models.CharField(max_length=255, blank=True, null=True)
+
+    # not really using these atm
+    feature_image = models.CharField(max_length=255, blank=True, null=True)
+    feature_excerpt = models.TextField(blank=True, null=True)
+    feature_link = models.CharField(max_length=255, blank=True, null=True)
+    objects = CurrentSiteManager('site')
+    all_objects = AllObjectsManager()
     @property
     def learn_link(self):
         domain = get_domain(8000)
@@ -70,7 +99,7 @@ class Theme(models.Model):
         ordering = ['order']
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
-class Layer(models.Model):
+class Layer(models.Model, SiteFlags):
     LAYER_TYPE_CHOICES = (
     ('XYZ', 'XYZ'),
     ('WMS', 'WMS'),
@@ -91,7 +120,10 @@ class Layer(models.Model):
     shareable_url = models.BooleanField(default=True, help_text='Indicates whether the data layer (e.g. map tiles) can be shared with others (through the Map Tiles Link)')
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default="")
-   
+    objects = CurrentSiteManager('site')
+    all_objects = AllObjectsManager()
+    utfurl = models.CharField(max_length=255, blank=True, null=True)
+    site = models.ManyToManyField(Site, related_name='%(class)s_site')
     ######################################################
     #                        LEGEND                      #
     ######################################################
@@ -169,7 +201,6 @@ class Layer(models.Model):
     minZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Minimum zoom")
     maxZoom = models.FloatField(blank=True, null=True, default=None, verbose_name="Maximum zoom")
 
-    utfurl = models.CharField(max_length=255, blank=True, null=True)
     ######################################################
     #          COMPANION LAYERS                          #
     ######################################################
