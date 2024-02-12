@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ "main", "ci_testing" ]
+    branches: [ "main", "ci_testing", "Vanilla_layers" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "Vanilla_layers" ]
 
 jobs:
   build:
