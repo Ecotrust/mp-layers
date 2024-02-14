@@ -348,7 +348,13 @@ class Companionship(models.Model):
     # (Each companionship can relate to multiple Layers and vice versa)
     companions = models.ManyToManyField(Layer, related_name='companion_to')
 
-class VectorType(Layer):
+class LayerType(models.Model):
+    layer = models.ForeignKey(Layer, on_delete=models.CASCADE)
+
+    class Meta:
+        abstract = True
+
+class VectorType(LayerType):
     CUSTOM_STYLE_CHOICES = (
         (None, '------'),
         ('color', 'color'),
@@ -406,19 +412,20 @@ class VectorType(Layer):
     class Meta:
         abstract = True
 
-class RasterType(Layer):
+class RasterType(LayerType):
     query_by_point = models.BooleanField(default=False, help_text='Do not buffer selection clicks (not recommended for point or line data)')
 
     class Meta:
         abstract = True
 
-class ArcServer(Layer):
+class ArcServer(LayerType):
     arcgis_layers = models.CharField(max_length=255, blank=True, null=True, help_text='comma separated list of arcgis layer IDs')
     password_protected = models.BooleanField(default=False, help_text='check this if the server requires a password to show layers')
     disable_arcgis_attributes = models.BooleanField(default=False, help_text='Click to disable clickable ArcRest layers')
     
     class Meta:
         abstract = True
+
 
 class LayerArcREST(ArcServer, RasterType):
     def save(self, *args, **kwargs):
