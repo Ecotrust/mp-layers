@@ -38,7 +38,7 @@ class AllObjectsManager(models.Manager):
     use_in_migrations = True
 
 class Theme(models.Model, SiteFlags):
-    LAYER_TYPE_CHOICES = (
+    THEME_TYPE_CHOICES = (
     ('radio', 'radio'),
     ('checkbox', 'checkbox'),
     )
@@ -46,7 +46,7 @@ class Theme(models.Model, SiteFlags):
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     display_name = models.CharField(max_length=100)
-    layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
+    theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
     order = models.PositiveIntegerField(null=True, blank=True) 
 
@@ -105,8 +105,6 @@ class Layer(models.Model, SiteFlags):
     ('WMS', 'WMS'),
     ('ArcRest', 'ArcRest'),
     ('ArcFeatureServer', 'ArcFeatureServer'),
-    ('radio', 'radio'),
-    ('checkbox', 'checkbox'),
     ('Vector', 'Vector'),
     ('VectorTile', 'VectorTile'),
     ('placeholder', 'placeholder'),
@@ -338,6 +336,9 @@ class Layer(models.Model, SiteFlags):
         if child_order:
             return child_order.parent_theme
         return None
+    
+    def __str__(self):
+        return self.name
 
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship

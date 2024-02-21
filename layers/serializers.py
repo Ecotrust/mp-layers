@@ -4,14 +4,14 @@ from django.template.loader import render_to_string
 from django.forms.models import model_to_dict
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
-shared_layer_fields = ["id", "name", "uuid", "layer_type", "url", "proxy_url", "is_disabled", "disabled_message", "order",
+shared_layer_fields = ["id", "name", "uuid", "layer_type", "url", "proxy_url", "is_disabled", "disabled_message", 
                        "show_legend", "legend", "legend_title", "legend_subtitle", "description", "overview", "data_url",
-                       "data_source", "data_notes", "metadata", "source", "annotated", "utfurl", "lookups", "attributes",
+                       "data_source", "data_notes", "metadata", "source", "annotated", "utfurl", "lookups", "attributes", 
                        # "parent", Removed, since it's in LayerSerializer
                        "kml", "data_download", "learn_more", "map_tiles", "label_field", "date_modified", "minZoom", "maxZoom", "has_companion",
                        "is_multilayer_parent", "is_multilayer", "dimensions", "associated_multilayers"]
 
-vector_layer_fields = ["custom_style", "outline_width", "outline_color", "outline_opacity", 
+vector_layer_fields = ["custom_style", "outline_width", "outline_color", "outline_opacity",
                        "fill_opacity", "color", "point_radius", "graphic", "graphic_scale", "opacity"]
 
 layer_wms_fields = ["wms_slug", "wms_version", "wms_format", "wms_srs", "wms_timing", "wms_time_item", "wms_styles", "wms_additional",
@@ -23,8 +23,15 @@ raster_type_fields = ["query_by_point"]
 
 library_fields = ["queryable"]
 
-def get_companion_layers(layer):
-    companionships = Companionship.objects.filter(layer=layer)
+def get_companion_layers(obj):
+    if hasattr(obj, 'layer'):
+        layer_instance = obj.layer
+    else:
+        # If `obj` is already a Layer instance or for other cases
+        layer_instance = obj
+    
+    # Now, use `layer_instance` to filter Companionship instances
+    companionships = Companionship.objects.filter(layer=layer_instance)
     companion_layers = []
     for companionship in companionships:
         companion_layers.extend(companionship.companions.all())
@@ -59,61 +66,74 @@ def get_serialized_sublayers(obj):
 
     return serialized_child_layers
 
-def get_layer_order(layer):
-    if isinstance(layer, dict):
-        # If it's a dict, extract layer_type from the dict
-        layer_type = layer.get('layer_type')
-    else:
-        # If it's a model instance, use the attribute directly
-        layer_type = layer.layer_type
-    if layer_type == 'WMS':
-        model_class = LayerWMS
-    elif layer_type == "ArcRest":
-        model_class = LayerArcREST
-    elif layer_type == "ArcFeatureServer":
-        model_class = LayerArcFeatureService
-    elif layer_type == "Vector":
-        model_class = LayerVector
-    elif layer_type == 'XYZ':
-        model_class = LayerXYZ
-    elif layer_type == "radio":
-        model_class = Theme
-    elif layer_type == "checkbox":
-        model_class = Theme
-    else:
-        model_class = layer.__class__
+def get_layer_order(obj):
     
+    layer_content_type = ContentType.objects.get_for_model(Layer)
+    if hasattr(obj, 'layer'):
+        obj_id = obj.layer.id
+    else:
+        obj_id = obj.id
+    if isinstance(obj, Theme):
+        layer_content_type = ContentType.objects.get_for_model(Theme)
+    # Mapping of types to their respective model classes
     try:
-        content_type = ContentType.objects.get_for_model(model_class)
-        child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=layer['id'] if isinstance(layer, dict) else layer.id)
-        first_child_order = child_orders.first()
-        return first_child_order.order if first_child_order else 0
+        child_order = ChildOrder.objects.filter(content_type=layer_content_type, object_id=obj_id).first()
+        return child_order.order if child_order else None
     except ChildOrder.DoesNotExist:
-        return 0
-#inherit v2 serializer to make v1 serializer
+        return None
+
+class DynamicLayerFieldsMixin:
+    """
+    A mixin to dynamically add methods to a serializer for retrieving fields from a related Layer object.
+    """
+    @classmethod
+    def add_layer_field_methods(cls, fields):
+        """
+        Dynamically adds SerializerMethodField and their getters for specified fields from the Layer model.
+        """
+
+        def make_getter(field):
+            # For the 'parent' field, we define special handling
+            if field == 'parent':
+                def getter(self, instance):
+                    # Custom logic for handling the 'parent' field
+                    if hasattr(instance, 'layer'):
+                        current_parent = instance.layer.parent
+                        if current_parent is not None and current_parent.parent is not None:
+                            while current_parent.parent.parent is not None:
+                                current_parent = current_parent.parent
+                            return current_parent.id
+                        return None
+                    return getattr(instance, field, None)
+            else:
+                # For all other fields, use the default handling
+                def getter(self, instance):
+                    return getattr(instance.layer, field, None)
+            return getter
+
+        for field in fields:
+            method_name = f'get_{field}'
+            getter = make_getter(field)
+            setattr(cls, method_name, getter)
+            cls._declared_fields[field] = serializers.SerializerMethodField(method_name=method_name)
 
 class LayerSerializer(serializers.ModelSerializer):
-    parent = serializers.SerializerMethodField()
-
+    subLayers = serializers.SerializerMethodField()
+    companion_layers = serializers.SerializerMethodField()
     class Meta:
         model = Layer
-        fields = ["parent", "catalog_html"]
-    
-    def get_parent(self, layer: Layer):
-        # Has a direct parent, and the direct parent is not on the topmost level.
-        if layer.parent != None and layer.parent.parent != None:
-            # Flatten parent hierarchy until we reach a first level parent.
-            current_parent = layer.parent
-            while current_parent.parent.parent != None:
-                current_parent = current_parent.parent
-            return current_parent.id
-        else:
-            return None
+        fields = ["parent", "catalog_html"] + shared_layer_fields
+
+    def get_companion_layers(self, obj):
+        companion_layers = get_companion_layers(obj)
+        return CompanionLayerSerializer(companion_layers, many=True).data
+    def get_subLayers(self, obj):
+        subLayers = get_serialized_sublayers(obj)
+        return subLayers
 
 
-class LayerWMSSerializer(LayerSerializer):
+class LayerWMSSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     order = serializers.SerializerMethodField()
-
     # Set default values for unrelated fields for layer type to support V1
     arcgis_layers = serializers.CharField(default=None, read_only=True)
     password_protected = serializers.BooleanField(default=False, read_only=True)
@@ -131,22 +151,15 @@ class LayerWMSSerializer(LayerSerializer):
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
     opacity = serializers.FloatField(default=.5, read_only=True)
-    subLayers = serializers.SerializerMethodField()
-    companion_layers = serializers.SerializerMethodField()
 
     class Meta(LayerSerializer.Meta):
         model = LayerWMS
-        fields = LayerSerializer.Meta.fields + shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers"]
-    def get_companion_layers(self, obj):
-        companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True).data
-    def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
-        return subLayers
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers" , "order"]
     def get_order(self, obj):
         return get_layer_order(obj)
-        
-class LayerArcRESTSerializer(LayerSerializer):
+LayerWMSSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
+
+class LayerArcRESTSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
     wms_version = serializers.CharField(default=None, read_only=True)
@@ -171,24 +184,16 @@ class LayerArcRESTSerializer(LayerSerializer):
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
     opacity = serializers.FloatField(default=.5, read_only=True)
-    subLayers = serializers.SerializerMethodField()
-    companion_layers = serializers.SerializerMethodField()
 
     class Meta(LayerSerializer.Meta):
         model = LayerArcREST
-        fields = LayerSerializer.Meta.fields + shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers"]
-    
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
-    def get_companion_layers(self, obj):
-        companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True).data
-    def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
-        return subLayers
-    
+LayerArcRESTSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
-class LayerArcFeatureServiceSerializer(LayerSerializer):
+class LayerArcFeatureServiceSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
     wms_version = serializers.CharField(default=None, read_only=True)
@@ -204,24 +209,16 @@ class LayerArcFeatureServiceSerializer(LayerSerializer):
     query_by_point = serializers.BooleanField(default=False, read_only=True)
 
     queryable = serializers.BooleanField(default=False, read_only=True)
-    subLayers = serializers.SerializerMethodField()
-    companion_layers = serializers.SerializerMethodField()
 
     class Meta(LayerSerializer.Meta):
         model = LayerArcFeatureService
-        fields = LayerSerializer.Meta.fields + shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers"]
-    
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
-    def get_companion_layers(self, obj):
-        companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True).data
-    def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
-        return subLayers
+LayerArcFeatureServiceSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
-
-class LayerXYZSerializer(LayerSerializer):
+class LayerXYZSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
     wms_version = serializers.CharField(default=None, read_only=True)
@@ -250,24 +247,17 @@ class LayerXYZSerializer(LayerSerializer):
     arcgis_layers = serializers.CharField(default=None, read_only=True)
     password_protected = serializers.BooleanField(default=False, read_only=True)
     disable_arcgis_attributes = serializers.BooleanField(default=False, read_only=True)
-    subLayers = serializers.SerializerMethodField()
-    companion_layers = serializers.SerializerMethodField()
- 
+
+
     class Meta(LayerSerializer.Meta):
         model = LayerXYZ
-        fields = LayerSerializer.Meta.fields + shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers"]
-    
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
-    def get_companion_layers(self, obj):
-        companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True).data
-    def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
-        return subLayers
-    
+LayerXYZSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
-class LayerVectorSerializer(LayerSerializer):
+class LayerVectorSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
     wms_version = serializers.CharField(default=None, read_only=True)
@@ -288,28 +278,54 @@ class LayerVectorSerializer(LayerSerializer):
     disable_arcgis_attributes = serializers.BooleanField(default=False, read_only=True)
     subLayers = serializers.SerializerMethodField()
     companion_layers = serializers.SerializerMethodField()
-    
+
     class Meta(LayerSerializer.Meta):
-        model = LayerVector 
-        fields = LayerSerializer.Meta.fields + shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers"]
-    
+        model = LayerVector
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
-    def get_companion_layers(self, obj):
-        companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True).data
-    def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
-        return subLayers
-    
+LayerVectorSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
 class ChildOrderSerializer(serializers.ModelSerializer):
     # Serialize the generic related object
     def to_representation(self, instance):
         # Retrieve the related object
         related_object = instance.content_object
+        layer_type_to_serializer = {
+            'WMS': LayerWMSSerializer,
+            'ArcRest': LayerArcRESTSerializer,
+            'ArcFeatureServer': LayerArcFeatureServiceSerializer,
+            'Vector': LayerVectorSerializer,
+            'XYZ': LayerXYZSerializer,
+            # Add more mappings as necessary
+        }
+        layer_type_to_model = {
+        'WMS': LayerWMS,
+        'ArcRest': LayerArcREST,
+        'ArcFeatureServer': LayerArcFeatureService,
+        'Vector': LayerVector,
+        'XYZ': LayerXYZ,
+        # Add more mappings as necessary
+        }
         # Serialize the related object based on its class
-        if isinstance(related_object, LayerWMS):
+        if isinstance(related_object, Layer):
+            # Find the related layer model based on the layer_type
+            layer_type = related_object.layer_type
+            serializer_class = layer_type_to_serializer.get(layer_type)
+            model = layer_type_to_model.get(layer_type)
+            if serializer_class:
+                # Find the specific layer instance (e.g., LayerWMS) related to this Layer
+                specific_layer_instance = model.objects.get(layer=related_object)
+                if specific_layer_instance:
+                    serializer = serializer_class(specific_layer_instance)
+                else:
+                    # Fallback if the specific layer instance was not found
+                    return {}
+            else:
+                # Fallback for unexpected layer types
+                return {}
+        elif isinstance(related_object, LayerWMS):
             serializer = LayerWMSSerializer(related_object)
         elif isinstance(related_object, LayerArcREST):
             serializer = LayerArcRESTSerializer(related_object)
@@ -338,9 +354,10 @@ class ChildOrderSerializer(serializers.ModelSerializer):
         serialized_data['name'] = getattr(instance.content_object, 'name', '')
         serialized_data['id'] = getattr(instance.content_object, 'id', 0)
         return serialized_data
-        
+
     class Meta:
         model = ChildOrder
+
 
 # use this serializer for only the top level themes
 # create a new serializer for subthemes, so that it matches the layer format
@@ -359,41 +376,53 @@ class ThemeSerializer(serializers.ModelSerializer):
 
         # Order the 'layers' by the 'order' field and return only layer IDs
         if 'layers' in ret:
-            # Create a mapping of layer id to its order and name
-            layer_mapping = {layer['id']: (layer.get('order', 0), layer.get('name', '')) for layer in ret['layers']}
+            sorted_layers_details = []
 
-            # Sort layer ids based on the order and name
-            sorted_layer_ids = sorted(
-                layer_mapping.keys(),
-                key=lambda id: (layer_mapping[id][0], layer_mapping[id][1], id)
-            )
+            # Iterate over each child order to get related layer details
+            for child_order in instance.children.all():
+                # Determine if the content_object is a Theme or a Layer (or specific layer type)
+                content_object = child_order.content_object
 
-            # Update the 'layers' field to be a list of sorted ids
-            ret['layers'] = sorted_layer_ids
+                # if isinstance(content_object, Theme):
+                    # If the content_object is a Theme, directly use its name
+                layer_details = {
+                    'id': content_object.id,
+                    'name': content_object.name,
+                    'order': child_order.order
+                }
+                sorted_layers_details.append(layer_details)
 
+            # Sort layers based on the order, then by name
+            sorted_layers_details.sort(key=lambda x: (x['order'], x['name']))
+
+            # Extract just the IDs from the sorted details
+            sorted_ids = [detail['id'] for detail in sorted_layers_details]
+            # Update 'layers' in the returned dictionary with sorted ids
+            ret['layers'] = sorted_ids
         return ret
-    
+
     def get_learn_link(self, obj):
         return obj.learn_link
 
 class SubThemeSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
-    url = serializers.CharField(default="", read_only=True) 
-    proxy_url = serializers.BooleanField(default=False, read_only=True) 
-    is_disabled = serializers.BooleanField(default=False, read_only=True) 
+    url = serializers.CharField(default="", read_only=True)
+    proxy_url = serializers.BooleanField(default=False, read_only=True)
+    is_disabled = serializers.BooleanField(default=False, read_only=True)
     disabled_message = serializers.CharField(default="", read_only=True)
-    show_legend = serializers.BooleanField(default=True, read_only=True) 
-    legend = serializers.CharField(default=None, read_only=True) 
-    legend_title = serializers.CharField(default=None, read_only=True) 
-    legend_subtitle = serializers.CharField(default=None, read_only=True) 
+    show_legend = serializers.BooleanField(default=True, read_only=True)
+    legend = serializers.CharField(default=None, read_only=True)
+    legend_title = serializers.CharField(default=None, read_only=True)
+    legend_subtitle = serializers.CharField(default=None, read_only=True)
     overview = serializers.CharField(default="", read_only=True)
-    data_source = serializers.CharField(default=None, read_only=True) 
-    data_notes = serializers.CharField(default="", read_only=True) 
+    data_source = serializers.CharField(default=None, read_only=True)
+    data_notes = serializers.CharField(default="", read_only=True)
+    layer_type = serializers.SerializerMethodField()
     # need to add catalog_html
     metadata = serializers.CharField(read_only=True, default=None)
     source = serializers.CharField(read_only=True, default=None)
-    annotated = serializers.BooleanField(default=False, read_only=True) 
-    kml = serializers.CharField(read_only=True, default=None) 
+    annotated = serializers.BooleanField(default=False, read_only=True)
+    kml = serializers.CharField(read_only=True, default=None)
     data_download = serializers.CharField(read_only=True, default=None)
     learn_more = serializers.CharField(read_only=True, default=None)
     map_tiles = serializers.CharField(read_only=True, default=None)
@@ -444,8 +473,8 @@ class SubThemeSerializer(serializers.ModelSerializer):
     utfurl = serializers.CharField(default=None, read_only=True)
     class Meta:
         model = Theme
-        fields = shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers", "parent", "catalog_html"] + ["subLayers"]
-   
+        fields = shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers", "parent", "catalog_html"] + ["subLayers", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
     def get_parent(self, obj):
@@ -457,6 +486,9 @@ class SubThemeSerializer(serializers.ModelSerializer):
     def get_subLayers(self, obj):
         subLayers = get_serialized_sublayers(obj)
         return subLayers
+    def get_layer_type(self, obj):
+        if hasattr(obj, 'theme_type') and obj.theme_type in ['radio', 'checkbox']:
+            return obj.theme_type
     def get_data_url(self, obj):
         parent_theme = obj.parent
 
@@ -464,7 +496,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
             # Format the parent theme's name to be URL-friendly
             # This can be custom tailored if you store slugs differently
             parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
-            
+
             # Ensure there's a slug_name to use for constructing the URL
             if obj.slug_name:
                 # Construct the URL
@@ -482,7 +514,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
         return {'field': None,
                 'details': []}
     def get_catalog_html(self, obj):
-        
+
         try:
             return render_to_string(
                 "data_catalog/includes/cacheless_layer_info.html",
@@ -502,11 +534,11 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
     overview = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
-    
+
     class Meta:
-        model = Layer 
-        fields = shared_layer_fields + ["parent"]
-    
+        model = Layer
+        fields = shared_layer_fields + ["parent", "order"]
+
     def get_overview(self, obj):
         return obj.data_overview_text
     def get_description(self, obj):
@@ -525,8 +557,8 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         layer_specific_fields = {
-            'arcgis_layers': None, 
-            'password_protected': False, 
+            'arcgis_layers': None,
+            'password_protected': False,
             "disable_arcgis_attributes":False,
             "query_by_point":False,
             "custom_style": None,
@@ -551,7 +583,7 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
         # Conditional logic for specific fields
         if isinstance(instance, LayerWMS):
             layer_specific_fields.update({
-                "wms_slug": instance.wms_slug, 
+                "wms_slug": instance.wms_slug,
                 "wms_version": instance.wms_version,
                 "wms_srs": instance.wms_srs,
                 "wms_timing": instance.wms_timing,
@@ -615,11 +647,11 @@ class SubLayerSerializer(serializers.ModelSerializer):
     overview = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
-    
+
     class Meta:
-        model = Layer 
-        fields = shared_layer_fields + ["is_sublayer", "parent"]
-    
+        model = Layer
+        fields = shared_layer_fields + ["is_sublayer", "parent", "order"]
+
     def get_order(self, obj):
         return get_layer_order(obj)
     def get_is_sublayer(self, obj):
@@ -631,8 +663,8 @@ class SubLayerSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         layer_specific_fields = {
-            'arcgis_layers': None, 
-            'password_protected': False, 
+            'arcgis_layers': None,
+            'password_protected': False,
             "disable_arcgis_attributes":False,
             "query_by_point":False,
             "custom_style": None,
@@ -657,7 +689,7 @@ class SubLayerSerializer(serializers.ModelSerializer):
         # Conditional logic for specific fields
         if isinstance(instance, LayerWMS):
             layer_specific_fields.update({
-                "wms_slug": instance.wms_slug, 
+                "wms_slug": instance.wms_slug,
                 "wms_version": instance.wms_version,
                 "wms_srs": instance.wms_srs,
                 "wms_timing": instance.wms_timing,
@@ -709,7 +741,7 @@ class SubLayerSerializer(serializers.ModelSerializer):
         ret.update(layer_specific_fields)
         return ret
     def get_parent(self, obj):
-        
+
         layer_content_type = ContentType.objects.get_for_model(obj.__class__)
         child_orders = ChildOrder.objects.filter(object_id=obj.id, content_type=layer_content_type)
         if child_orders:
