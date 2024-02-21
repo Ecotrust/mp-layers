@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.conf import settings
 from .models import *
 from django import forms
 from django.forms.models import inlineformset_factory
