@@ -4,11 +4,11 @@ from django.template.loader import render_to_string
 from django.forms.models import model_to_dict
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
-shared_layer_fields = ["id", "name", "uuid", "layer_type", "url", "proxy_url", "is_disabled", "disabled_message", 
+shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", 
                        "show_legend", "legend", "legend_title", "legend_subtitle", "description", "overview", "data_url",
                        "data_source", "data_notes", "metadata", "source", "annotated", "utfurl", "lookups", "attributes", 
                        # "parent", Removed, since it's in LayerSerializer
-                       "kml", "data_download", "learn_more", "map_tiles", "label_field", "date_modified", "minZoom", "maxZoom", "has_companion",
+                       "kml", "data_download", "learn_more", "tiles", "label_field", "date_modified", "minZoom", "maxZoom", "has_companion",
                        "is_multilayer_parent", "is_multilayer", "dimensions", "associated_multilayers"]
 
 vector_layer_fields = ["custom_style", "outline_width", "outline_color", "outline_opacity",
@@ -102,9 +102,17 @@ class DynamicLayerFieldsMixin:
                         if current_parent is not None and current_parent.parent is not None:
                             while current_parent.parent.parent is not None:
                                 current_parent = current_parent.parent
-                            return current_parent.id
+                            return SubThemeSerializer(current_parent).data
                         return None
                     return getattr(instance, field, None)
+            elif field == 'type':  # Handling for 'type' field
+                def getter(self, instance):
+                    return getattr(instance.layer, 'layer_type', None)
+                return getter
+            elif field == 'tiles':  # Handling for 'type' field
+                def getter(self, instance):
+                    return getattr(instance.layer, 'map_tiles', None)
+                return getter
             else:
                 # For all other fields, use the default handling
                 def getter(self, instance):
@@ -120,6 +128,8 @@ class DynamicLayerFieldsMixin:
 class LayerSerializer(serializers.ModelSerializer):
     subLayers = serializers.SerializerMethodField()
     companion_layers = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+    tiles = serializers.SerializerMethodField()
     class Meta:
         model = Layer
         fields = ["parent", "catalog_html"] + shared_layer_fields
@@ -130,6 +140,10 @@ class LayerSerializer(serializers.ModelSerializer):
     def get_subLayers(self, obj):
         subLayers = get_serialized_sublayers(obj)
         return subLayers
+    def get_type(self, obj):
+        return obj.layer_type
+    def get_tiles(self, obj):
+        return obj.map_tiles
 
 
 class LayerWMSSerializer(DynamicLayerFieldsMixin, LayerSerializer):
@@ -357,6 +371,7 @@ class ChildOrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChildOrder
+        fields = []
 
 
 # use this serializer for only the top level themes
@@ -380,29 +395,35 @@ class ThemeSerializer(serializers.ModelSerializer):
 
             # Iterate over each child order to get related layer details
             for child_order in instance.children.all():
-                # Determine if the content_object is a Theme or a Layer (or specific layer type)
                 content_object = child_order.content_object
 
-                # if isinstance(content_object, Theme):
-                    # If the content_object is a Theme, directly use its name
-                layer_details = {
-                    'id': content_object.id,
-                    'name': content_object.name,
-                    'order': child_order.order
-                }
-                sorted_layers_details.append(layer_details)
+                if content_object is not None:
+                    layer_details = {
+                        'id': content_object.id,
+                        'name': content_object.name,
+                        'order': child_order.order
+                    }
+                    sorted_layers_details.append(layer_details)
+                else:
+                    # Handle the case where content_object is None, perhaps log it or skip
+                    continue  # Skip this child_order
 
             # Sort layers based on the order, then by name
             sorted_layers_details.sort(key=lambda x: (x['order'], x['name']))
 
             # Extract just the IDs from the sorted details
-            sorted_ids = [detail['id'] for detail in sorted_layers_details]
+            sorted_ids = [detail['id'] for detail in sorted_layers_details if detail]  # Ensure detail is not None
             # Update 'layers' in the returned dictionary with sorted ids
             ret['layers'] = sorted_ids
         return ret
 
     def get_learn_link(self, obj):
         return obj.learn_link
+
+class ShortThemeSerializer(serializers.ModelSerializer):
+    class Meta:
+            model = Theme
+            fields = ["id", "name", "display_name", "is_visible",]
 
 class SubThemeSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
@@ -417,7 +438,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
     overview = serializers.CharField(default="", read_only=True)
     data_source = serializers.CharField(default=None, read_only=True)
     data_notes = serializers.CharField(default="", read_only=True)
-    layer_type = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
     # need to add catalog_html
     metadata = serializers.CharField(read_only=True, default=None)
     source = serializers.CharField(read_only=True, default=None)
@@ -425,7 +446,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
     kml = serializers.CharField(read_only=True, default=None)
     data_download = serializers.CharField(read_only=True, default=None)
     learn_more = serializers.CharField(read_only=True, default=None)
-    map_tiles = serializers.CharField(read_only=True, default=None)
+    tiles = serializers.CharField(read_only=True, default=None)
     label_field = serializers.CharField(read_only=True, default=None)
     minZoom = serializers.FloatField(read_only=True, default=None)
     maxZoom = serializers.FloatField(read_only=True, default=None)
@@ -486,7 +507,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
     def get_subLayers(self, obj):
         subLayers = get_serialized_sublayers(obj)
         return subLayers
-    def get_layer_type(self, obj):
+    def get_type(self, obj):
         if hasattr(obj, 'theme_type') and obj.theme_type in ['radio', 'checkbox']:
             return obj.theme_type
     def get_data_url(self, obj):
@@ -534,7 +555,8 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
     overview = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
-
+    tiles = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
     class Meta:
         model = Layer
         fields = shared_layer_fields + ["parent", "order"]
@@ -634,12 +656,17 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
             })
         ret.update(layer_specific_fields)
         return ret
+    def get_tiles(self,obj):
+        return obj.map_tiles
+    def get_type(self,obj):
+        return obj.layer_type
 
 def check_is_sublayer(obj):
     if isinstance(obj, Theme):
         return False
     else:
         return True
+    
 
 class SubLayerSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
@@ -647,7 +674,8 @@ class SubLayerSerializer(serializers.ModelSerializer):
     overview = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
-
+    tiles = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
     class Meta:
         model = Layer
         fields = shared_layer_fields + ["is_sublayer", "parent", "order"]
@@ -747,3 +775,7 @@ class SubLayerSerializer(serializers.ModelSerializer):
         if child_orders:
             return child_orders[0].parent_theme.id
         return None
+    def get_tiles(self,obj):
+        return obj.map_tiles
+    def get_type(self,obj):
+        return obj.layer_type

@@ -128,7 +128,7 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
     
     expected_values = {
         "name": name,
-        "layer_type": layer_type,
+        "type": layer_type,
         "url": "",
         "order": 0,
         "proxy_url": False,
@@ -148,7 +148,7 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
         "kml": None,
         "data_download": None,
         "learn_more": None,
-        "map_tiles": None,
+        "tiles": None,
         "label_field": None,
         "minZoom": None,
         "maxZoom": None,
@@ -327,13 +327,13 @@ class LayerSerializerTest(TestCase):
 
         # Third level layers should have their direct parent serialized.
         serialized_layer2_data = LayerWMSSerializer(self.wms_layer2).data
-        self.assertEqual(self.sub_theme.id, serialized_layer2_data["parent"])
+        self.assertEqual(self.sub_theme.id, serialized_layer2_data["parent"]["id"])
 
     def test_serialize_fourth_and_beyond_layer_parent(self):
         # Layers fourth level and beyond should point to the second layer ancestor.
         # AKA should skip past any intermediary parents until the second layer.
         serialized_layer3_data = LayerWMSSerializer(self.wms_layer3).data 
-        self.assertEqual(self.sub_theme.id, serialized_layer3_data["parent"])
+        self.assertEqual(self.sub_theme.id, serialized_layer3_data["parent"]["id"])
 
 class SubThemeSerializerTest(TestCase):
     def setUp(self):

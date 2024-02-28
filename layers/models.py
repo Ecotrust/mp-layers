@@ -95,6 +95,8 @@ class Theme(models.Model, SiteFlags):
             return child_order.parent_theme
         return None
     
+
+    
     class Meta:
         ordering = ['order']
 
@@ -107,7 +109,6 @@ class Layer(models.Model, SiteFlags):
     ('ArcFeatureServer', 'ArcFeatureServer'),
     ('Vector', 'Vector'),
     ('VectorTile', 'VectorTile'),
-    ('placeholder', 'placeholder'),
     )
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -340,6 +341,8 @@ class Layer(models.Model, SiteFlags):
     def __str__(self):
         return self.name
 
+   
+    
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
     # (Each companionship relates to one Layer)

@@ -20,7 +20,7 @@ class ThemeForm(forms.ModelForm):
     themes = ThemeChoiceField(queryset=Theme.all_objects.all().filter(theme_type=''), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
     class Meta:
         model = Theme
-        exclude = ('layer_type', "slug_name") 
+        exclude = ("slug_name", "uuid") 
     
     def clean(self):
         cleaned_data = super().clean()
@@ -132,7 +132,7 @@ class LayerForm(forms.ModelForm):
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
     class Meta:
-        exclude = ('slug_name',)
+        exclude = ('slug_name', "has_companion", "uuid")
         model = Layer
         fields = '__all__'
         widgets = {
@@ -140,7 +140,21 @@ class LayerForm(forms.ModelForm):
             'attribute_fields': admin.widgets.FilteredSelectMultiple('Attribute fields', False),
             'lookup_table': admin.widgets.FilteredSelectMultiple('Lookup table', False),
         }
-    
+    def clean(self):
+        cleaned_data = super().clean()
+        order = cleaned_data.get('order')
+        if order is None:
+            self.add_error('order', 'Order must be filled out.')
+        # Do not return order; instead, return the entire cleaned_data dictionary
+        return cleaned_data
+    def _post_clean(self):
+        try:
+            super()._post_clean()
+        except AttributeError as e:
+            # Add debugging output to help diagnose the issue
+            print(f"Error in _post_clean: {e}")
+            print(f"cleaned_data: {self.cleaned_data}")
+            raise
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
@@ -209,7 +223,7 @@ class LayerAdmin(admin.ModelAdmin):
             'all': ('css/layer_admin.css',)  
         }
 
-    if settings.CATALOG_TECHNOLOGY not in ['default', None]:
+    if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
         # catalog_fields = ('catalog_name', 'catalog_id',)
         # catalog_fields = 'catalog_name'
         basic_fields = (
@@ -288,6 +302,7 @@ class LayerAdmin(admin.ModelAdmin):
                 object_id=obj.pk,
                 defaults={'order': order}
             )
+
 
     def create_or_update_companionship(self, obj, companion_layer_ids):
 
