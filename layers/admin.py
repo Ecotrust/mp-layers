@@ -17,7 +17,7 @@ class CompanionLayerChoiceField(forms.ModelMultipleChoiceField):
         return obj.name
 
 class ThemeForm(forms.ModelForm):
-    themes = ThemeChoiceField(queryset=Theme.all_objects.all().filter(theme_type=''), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
+    themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 

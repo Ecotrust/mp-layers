@@ -11,6 +11,8 @@ from .models import *
 from .serializers import *
 from rest_framework import viewsets
 import json, requests
+from dataclasses import dataclass, asdict
+
 
 layer_type_to_model = {
     'XYZ': LayerXYZ,
@@ -629,3 +631,57 @@ def migration_layer_details(request, uuid=None):
             pass
 
     return JsonResponse(data)
+
+def get_picker(request):
+    pass
+
+@dataclass
+class SidebarData:
+    id: int
+    name: str
+    type: str # can be "layer" or "theme"
+
+def picker_wrapper(request, template="picker_wrapper.html"):
+    top_level_themes = Theme.all_objects.filter(theme_type="")
+    themes = []
+    for theme in top_level_themes:
+        data = SidebarData(
+            id=theme.id,
+            name=theme.name,
+            type="theme"
+        )
+        themes.append(asdict(data))
+    # Prepare context data to be passed to the template
+    context = {
+        'top_level_themes': themes,
+    }
+    # Render template with context
+    return render(request, template, context)
+
+def get_children(request, parent_id):
+    child_orders = Theme.all_objects.get(id=parent_id).children.all()
+    theme_content_type = ContentType.objects.get_for_model(Theme)
+    layer_content_type = ContentType.objects.get_for_model(Layer)
+    children = []
+    for child in child_orders:
+        try:
+            if child.content_type == theme_content_type:
+                print(f"[get_children]: fetching theme with id: {child.object_id}")
+                child_theme = Theme.all_objects.get(id=child.object_id)
+                data = SidebarData(
+                    id=child_theme.id,
+                    name=child_theme.name,
+                    type="theme"
+                )
+            elif child.content_type == layer_content_type:
+                print(f"[get_children]: fetching layer with id: {child.object_id}")
+                child_layer = Layer.all_objects.get(id=child.object_id)
+                data = SidebarData(
+                    id=child_layer.id,
+                    name=child_layer.name,
+                    type="layer"
+                )
+            children.append(asdict(data))
+        except ObjectDoesNotExist:
+            continue
+    return JsonResponse(children, safe=False)
