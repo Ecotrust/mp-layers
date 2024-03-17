@@ -28,7 +28,11 @@ body {
     border: 1px solid #ddd
 }
 
-
+.fa-info-circle {
+    float: left;
+    color: #00a564;
+    margin-right: 5px;
+}
 .miller-columns-container {
     padding: 10px;
 }
@@ -43,7 +47,7 @@ body {
 
 .column-item {
     padding: 8px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #dddddd;
     cursor: pointer;
     font-size: 16px;
     position: relative;
@@ -60,13 +64,13 @@ body {
 }
 .far.fa-circle {
     float:right;
+    color:#00a564;
 }
 
-
-.column-item.expanded:hover {
-    background-color: green; /* Change color to green when expanded */
+.fa-check-circle{
+    float:right;
+    color:#00a564;
 }
-
 
 .children-item:hover {
     background-color: #e9e9e9;
@@ -76,7 +80,7 @@ body {
 .children-item {
     background-color: transparent;
     padding: 8px;
-    border-bottom: 1px solid #ddd;
+    margin-bottom: 1px;
     cursor: pointer;
     font-size: 16px;
     display: block;
@@ -113,3 +117,48 @@ body {
 .hidden-column {
     display: none;
 }
+
+.tooltip {
+    position: relative;
+    display: inline-block;
+  }
+  
+  /* Tooltip text */
+  .tooltip .tooltiptext {
+    visibility: hidden;
+    width: 120px;
+    background-color: #00a564;
+    color: #fff;
+    text-align: center;
+    padding: 5px 0;
+    border-radius: 6px;
+    font-size: 13px;
+    /* Position the tooltip text below the tooltip container */
+    position: absolute;
+    z-index: 1;
+    top: 150%; /* Change from bottom: 100% to top: 150% to move it below */
+    left: 50%;
+    margin-left: -60px; /* Use half of the width to center the tooltip */
+    
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  /* Tooltip arrow */
+  .tooltip .tooltiptext::before {
+    content: "";
+    position: absolute;
+    bottom: 100%; /* Place the arrow at the bottom of the tooltip text */
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent #00a564 transparent; /* Flip the border color for the arrow */
+  }
+  
+  /* Show the tooltip text when hovering */
+  .tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+  }

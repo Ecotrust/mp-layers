@@ -128,7 +128,7 @@ class ThemeAdmin(admin.ModelAdmin):
 class LayerForm(forms.ModelForm):
 
     order = forms.IntegerField(required=False)
-    themes = ThemeChoiceField(queryset=Theme.all_objects.all().filter(theme_type=''), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
+    themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
     class Meta:
