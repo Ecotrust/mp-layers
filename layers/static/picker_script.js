@@ -1,12 +1,32 @@
 document.addEventListener('DOMContentLoaded', (event) => {
     const getGreenShade = (level) => {
     // Lighter shade for higher levels, darker for lower
-    let mod_step = 9;
-    let hue_mod = parseInt(level/mod_step)*10; 
-    let light_mod = level%mod_step; 
-    let base_light = 32;
-    let light_step = (90-base_light) / (mod_step - 1);
-    return `hsl(${156+hue_mod}, 100%, ${base_light+light_mod*light_step}%)`;
+    // let mod_step = 9;
+    // let hue_mod = parseInt(level/mod_step)*10; 
+    // let light_mod = level%mod_step; 
+    // let base_light = 32;
+    // let light_step = (90-base_light) / (mod_step - 1);
+    // return `hsl(${156+hue_mod}, 100%, ${base_light+light_mod*light_step}%)`;
+    // Set a base hue, saturation, and lightness
+    let baseHue = 156; // green hue
+    let baseSaturation = 100;
+    let baseLight = 32; // base lightness
+
+    // Increment settings
+    const hueIncrement = -4; // Negative value to gradually shift hue towards cooler colors
+    const lightIncrement = 4; // Positive value to increase lightness slightly with each level
+    const maxLight = 90; // Maximum lightness value to avoid going fully white
+
+    // Calculate new hue and lightness
+    let newHue = baseHue + (level * hueIncrement);
+    let newLight = baseLight + (level * lightIncrement);
+    newLight = newLight > maxLight ? maxLight : newLight; // Cap the lightness
+
+    // Ensure that hue stays within the 0-360 range
+    if (newHue < 0) {
+        newHue += 360;
+    }
+    return `hsl(${newHue}, ${baseSaturation}%, ${newLight}%)`;
      // Adjust the percentage for the desired effect
     };
     const createColumn = (themes, parentListItem, level = 0) => {

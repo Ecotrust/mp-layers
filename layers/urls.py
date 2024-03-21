@@ -18,6 +18,7 @@ urlpatterns = [
     re_path(r'^migration/layer_status/', views.layer_status),
     re_path(r'^migration/layer_details/', views.migration_layer_details),
     re_path(r'^picker/', views.get_picker),
+    re_path(r'^top_level_themes/', views.top_level_themes),
     re_path(r'^picker_wrapper/', views.picker_wrapper),
     re_path(r'^children/(?P<parent_id>\d+)/?$', views.get_children),
 ]
