@@ -667,7 +667,7 @@ class LayerData:
 #     }
 #     # Render template with context
 #     return render(request, template, context)
-def picker_wrapper(request, template="build/index.html"):
+def picker_wrapper(request, template="picker_wrapper.html"):
 
     return render(request, template)
 

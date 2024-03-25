@@ -1,22 +1,8 @@
 {% load static %}<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map Layer Selector</title>
-    <link href="{% static 'css/picker.css' %}" rel="stylesheet">
-    <link rel="stylesheet" href="/static/assets/fontawesome-free-5.8.1-web/css/all.min.css">
-    <!-- Add any additional stylesheet links here -->
-</head>
-<body>
-    <div class="container">
-        <div class="sidebar" id="sidebar">
-            <!-- Include Miller columns component -->
-            {% include 'picker.html' %}
-        </div>
-    </div>
 
-    <!-- Add your scripts at the bottom -->
-    <script src="{% static 'picker_script.js' %}"></script>
-</body>
-</html>
+<link
+  rel="stylesheet"
+  href="/static/assets/fontawesome-free-5.8.1-web/css/all.min.css"
+/>
+
+<div>{% include './build/index.html' %}</div>
