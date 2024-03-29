@@ -5,4 +5,10 @@
   href="/static/assets/fontawesome-free-5.8.1-web/css/all.min.css"
 />
 
-<div>{% include './build/index.html' %}</div>
+{% comment %} <script defer="defer" src="layers/static/js/layerpicker.js" ></script> {% endcomment %}
+{% comment %} why does the above not work, what is react doing under the hood that makes below work but above script not work {% endcomment %}
+{% comment %} {% block content %}
+    <div id="picker"></div>
+    <script defer="defer" src="http://localhost:3000/static/js/bundle.js"></script>
+{% endblock content %} {% endcomment %}
+<div>{% include 'react-datatab.html' %}</div>
