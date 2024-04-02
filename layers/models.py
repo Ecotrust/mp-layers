@@ -45,7 +45,6 @@ class Theme(models.Model, SiteFlags):
     site = models.ManyToManyField(Site,  related_name='%(class)s_site')
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    old_uuid = models.UUIDField(null=True, blank=True)
     display_name = models.CharField(max_length=100)
     theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
@@ -114,7 +113,6 @@ class Layer(models.Model, SiteFlags):
     )
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    old_uuid = models.UUIDField(null=True, blank=True)
     slug_name = models.CharField(max_length=200, blank=True, null=True)
     layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
     url = models.TextField(blank=True, default="")
@@ -539,8 +537,8 @@ class MultilayerDimension(models.Model):
 class MultilayerAssociation(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     name = models.CharField(max_length=200)
-    parentLayer = models.ForeignKey(Theme, related_name="parent_theme",
-            db_column='parentlayer', on_delete=models.CASCADE)
+    parentTheme = models.ForeignKey(Theme, related_name="parent_theme",
+            db_column='parenttheme', on_delete=models.CASCADE)
     layer = models.ForeignKey(Layer, null=True, blank=True, default=None,
             related_name="associated_layer", db_column='associatedlayer',
             on_delete=models.SET_NULL)
