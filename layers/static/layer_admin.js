@@ -4,11 +4,13 @@ document.addEventListener("DOMContentLoaded", function() {
         const inlines = document.querySelectorAll(".inline-group");
         
         inlines.forEach(function(inline) {
-            if (inline.id.includes(layerType.toLowerCase())) { // Assuming inline IDs contain the lowercase `layer_type`
-                inline.style.display = '';
-            } else {
-                inline.style.display = 'none';
-            }
+          inline.style.display = 'none';
+
+          // If the inline ID matches the layerType or specific conditions for 'slider'
+          if (inline.id.includes(layerType.toLowerCase()) || (layerType === 'slider' && 
+              (inline.id.includes('multilayerdimension') || inline.id.includes('parent_layer')))) {
+              inline.style.display = '';
+          }
         });
     }
     const headers = document.querySelectorAll('.inline-related h3');

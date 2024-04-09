@@ -4,12 +4,54 @@ from .models import *
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+import nested_admin
 # Register your models here.
 class ThemeChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
         return obj.name
 
+
+
+class NestedMultilayerDimensionValueInline(nested_admin.NestedTabularInline):
+    model = MultilayerDimensionValue
+    fields = ('value', 'label', 'order')
+    extra = 1
+    classes = ['collapse', 'open']
+    verbose_name_plural = 'Multilayer Dimension Values'
+
+class NestedMultilayerDimensionInline(nested_admin.NestedTabularInline):
+    model = MultilayerDimension
+    fields = (('name', 'label', 'order', 'animated', 'angle_labels'),)
+    extra = 1
+    classes = ['collapse', 'open']
+    verbose_name_plural = 'Multilayer Dimensions'
+    inlines = [
+        NestedMultilayerDimensionValueInline,
+    ]
+
+class NestedMultilayerAssociationInline(nested_admin.NestedTabularInline):
+    model = MultilayerAssociation
+    fk_name = 'parentLayer'
+    readonly_fields = ('get_values',)
+    fields = (('get_values', 'name', 'layer'),)
+    extra = 0
+    classes = ['collapse', 'open']
+    verbose_name_plural = 'Multilayer Associations'
+
+    def get_values(self, obj):
+        return '| %s |' % ' | '.join([str(x) for x in obj.multilayerdimensionvalue_set.all()])
+
+    def get_readlony_values(self, obj):
+        return obj.multilayerdimensionvalue_set.all()
+
+    def get_dimensions(self, obj):
+        dimensions = []
+        for value in obj.multilayerdimensionvalue_set.all():
+            dimension = value.dimension
+            if dimension not in dimensions:
+                dimensions.append(dimension)
+        return dimensions
 
 class CompanionLayerChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
@@ -172,7 +214,7 @@ class LayerForm(forms.ModelForm):
             has_companions = self.instance.companionships.exists()
             self.fields['has_companion'].initial = has_companions
 
-class BaseLayerInline(admin.StackedInline):
+class BaseLayerInline(nested_admin.NestedStackedInline):
     extra = 1
     max_num = 1
     can_delete = False
@@ -189,7 +231,7 @@ class XYZInline(BaseLayerInline):
 class VectorInline(BaseLayerInline):
     model = LayerVector
 
-class LayerAdmin(admin.ModelAdmin):
+class LayerAdmin(nested_admin.NestedModelAdmin):
     def get_parent_theme(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
@@ -280,7 +322,8 @@ class LayerAdmin(admin.ModelAdmin):
                 'shareable_url',
             )
         }),)
-    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline] 
+    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, NestedMultilayerDimensionInline,
+        NestedMultilayerAssociationInline,]
     
     def get_queryset(self, request):
         #use our manager, rather than the default one
@@ -366,6 +409,8 @@ class LayerAdmin(admin.ModelAdmin):
             InlineModel = LayerXYZ
         elif layer_type == 'Vector':
             InlineModel = LayerVector
+        elif layer_type == "slider":
+            InlineModel = [MultilayerDimension, MultilayerAssociation]
 
         # If an inline model is determined, proceed to save it
         if InlineModel is not None:
@@ -383,10 +428,11 @@ class LayerAdmin(admin.ModelAdmin):
 
     def get_inline_model(self, layer_type):
         mapping = {
-            'ArcRest': LayerArcREST,
-            'WMS': LayerWMS,
-            'XYZ': LayerXYZ,
-            'Vector': LayerVector,
+            'ArcRest': [ArcRESTInline],
+            'WMS': [WMSInline],
+            'XYZ': [XYZInline],
+            'Vector': [VectorInline],
+            'slider': [NestedMultilayerDimensionInline, NestedMultilayerAssociationInline],
         }
         return mapping.get(layer_type)
     def delete_old_inline_instance(self, obj, layer_type):
@@ -404,9 +450,15 @@ class LayerAdmin(admin.ModelAdmin):
                 formset.save()
             else:
                 # Here you can handle formset errors if needed, for example:
-                raise Exception('Inline formset validation failed') 
-            
-    
+                raise Exception('Inline formset validation failed')    
+    def get_inline_instances(self, request, obj=None):
+        inline_instances = super(LayerAdmin, self).get_inline_instances(request, obj)
+        if obj:  # Make sure the object exists
+            for inline_instance in inline_instances:
+                inline_type = 'ArcRest'  # Change this based on the actual logic
+                # Set a custom attribute to match against layer_type
+                inline_instance.attrs = {'data-inline-for': inline_type.lower()}
+        return inline_instances
 
     def get_form(self, request, obj=None, **kwargs):
         form = super(LayerAdmin, self).get_form(request, obj, **kwargs)

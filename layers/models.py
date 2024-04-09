@@ -110,6 +110,7 @@ class Layer(models.Model, SiteFlags):
     ('ArcFeatureServer', 'ArcFeatureServer'),
     ('Vector', 'Vector'),
     ('VectorTile', 'VectorTile'),
+    ('slider', 'slider'),
     )
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -121,6 +122,7 @@ class Layer(models.Model, SiteFlags):
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default="")
     objects = CurrentSiteManager('site')
+    is_visible = models.BooleanField(default=True)
     all_objects = AllObjectsManager()
     utfurl = models.CharField(max_length=255, blank=True, null=True)
     site = models.ManyToManyField(Site, related_name='%(class)s_site')
@@ -537,8 +539,8 @@ class MultilayerDimension(models.Model):
 class MultilayerAssociation(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     name = models.CharField(max_length=200)
-    parentTheme = models.ForeignKey(Theme, related_name="parent_theme",
-            db_column='parenttheme', on_delete=models.CASCADE)
+    parentLayer = models.ForeignKey(Layer, related_name="parent_layer",
+            db_column='parentlayer', on_delete=models.CASCADE)
     layer = models.ForeignKey(Layer, null=True, blank=True, default=None,
             related_name="associated_layer", db_column='associatedlayer',
             on_delete=models.SET_NULL)
