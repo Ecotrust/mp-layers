@@ -11,7 +11,22 @@ class ThemeChoiceField(forms.ModelMultipleChoiceField):
         # Return the name of the Theme object to be used as the label for the choice
         return obj.name
 
+NestedMultilayerAssociationInlineFormset = inlineformset_factory(
+    parent_model=Layer,
+    fk_name = 'parentLayer',
+    model=MultilayerAssociation,
+    fields='__all__',  # Adjust the fields as necessary
+    extra=1, 
+    can_delete=True
+)
 
+NestedMultilayerDimensionInlineFormset = inlineformset_factory(
+    parent_model=Layer,
+    model=MultilayerDimension,
+    fields='__all__',  # Adjust the fields as necessary
+    extra=1,
+    can_delete=True
+)
 
 class NestedMultilayerDimensionValueInline(nested_admin.NestedTabularInline):
     model = MultilayerDimensionValue
@@ -222,6 +237,9 @@ class BaseLayerInline(nested_admin.NestedStackedInline):
 class ArcRESTInline(BaseLayerInline):
     model = LayerArcREST
 
+class ArcRESTServerInline(BaseLayerInline):
+    model = LayerArcFeatureService
+
 class WMSInline(BaseLayerInline):
     model = LayerWMS
 
@@ -322,7 +340,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 'shareable_url',
             )
         }),)
-    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, NestedMultilayerDimensionInline,
+    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
     def get_queryset(self, request):
@@ -411,6 +429,8 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             InlineModel = LayerVector
         elif layer_type == "slider":
             InlineModel = [MultilayerDimension, MultilayerAssociation]
+        elif layer_type == "ArcFeatureServer":
+            InlineModel == LayerArcFeatureService
 
         # If an inline model is determined, proceed to save it
         if InlineModel is not None:
@@ -420,45 +440,66 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 formset.save()
 
     def handle_layer_type_change(self, request, obj, original_layer_type, new_layer_type):
-        # Delete old inline model instance
-        self.delete_old_inline_instance(obj, original_layer_type)
-        
-        # Process the new inline formset for the new layer type
-        self.process_inline_formset(request, obj, new_layer_type)
+        if new_layer_type == "slider":
+            # Handle the slider case by just saving the formset
+            self.save_inline_formsets(request, obj)
+        else:
+            # Handle the case for other layer types by getting or creating the instance
+            InlineModelClass = self.get_inline_model_class(new_layer_type)
+            print(InlineModelClass)
+            if InlineModelClass is not None:
+                # Get or create the inline instance
+                inline_instance, created = InlineModelClass.objects.get_or_create(layer=obj)
 
+                # Process the inline formset
+                InlineFormSetClass = self.get_inline_model(InlineModelClass)
+                if InlineFormSetClass is not None:
+                    formset = InlineFormSetClass(request.POST, request.FILES, instance=obj)
+                    if formset.is_valid():
+                        formset.save()
+                    else:
+                        # Handle the formset errors
+                        raise Exception(f"Inline formset validation failed for {new_layer_type}")
+                    
+    def save_inline_formsets(self, request, obj):
+        # Get all inline formsets for the 'slider' type and save them
+        for InlineFormSetClass in [NestedMultilayerAssociationInlineFormset, NestedMultilayerDimensionInlineFormset]:
+            formset = InlineFormSetClass(request.POST, request.FILES, instance=obj)
+            if formset.is_valid():
+                formset.save()
+            else:
+                raise Exception('Slider inline formset validation failed')
+    # Add the method to get the inline instance by type
+    
     def get_inline_model(self, layer_type):
         mapping = {
             'ArcRest': [ArcRESTInline],
             'WMS': [WMSInline],
             'XYZ': [XYZInline],
             'Vector': [VectorInline],
+            'ArcFeatureServer': [ArcRESTServerInline],
             'slider': [NestedMultilayerDimensionInline, NestedMultilayerAssociationInline],
         }
         return mapping.get(layer_type)
-    def delete_old_inline_instance(self, obj, layer_type):
-        InlineModel = self.get_inline_model(layer_type)
-        
-        if InlineModel:
-            InlineModel.objects.filter(layer=obj).delete()
+    
+    def get_inline_model_class(self, layer_type):
+        mapping = {
+            'ArcRest': LayerArcREST,
+            'ArcFeatureServer': LayerArcFeatureService,
+            'WMS': LayerWMS,
+            'XYZ': LayerXYZ,
+            'Vector': LayerVector,
+        }
+        return mapping.get(layer_type)
 
-    def process_inline_formset(self, request, obj, new_layer_type):
-        InlineModel = self.get_inline_model(new_layer_type)
-        if InlineModel is not None:
-            InlineFormSet = inlineformset_factory(Layer, InlineModel, fields='__all__', extra=1, can_delete=False)
-            formset = InlineFormSet(request.POST, request.FILES, instance=obj)
-            if formset.is_valid():
-                formset.save()
-            else:
-                # Here you can handle formset errors if needed, for example:
-                raise Exception('Inline formset validation failed')    
-    def get_inline_instances(self, request, obj=None):
-        inline_instances = super(LayerAdmin, self).get_inline_instances(request, obj)
-        if obj:  # Make sure the object exists
-            for inline_instance in inline_instances:
-                inline_type = 'ArcRest'  # Change this based on the actual logic
-                # Set a custom attribute to match against layer_type
-                inline_instance.attrs = {'data-inline-for': inline_type.lower()}
-        return inline_instances
+    # def get_inline_instances(self, request, obj=None):
+    #     inline_instances = super(LayerAdmin, self).get_inline_instances(request, obj)
+    #     if obj:  # Make sure the object exists
+    #         for inline_instance in inline_instances:
+    #             inline_type = 'ArcRest'  # Change this based on the actual logic
+    #             # Set a custom attribute to match against layer_type
+    #             inline_instance.attrs = {'data-inline-for': inline_type.lower()}
+    #     return inline_instances
 
     def get_form(self, request, obj=None, **kwargs):
         form = super(LayerAdmin, self).get_form(request, obj, **kwargs)

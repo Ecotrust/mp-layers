@@ -24,14 +24,14 @@ class Command(BaseCommand):
         # Your existing create_or_update_layer function
         # Replace all print statements with self.stdout.write for command-line output
         new_entity = None 
-        if (old_layer.pk == 5264):
-            import ipdb; ipdb.set_trace()
+
         if old_layer.layer_type in ['radio', 'checkbox'] or (old_layer.sublayers.all().count() > 0 and not old_layer.is_sublayer):
             # Create as subtheme
             visible = False if old_layer.layer_type == "placeholder" else True
             new_subtheme = LayersTheme.objects.create(
                 uuid=old_layer.uuid,
                 name=old_layer.name,
+                display_name=old_layer.name,
                 overview=old_layer.data_overview,
                 description=old_layer.description,
                 theme_type=old_layer.layer_type,  
@@ -264,8 +264,8 @@ class Command(BaseCommand):
                 # Try to find the corresponding layer or subtheme in LayersLayer or LayersTheme
                 try:
                     matching_layer = LayersLayer.all_objects.get(uuid=dm_layer.uuid)
-                    self.create_child_order(parent_theme, matching_layer, order)
-                    self.stdout.write(self.style.SUCCESS(f'Created child order for layer {matching_layer.name} under theme {parent_theme.name}'))
+                    child_order = self.create_child_order(parent_theme, matching_layer, order)
+                    self.stdout.write(self.style.SUCCESS(f'Created child order for layer {matching_layer.name} under theme {child_order.parent_theme.name} and order {child_order.order} and id {child_order.id}'))
                 except LayersLayer.DoesNotExist:
                     try:
                         matching_subtheme = LayersTheme.all_objects.get(uuid=dm_layer.uuid)

@@ -11,6 +11,9 @@ document.addEventListener("DOMContentLoaded", function() {
               (inline.id.includes('multilayerdimension') || inline.id.includes('parent_layer')))) {
               inline.style.display = '';
           }
+          else if (inline.id.includes("arcfeatureservice") && layerType === "ArcFeatureServer") {
+              inline.style.display = "";
+          }
         });
     }
     const headers = document.querySelectorAll('.inline-related h3');
