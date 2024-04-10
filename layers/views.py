@@ -133,7 +133,7 @@ def get_json(request):
 
 def get_themes(request):
     data = {
-        "themes": [ShortThemeSerializer(theme).data for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+        "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.filter(theme_type = "").order_by('order')],
     }
     return JsonResponse(data)
 
@@ -193,7 +193,8 @@ def get_layer_search_data(request):
     return JsonResponse(search_dict)
 
 def get_layers_for_theme(request, themeID):
-    theme = Theme.all_objects.get(pk=themeID)
+    print(themeID)
+    theme = Theme.objects.get(pk=themeID)
     child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
         )
