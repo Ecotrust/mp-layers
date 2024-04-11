@@ -1,0 +1,139 @@
+ /* Basic reset
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Arial, sans-serif;
+} */
+
+/* .datacontainer {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+} */
+
+.picker {
+  position: relative;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 1000;
+  width: 420px;
+  padding: 0px;
+  height: calc(
+    100% - 47px
+  );
+  overflow-y: auto; 
+  border: 1px solid #ddd;
+} 
+
+.fa-info-circle {
+  float: left;
+  color: #00a564;
+  margin-right: 5px;
+}
+.miller-columns-container {
+  padding: 10px;
+}
+
+.miller-column {
+  margin-right: 5px;
+}
+
+.column-list {
+  list-style: none;
+}
+
+.column-item {
+  padding: 8px;
+  border-bottom: 1px solid #dddddd;
+  cursor: pointer;
+  font-size: 16px;
+  position: relative;
+  display: block; /* Align items in a row */
+}
+.fas.fa-chevron-right.expanded {
+  transform: rotate(90deg); /* Adjust as needed to point down */
+}
+
+.fas.fa-chevron-right.expanded {
+  transform: rotate(90deg); /* Adjust as needed to point down */
+}
+.far.fa-circle {
+  float: right;
+  color: #00a564;
+}
+
+.fa-check-circle {
+  float: right;
+  color: #00a564;
+}
+
+.children-item:hover {
+  background-color: #e9e9e9;
+}
+.link-bar.show {
+  display: block;
+}
+ul {
+  padding-left: 0;
+}
+.children-item {
+  background-color: transparent;
+  padding: 8px;
+  margin-bottom: 1px;
+  cursor: pointer;
+  font-size: 16px;
+  display: block;
+}
+.children-item .fas.fa-chevron-right {
+  float: right;
+}
+.column-item .fas.fa-chevron-right {
+  float: right;
+}
+
+.column-item:hover {
+  background-color: #e9e9e9;
+}
+
+.has-children > .nested-column {
+  display: none; /* initially hidden, show on click */
+}
+
+.has-children:hover > .nested-column {
+  display: block; /* show on hover or handle via JS for click */
+  position: absolute;
+  left: 100%; /* Adjust as needed */
+  top: 0;
+  background-color: #f5f5f5;
+  box-shadow: 2px 0px 5px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+.nested-column .column-list {
+  width: 250px; /* Same width as parent column */
+}
+
+.hidden-column {
+  display: none;
+}
+
+.link-text {
+  color: green;
+  text-decoration: none; /* Optionally removes underline from links */
+}
+.link-text.disabled {
+  color: gray;
+  pointer-events: none;
+  text-decoration: none;
+}
+
+.description-box {
+  margin-top: 10px;
+  border-color: black;
+  border: solid;
+  padding: 10px;
+}
