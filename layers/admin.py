@@ -314,7 +314,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         ('METADATA', {
             'classes': ('collapse',),
             'fields': (
-                'description', 'overview','data_source','data_notes', 'data_publish_date'
+                'description', 'overview','data_source','data_notes', 'data_publish_date','utfurl',
             )
         }),
         ('LEGEND', {

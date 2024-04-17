@@ -141,7 +141,7 @@ def get_layer_search_data(request):
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
     search_dict = {}
-    for theme in Theme.all_objects.filter(is_visible=True):
+    for theme in Theme.objects.filter(is_visible=True):
         # Get child orders for the theme where content_type is Layer
         child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
@@ -235,7 +235,7 @@ def get_layer_details(request, layerID):
     serialized_data = {}
     try:
         # First, get the generic layer instance
-        layer = Layer.all_objects.get(pk=layerID)
+        layer = Layer.objects.get(pk=layerID)
 
         # Use the layer_type attribute to get the specific model class
         specific_layer_model = layer_type_to_model.get(layer.layer_type)
@@ -253,7 +253,9 @@ def get_layer_details(request, layerID):
             serialized_data = specific_layer_serializer.data
         return JsonResponse(serialized_data)
     except ObjectDoesNotExist as e:
-        return JsonResponse({'error': "Layers with ID %s does not exist." % layerID})
+        subtheme = Theme.objects.get(pk=layerID)
+        serialized_data = SubThemeSerializer(subtheme).data
+        return JsonResponse(serialized_data)
 
 def wms_get_capabilities(url):
     from datetime import datetime
@@ -707,12 +709,12 @@ def get_children(request, parent_id):
     return JsonResponse(children, safe=False)
 
 def top_level_themes(request):
-    top_level_themes = Theme.all_objects.filter(theme_type="")
+    top_level_themes = Theme.objects.filter(theme_type="")
     themes = []
     for theme in top_level_themes:
         data = {
             'id': theme.id,
-            'name': theme.name,
+            'name': theme.display_name,
             'type': "theme"
         }
         themes.append(data)

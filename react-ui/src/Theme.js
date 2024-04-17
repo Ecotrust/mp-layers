@@ -18,6 +18,7 @@ const Theme = ({ theme, level, borderColor }) => {
   
   const handleClick = () => {
     if (!expanded && childrenThemes.length === 0) {
+      window["reactToggleTheme"](theme.id);
       fetchChildren();
     }
     setExpanded(!expanded);
@@ -74,7 +75,7 @@ const Theme = ({ theme, level, borderColor }) => {
               child.type === "theme" ? (
                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)}/>
               ) : (
-                <Layer key={child.id} layer={child} borderColor={getGreenShade(level)}  childData={child}/>
+                <Layer key={child.id} theme_id={theme.id} layer={child} borderColor={getGreenShade(level)}  childData={child}/>
               )
             ))}
           </ul>
