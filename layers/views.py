@@ -195,12 +195,17 @@ def get_layer_search_data(request):
 def get_layers_for_theme(request, themeID):
     print(themeID)
     theme = Theme.objects.get(pk=themeID)
+    theme_content_type = ContentType.objects.get_for_model(Theme)
     child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
-        )
-    theme_content_type = ContentType.objects.get_for_model(Theme)
+        ).order_by("order")
+    sorted_child_orders = sorted(
+        list(child_orders), 
+        key=lambda x: (x.order, getattr(x.content_object, 'name', ""))
+    )
+    
     layer_list = []
-    for child_order in child_orders:
+    for child_order in sorted_child_orders:
         child = child_order.content_object
         if child_order.content_type == theme_content_type:
             has_sublayers = ChildOrder.objects.filter(parent_theme=child).exists()
@@ -229,6 +234,7 @@ def get_layers_for_theme(request, themeID):
                 'has_sublayers': False,
                 'subLayers': [],
             })
+    print(layer_list)
     return JsonResponse({'layers': layer_list})
 
 def get_layer_details(request, layerID):
@@ -642,7 +648,7 @@ class SidebarData:
     id: int
     name: str
     type: str # can be "layer" or "theme"
-
+    theme_type: str
 @dataclass
 class LayerData:
     id: int
@@ -675,38 +681,44 @@ def picker_wrapper(request, template="picker_wrapper.html"):
     return render(request, template)
 
 def get_children(request, parent_id):
-    child_orders = Theme.all_objects.get(id=parent_id).children.all()
+    child_orders = Theme.objects.get(id=parent_id).children.order_by('order') 
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
     children = []
     for child in child_orders:
         try:
+            child_data = {}
             if child.content_type == theme_content_type:
                 print(f"[get_children]: fetching theme with id: {child.object_id}")
-                child_theme = Theme.all_objects.get(id=child.object_id)
-                data = SidebarData(
-                    id=child_theme.id,
-                    name=child_theme.name,
-                    type="theme"
-                )
+                child_theme = Theme.objects.get(id=child.object_id)
+                child_data = {
+                    'id': child_theme.id,
+                    'name': child_theme.name,
+                    'type': "theme",
+                    "theme_type": child_theme.theme_type
+                }
             elif child.content_type == layer_content_type:
                 print(f"[get_children]: fetching layer with id: {child.object_id}")
-                child_layer = Layer.all_objects.get(id=child.object_id)
+                child_layer = Layer.objects.get(id=child.object_id)
                 #Sidebar is a temporary replacement for serializer
-                data = LayerData(
-                    id=child_layer.id,
-                    name=child_layer.name,
-                    type="layer",
-                    metadata=child_layer.metadata,
-                    source=child_layer.source,
-                    data_download=child_layer.data_download,
-                    kml=child_layer.kml,
-                    description=child_layer.description
-                )
-            children.append(asdict(data))
+                child_data = {
+                    'id': child_layer.id,
+                    'name': child_layer.name,
+                    'type': "layer",
+                    'metadata': child_layer.metadata,
+                    'source': child_layer.source,
+                    'data_download': child_layer.data_download,
+                    'kml': child_layer.kml,
+                    'description': child_layer.description,
+                }
+            if child_data:
+                child_data['order'] = child.order
+                children.append(child_data)
         except ObjectDoesNotExist:
             continue
-    return JsonResponse(children, safe=False)
+    children_sorted = sorted(children, key=lambda x: (x['order'], x['name']))
+    final_children = [{key: value for key, value in child.items() if key != 'order'} for child in children_sorted]
+    return JsonResponse(final_children, safe=False)
 
 def top_level_themes(request):
     top_level_themes = Theme.objects.filter(theme_type="")

@@ -2,7 +2,7 @@ import React from "react";
 import axios from 'axios';
 import Layer from "./Layer"
 
-const Theme = ({ theme, level, borderColor }) => {
+const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   const [expanded, setExpanded] = React.useState(false);
   const [childrenThemes, setChildrenThemes] = React.useState([]);
 
@@ -18,11 +18,15 @@ const Theme = ({ theme, level, borderColor }) => {
   
   const handleClick = () => {
     if (!expanded && childrenThemes.length === 0) {
+      console.log(theme)
       window["reactToggleTheme"](theme.id);
       fetchChildren();
     }
     setExpanded(!expanded);
   };
+
+  // Determine the top-level theme ID to pass to child components
+  const currentTopLevelThemeId = level === 0 ? theme.id : topLevelThemeId;
   const getGreenShade = (level) => {
     // Lighter shade for higher levels, darker for lower
     // let mod_step = 9;
@@ -73,9 +77,9 @@ const Theme = ({ theme, level, borderColor }) => {
           <ul className="children-list">
             {childrenThemes && childrenThemes.map(child => (
               child.type === "theme" ? (
-                <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)}/>
+                <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)} topLevelThemeId={currentTopLevelThemeId}/>
               ) : (
-                <Layer key={child.id} theme_id={theme.id} layer={child} borderColor={getGreenShade(level)}  childData={child}/>
+                <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child}/>
               )
             ))}
           </ul>

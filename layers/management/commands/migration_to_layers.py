@@ -29,6 +29,7 @@ class Command(BaseCommand):
             # Create as subtheme
             visible = False if old_layer.layer_type == "placeholder" else True
             new_subtheme = LayersTheme.objects.create(
+                id=old_layer.id,
                 uuid=old_layer.uuid,
                 name=old_layer.name,
                 display_name=old_layer.name,
@@ -46,6 +47,7 @@ class Command(BaseCommand):
             layer_type = "slider" if old_layer.isMultilayerParent else old_layer.layer_type
             is_visible = False if old_layer.layer_type == "placeholder" else True
             new_layer = LayersLayer.objects.create(
+                        id=old_layer.id,
                         uuid=old_layer.uuid,
                         name=old_layer.name,
                         layer_type=layer_type,
@@ -202,7 +204,7 @@ class Command(BaseCommand):
             try:
                 old_layer = DataManagerLayer.all_objects.get(uuid=theme.uuid)  # Match by UUID
                 if (old_layer.sublayers.all().count() > 0 and not old_layer.is_sublayer) or old_layer.isMultilayerParent:
-                    for order, sublayer in enumerate(old_layer.sublayers.all(), start=1):
+                    for sublayer in old_layer.sublayers.all():
                         if sublayer.uuid == theme.uuid:
                             self.stdout.write(self.style.WARNING(f'Skipping sublayer {sublayer.name} as its UUID matches the theme UUID.'))
                             continue
@@ -212,7 +214,7 @@ class Command(BaseCommand):
                             else:
                                 new_entity = LayersLayer.all_objects.get(uuid=sublayer.uuid)
                             # Create the child order and get the created object
-                            created_child_order = self.create_child_order(theme, new_entity, order)
+                            created_child_order = self.create_child_order(theme, new_entity, sublayer.order)
                             # Print a success message with details about the created child order
                             self.stdout.write(self.style.SUCCESS(f'Child order created between theme "{theme.name}" and sublayer "{new_entity.name}" with order {created_child_order.order}.'))
                         except LayersLayer.DoesNotExist:
@@ -224,6 +226,7 @@ class Command(BaseCommand):
         # LOOP 3: for theme in DM themes, create
         for old_theme in DataManagerTheme.all_objects.all():
             new_theme = LayersTheme.objects.create(
+                id=old_theme.id,
                 uuid=old_theme.uuid,
                 name=old_theme.name,
                 display_name=old_theme.display_name,
@@ -260,20 +263,23 @@ class Command(BaseCommand):
                 continue
             
             # Iterate over each layer associated with the dm_theme
-            for order, dm_layer in enumerate(dm_theme.layer_set.all(), start=1):
+            for dm_layer in dm_theme.layer_set.all():
                 # Try to find the corresponding layer or subtheme in LayersLayer or LayersTheme
-                try:
-                    matching_layer = LayersLayer.all_objects.get(uuid=dm_layer.uuid)
-                    child_order = self.create_child_order(parent_theme, matching_layer, order)
-                    self.stdout.write(self.style.SUCCESS(f'Created child order for layer {matching_layer.name} under theme {child_order.parent_theme.name} and order {child_order.order} and id {child_order.id}'))
-                except LayersLayer.DoesNotExist:
+                if (dm_layer.is_sublayer == False):
                     try:
-                        matching_subtheme = LayersTheme.all_objects.get(uuid=dm_layer.uuid)
-                        self.create_child_order(parent_theme, matching_subtheme, order)
-                        self.stdout.write(self.style.SUCCESS(f'Created child order for subtheme {matching_subtheme.name} under theme {parent_theme.name}'))
-                    except LayersTheme.DoesNotExist:
-                        self.stdout.write(self.style.ERROR(f'No matching layer or subtheme found for {dm_layer.name} with UUID {dm_layer.uuid}'))
-                        continue
+                        matching_layer = LayersLayer.all_objects.get(uuid=dm_layer.uuid)
+                        child_order = self.create_child_order(parent_theme, matching_layer, dm_layer.order)
+                        self.stdout.write(self.style.SUCCESS(f'Created child order for layer {matching_layer.name} under theme {child_order.parent_theme.name} and order {child_order.order} and id {child_order.id}'))
+                    except LayersLayer.DoesNotExist:
+                        try:
+                            matching_subtheme = LayersTheme.all_objects.get(uuid=dm_layer.uuid)
+                            self.create_child_order(parent_theme, matching_subtheme, dm_layer.order)
+                            self.stdout.write(self.style.SUCCESS(f'Created child order for subtheme {matching_subtheme.name} under theme {parent_theme.name}'))
+                        except LayersTheme.DoesNotExist:
+                            self.stdout.write(self.style.ERROR(f'No matching layer or subtheme found for {dm_layer.name} with UUID {dm_layer.uuid}'))
+                            continue
+                else:
+                    continue
         self.stdout.write(self.style.SUCCESS('Migration completed successfully'))
 
         # LOOP 5: for layer in DM layers, filter(has_companion), get layers.layer by UUID and create companionships
