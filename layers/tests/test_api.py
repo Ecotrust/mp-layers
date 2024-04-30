@@ -825,3 +825,16 @@ class DataManagerLayerDetailsTest(APITestCase):
         self.assertEqual(result["status"], "Success")
         self.assertEqual(result["message"], "layer(s) details retrieved")
         self.assertEqual(len(result["layers"]), 2)
+
+class LiveAPITests(APITestCase):
+    def setUp(self):
+        pass
+    def test_v1_responses(self):
+        import requests, json
+        mdl_theme_response = requests.get('http://localhost:8002/old_manager/get_themes')
+        mls_theme_response = requests.get('http://localhost:8002/data_manager/get_themes')
+        old_themes = json.loads(mdl_theme_response.content)
+        new_themes = json.loads(mls_theme_response.content)
+        self.assertEqual(old_themes, new_themes)
+        for idx, theme in enumerate(old_themes['themes']):
+            self.assertEqual(theme, new_themes['themes'][idx])
