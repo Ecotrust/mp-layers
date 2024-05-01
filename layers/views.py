@@ -196,6 +196,8 @@ def get_layers_for_theme(request, themeID):
     print(themeID)
     theme = Theme.objects.get(pk=themeID)
     theme_content_type = ContentType.objects.get_for_model(Theme)
+    layer_content_type = ContentType.objects.get_for_model(Layer)
+
     child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
         ).order_by("order")
@@ -226,7 +228,7 @@ def get_layers_for_theme(request, themeID):
                 'has_sublayers': has_sublayers,
                 'subLayers': sublayers_data,
             })
-        else:
+        elif not (child_order.content_type == layer_content_type and child_order.content_object.layer_type == 'placeholder'):
             layer_list.append({
                 'id': child.id,
                 'name': child.name,
@@ -234,6 +236,9 @@ def get_layers_for_theme(request, themeID):
                 'has_sublayers': False,
                 'subLayers': [],
             })
+        else:
+            #placeholder layer
+            pass
     print(layer_list)
     return JsonResponse({'layers': layer_list})
 

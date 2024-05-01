@@ -25,9 +25,20 @@ class Command(BaseCommand):
         # Replace all print statements with self.stdout.write for command-line output
         new_entity = None 
 
-        if old_layer.layer_type in ['radio', 'checkbox'] or (old_layer.sublayers.all().count() > 0 and not old_layer.is_sublayer):
+        # RDH 2024-04-30: A layer can be a sublayer in one theme and a 'layer' in another, so really something's only a Theme if type in ['radio', 'checkbox']
+        #       see 'Wastewater Outfall Pipes' under
+        #           Maritime -> Submarine Cables and Pipelines -> Wastewater Outfal Pipes
+        #                   AND
+        #           Water Quality -> Wastewater Outfal Pipes
+        #   However, there are instances where data curators DID NOT use those types for parent layers: see Layer 4878 "Management Areas: Expired Management Areas"
+        #       No URL, has a sublayer, but "is_sublayer" is False. 
+        # if old_layer.layer_type in ['radio', 'checkbox'] or (old_layer.sublayers.all().count() > 0 and not old_layer.is_sublayer):
+        if old_layer.layer_type in ['radio', 'checkbox'] or (old_layer.sublayers.filter(is_sublayer=True).count()>0 and not old_layer.is_sublayer):
             # Create as subtheme
             visible = False if old_layer.layer_type == "placeholder" else True
+            layer_type = old_layer.layer_type
+            if layer_type not in ['radio', 'checkbox']:
+                layer_type = 'checkbox'     # Default
             new_subtheme = LayersTheme.objects.create(
                 id=old_layer.id,
                 uuid=old_layer.uuid,
@@ -35,7 +46,7 @@ class Command(BaseCommand):
                 display_name=old_layer.name,
                 overview=old_layer.data_overview,
                 description=old_layer.description,
-                theme_type=old_layer.layer_type,  
+                theme_type=layer_type,  
                 is_visible = visible
             )
             new_entity = new_subtheme
@@ -209,7 +220,8 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.WARNING(f'Skipping sublayer {sublayer.name} as its UUID matches the theme UUID.'))
                             continue
                         try:
-                            if (not sublayer.is_sublayer and sublayer.sublayers.all().count()>0) or (sublayer.layer_type == "radio" or sublayer.layer_type == "checkbox"):
+                            # if (not sublayer.is_sublayer and sublayer.sublayers.all().count()>0) or (sublayer.layer_type == "radio" or sublayer.layer_type == "checkbox"):
+                            if sublayer.layer_type == "radio" or sublayer.layer_type == "checkbox":
                                 new_entity = LayersTheme.all_objects.get(uuid=sublayer.uuid)
                             else:
                                 new_entity = LayersLayer.all_objects.get(uuid=sublayer.uuid)
