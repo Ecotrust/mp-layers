@@ -216,21 +216,22 @@ class Layer(models.Model, SiteFlags):
     @property
     def data_url(self):
      
-        parent_theme = self.parent
-        
-        if parent_theme:
-            # Format the parent theme's name to be URL-friendly
-            # This can be custom tailored if you store slugs differently
-            parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
+        # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
+        if settings.DATA_CATALOG_ENABLED:
+            parent_theme = self.parent
             
-            # Ensure there's a slug_name to use for constructing the URL
-            if self.slug_name:
-                # Construct the URL
+            if parent_theme:
+                # Format the parent theme's name to be URL-friendly
+                # This can be custom tailored if you store slugs differently
+                parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
                 
-                data_catalog_url = "/data-catalog/{}/{}".format(parent_theme_slug, self.slug_name)
-                return data_catalog_url
+                # Ensure there's a slug_name to use for constructing the URL
+                if self.slug_name:
+                    # Construct the URL
+                    
+                    data_catalog_url = "/data-catalog/{}/#layer-info-{}".format(parent_theme_slug, self.slug_name)
+                    return data_catalog_url
 
-    # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
         return None
     
     @property
