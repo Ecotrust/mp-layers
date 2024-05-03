@@ -104,28 +104,50 @@ class Theme(models.Model, SiteFlags):
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
 class Layer(models.Model, SiteFlags):
     LAYER_TYPE_CHOICES = (
-    ('XYZ', 'XYZ'),
-    ('WMS', 'WMS'),
-    ('ArcRest', 'ArcRest'),
-    ('ArcFeatureServer', 'ArcFeatureServer'),
-    ('Vector', 'Vector'),
-    ('VectorTile', 'VectorTile'),
-    ('slider', 'slider'),
+        ('XYZ', 'XYZ'),
+        ('WMS', 'WMS'),
+        ('ArcRest', 'ArcRest'),
+        ('ArcFeatureServer', 'ArcFeatureServer'),
+        ('Vector', 'Vector'),
+        ('VectorTile', 'VectorTile'),
+        ('slider', 'slider'),
     )
+    ######################################################
+    #                        KEY INFO                    #
+    ######################################################
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     slug_name = models.CharField(max_length=200, blank=True, null=True)
     layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
     url = models.TextField(blank=True, default="")
-    proxy_url = models.BooleanField(default=False, help_text="proxy layer url through marine planner")
-    shareable_url = models.BooleanField(default=True, help_text='Indicates whether the data layer (e.g. map tiles) can be shared with others (through the Map Tiles Link)')
+    site = models.ManyToManyField(Site, related_name='%(class)s_site')
+    objects = CurrentSiteManager('site')
+    all_objects = AllObjectsManager()
+
+    ######################################################
+    #                      DISPLAY                       #
+    ######################################################
+    opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default="")
-    objects = CurrentSiteManager('site')
     is_visible = models.BooleanField(default=True)
-    all_objects = AllObjectsManager()
+
+    ######################################################
+    #                     DATA CATALOG                   #
+    ######################################################
+    # RDH: geoportal_id is used in data_manager view 'geoportal_ids', which is not used for the built-in catalog tech
+    #   but is critical for projects using GeoPortal as their catalog
+    geoportal_id = models.CharField(max_length=255, blank=True, null=True, default=None, help_text="GeoPortal UUID")
+    #data catalog links
+    catalog_name = models.TextField(null=True, blank=True, help_text="name of associated record in catalog", verbose_name='Catalog Record Name')
+    catalog_id = models.TextField(null=True, blank=True, help_text="unique ID of associated record in catalog", verbose_name='Catalog Record Id')
+
+
+    proxy_url = models.BooleanField(default=False, help_text="proxy layer url through marine planner")
+    shareable_url = models.BooleanField(default=True, help_text='Indicates whether the data layer (e.g. map tiles) can be shared with others (through the Map Tiles Link)')
+
+    # UTFURL to be deprecated in v25
     utfurl = models.CharField(max_length=255, blank=True, null=True)
-    site = models.ManyToManyField(Site, related_name='%(class)s_site')
     ######################################################
     #                        LEGEND                      #
     ######################################################
@@ -134,8 +156,6 @@ class Layer(models.Model, SiteFlags):
     legend_title = models.CharField(max_length=255, blank=True, null=True, help_text='alternative to using the layer name')
     legend_subtitle = models.CharField(max_length=255, blank=True, null=True)
 
-    # RDH: geoportal_id is used in data_manager view 'geoportal_ids', which is never used
-    geoportal_id = models.CharField(max_length=255, blank=True, null=True, default=None, help_text="GeoPortal UUID")
 
     ######################################################
     #                        METADATA                    #
@@ -145,10 +165,6 @@ class Layer(models.Model, SiteFlags):
     data_source = models.CharField(max_length=255, blank=True, null=True)
     data_notes = models.TextField(blank=True, default="")
     data_publish_date = models.DateField(auto_now=False, auto_now_add=False, null=True, blank=True, default=None, verbose_name='Date published', help_text='YYYY-MM-DD')
-    
-    #data catalog links
-    catalog_name = models.TextField(null=True, blank=True, help_text="name of associated record in catalog", verbose_name='Catalog Record Name')
-    catalog_id = models.TextField(null=True, blank=True, help_text="unique ID of associated record in catalog", verbose_name='Catalog Record Id')
     
     ######################################################
     #                        LINKS                       #
@@ -187,6 +203,7 @@ class Layer(models.Model, SiteFlags):
     #           ESPIS                                    #
     ######################################################
     #ESPIS Upgrade - RDH 7/23/2017
+    #ESPIS Deprecated in 2024, to be removed in v25
     espis_enabled = models.BooleanField(default=False)
     ESPIS_REGION_CHOICES = (
         ('Mid Atlantic', 'Mid Atlantic'),
@@ -342,6 +359,40 @@ class Layer(models.Model, SiteFlags):
             return child_order.parent_theme
         return None
     
+    @property
+    def is_sublayer(self):
+        return self.parent.parent != None
+
+    @property
+    def bookmark_link(self):
+        if self.bookmark and "%%5D=%d&" % self.id in self.bookmark:
+            return self.bookmark
+
+        if self.is_sublayer and self.parent.bookmark and len(self.parent.bookmark) > 0:
+            return self.parent.bookmark.replace('<layer_id>', str(self.id))
+
+        # RDH 2024-05-02:  All parents are now Themes, not Layers.
+        # if self.is_parent:
+        #     for theme in self.themes.all():
+        #         return theme.url()
+
+        # RDH: Most Marine Life layers seem to have bogus bookmarks. If the first line of this def
+        #   isn't true, then we likely need to give users something that will work. This should do it.
+        root_str = '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean'
+        layer_str = '&dls%%5B%%5D=true&dls%%5B%%5D=%s&dls%%5B%%5D=%d' % (str(self.opacity), self.id)
+        companion_str = ''
+        if self.has_companion:
+            for companion in self.connect_companion_layers_to.all():
+                companion_str += '&dls%%5B%%5D=false&dls%%5B%%5D=%s&dls%%5B%%5D=%d' % (str(companion.opacity), companion.id)
+        themes_str = ''
+        if self.themes.all().count() > 0:
+            for theme in self.themes.all():
+                themes_str = '&themes%%5Bids%%5D%%5B%%5D=%d' % theme.id
+
+        panel_str = '&tab=data&legends=false&layers=true'
+
+        return "%s%s%s%s%s" % (root_str, layer_str, companion_str, themes_str, panel_str)
+
     def __str__(self):
         return self.name
 
@@ -414,7 +465,6 @@ class VectorType(LayerType):
     #if you need to resize vector graphic image so it looks appropriate on map
     #to make image smaller, use value less than 1, to make image larger, use values larger than 1
     graphic_scale = models.FloatField(blank=True, null=True, default=1.0, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
-    opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
 
 
     class Meta:
