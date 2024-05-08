@@ -916,7 +916,7 @@ class LiveAPITests(APITestCase):
                     ) or (
                         #fields are set that have no business being set on parent layers/themes
                         key in [
-                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'arcgis_layers', 'type', 'tiles', 'url', 'kml',
+                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'arcgis_layers', 'type', 'tiles', 'url', 'kml', 'opacity'
                         ] and new_layer['type'] in [
                             'checkbox', 'radio', 'placeholder'
                         ]
@@ -932,6 +932,9 @@ class LiveAPITests(APITestCase):
                     elif key == 'catalog_html':
                         old_layer[key] = old_layer[key].replace('<a class="btn btn-mini disabled" href="None">', '<a class="btn btn-mini disabled" href="">')
                         new_layer[key] = new_layer[key].replace('<a class="btn btn-mini disabled" href="None">', '<a class="btn btn-mini disabled" href="">')
+                    elif key == 'has_companion' and old_layer[key] == True:
+                        # some old layers have 'has_companion' checked, but no companions assigned (5206)
+                        old_layer['has_companion'] = len(old_layer['companion_layers']) > 0
                     if not old_layer[key] == new_layer[key]:
                         print("=================")
                         print("ID: {}".format(old_layer['id']))
