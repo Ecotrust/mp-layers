@@ -58,9 +58,16 @@ class Theme(models.Model, SiteFlags):
 
     is_visible = models.BooleanField(default=True)
 
-    # need to add data_source, data_notes, source, data_url, catalog_html to match v1 subtheme/parent layer creation
+    # need to add data_source, data_notes, source, (prop) data_url, (prop) catalog_html to match v1 subtheme/parent layer creation
+    data_source = models.CharField(max_length=255, blank=True, null=True)
+    data_notes = models.TextField(blank=True, null=True, default=None)
+    source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
+    disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
+
+
     description = models.TextField(blank=True, null=True)
     overview = models.TextField(blank=True, null=True, default="")
+    learn_more = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='MDAT/VTR/CAS: link to learn more')
     
     slug_name = models.CharField(max_length=200, blank=True, null=True)
 
@@ -75,8 +82,36 @@ class Theme(models.Model, SiteFlags):
     feature_image = models.CharField(max_length=255, blank=True, null=True)
     feature_excerpt = models.TextField(blank=True, null=True)
     feature_link = models.CharField(max_length=255, blank=True, null=True)
+
+    ######################################################
+    #                        LEGEND                      #
+    # Child layers can inherit legends from parent themes#
+    ######################################################
+    show_legend = models.BooleanField(default=True, help_text='show the legend for this layer if available')
+    legend = models.CharField(max_length=255, blank=True, null=True, help_text='URL or path to the legend image file')
+    legend_title = models.CharField(max_length=255, blank=True, null=True, help_text='alternative to using the layer name')
+    legend_subtitle = models.CharField(max_length=255, blank=True, null=True)
+
+
+
     objects = CurrentSiteManager('site')
     all_objects = AllObjectsManager()
+    
+    def url(self):
+        # RDH Backward compatibility hack: Of all parent layers, only two had a value for 'url' that wasn't ''.
+        #   We can hardcode those 2 values into this property to maintain 100% backward compatibility without needing to maintain new DB Fields.
+        v1_parent_layer_urls = {
+            "5258": "https://coast.noaa.gov/arcgismc/rest/services/Hosted/WastewaterOutfallPipes/FeatureServer/",
+            "5141": "https://oceandata.rad.rutgers.edu/arcgis/rest/services/RenewableEnergy/NYBightProposedCommercialLeases/MapServer/export",
+        }
+
+        if str(self.pk) in v1_parent_layer_urls.keys():
+            return v1_parent_layer_urls[str(self.pk)]
+        elif not self.parent == None:
+            return ''
+
+        return '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean&themes[ids][]={}&tab=data&legends=false&layers=true'.format(self.id)
+    
     @property
     def learn_link(self):
         domain = get_domain(8000)
@@ -95,6 +130,240 @@ class Theme(models.Model, SiteFlags):
             return child_order.parent_theme
         return None
     
+    @property
+    def top_parent(self):
+        parent = self.parent
+        while parent.parent != None:
+            parent = parent.parent
+
+        return parent
+
+
+    ######################################################
+    #           CATALOG COMPATIBILITY                    #
+    ######################################################
+
+    @property
+    def data_url(self):
+     
+        # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
+        if settings.DATA_CATALOG_ENABLED:
+            # parent_theme = self.parent
+            try:
+                parent_theme = self.top_parent
+            except IndexError:
+                parent_theme = False
+
+            
+            if parent_theme:
+                # Format the parent theme's name to be URL-friendly
+                # This can be custom tailored if you store slugs differently
+                parent_theme_slug = parent_theme.name.replace(" ", "-")
+                
+                # Ensure there's a slug_name to use for constructing the URL
+                if self.slug_name:
+                    # Construct the URL
+                    
+                    data_catalog_url = "/data-catalog/{}/#layer-info-{}".format(parent_theme_slug, self.slug_name)
+                    return data_catalog_url
+
+        return None
+    
+    @property
+    def bookmark(self):
+        # RDH Backward compatibility hack: Of all parent layers, only six had a value for 'bookmark'.
+        #   We can hardcode those 6 values into this property to maintain 100% backward compatibility without needing to maintain new DB Fields.
+        v1_parent_bookmarks = {
+            '271': "/visualize/#x=-75.57&y=39.18&z=7&logo=true&controls=true&dls%5B%5D=false&dls%5B%5D=0.5&dls%5B%5D=272&basemap=Ocean&themes%5Bids%5D%5B%5D=4&tab=data&legends=false&layers=true",
+            '292': "/visualize/#x=-75.57&y=39.18&z=7&logo=true&controls=true&dls%5B%5D=true&dls%5B%5D=0.7&dls%5B%5D=311&basemap=Ocean&themes%5Bids%5D%5B%5D=4&tab=active&legends=false&layers=true",
+            '80': "/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&dls%5B%5D=true&dls%5B%5D=0.6&dls%5B%5D=80&basemap=Ocean&themes%5Bids%5D%5B%5D=16&tab=data&legends=false&layers=true",
+            '97': "/visualize/#x=-73.26&y=39.01&z=7&logo=true&controls=true&dls%5B%5D=true&dls%5B%5D=0.5&dls%5B%5D=98&basemap=Ocean&themes%5Bids%5D%5B%5D=8&tab=data&legends=false&layers=true",
+            '224': "/visualize/#x=-74.42&y=39.38&z=7&logo=true&controls=true&dls%5B%5D=true&dls%5B%5D=0.5&dls%5B%5D=225&basemap=Ocean&themes%5Bids%5D%5B%5D=8&tab=data&legends=false&layers=true",
+            '142': "/visualize/#x=-73.40&y=39.47&z=7&logo=true&controls=true&dls%5B%5D=true&dls%5B%5D=0.5&dls%5B%5D=143&basemap=Ocean&themes%5Bids%5D%5B%5D=8&tab=data&legends=false&layers=true"
+        }
+        if str(self.pk) in v1_parent_bookmarks.keys():
+            return v1_parent_bookmarks[str(self.pk)]
+        return None
+
+    @property
+    def bookmark_link(self):
+        if self.bookmark and "%%5D=%d&" % self.id in self.bookmark:
+            return self.bookmark
+
+        if self.parent and self.parent.bookmark and len(self.parent.bookmark) > 0:
+            return self.parent.bookmark.replace('<layer_id>', str(self.id))
+        
+        if self.parent.name in ['vtr', 'mdat', 'cas']:
+            # RDH: Most Marine Life layers seem to have bogus bookmarks. If the first line of this def
+            #   isn't true, then we likely need to give users something that will work. This should do it.
+            root_str = '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean'
+            layer_str = '&dls%5B%5D=true&dls%5B%5D=0.5&dls%5B%5D={}'.format(self.id)
+            themes_str = ''
+            if self.parent:
+                themes_str = '&themes%5Bids%5D%5B%5D={}'.format(self.parent.id)
+
+            panel_str = '&tab=data&legends=false&layers=true'
+
+            return "{}{}{}{}".format(root_str, layer_str, themes_str, panel_str)
+
+        # RDH 2024-05-06:  All bookmark_link requests are v1 'Layer' requests. If they get here, they wanted a parent layer
+        return self.top_parent.url()
+    
+    @property
+    def kml(self):
+        # RDH Backward compatibility hack: Of all parent layers, only 26 had a value for 'kml', and all were ''.
+        #   We can hardcode those 26 pks to maintain 100% backward compatibility without needing to maintain new DB Fields.
+        # if self.pk in [3305, 80, 842, 840, 454, 344, 417, 3324, 838, 3927, 843, 4540, 545, 538, 1338, 163, 210, 136, 780, 1347, 1331, 224, 3310, 4509, 4475, 1756]:
+        #     return ""
+        # else:
+        #     return None
+
+        # RDH: str(None) == 'None'. That is bonkers. KML will always be a string, so we just want to return ''
+        return ''
+        
+    @property
+    def data_download(self):
+        # RDH Backward compatibility hack: Of all parent layers, only 44 had a value for 'data_download'.
+        #   We can hardcode those 44 values to maintain 100% backward compatibility without needing to maintain new DB Fields.
+        v1_parent_data_downloads = {
+            "3305": "",
+            "5849": "/static/data_manager/data-download/AcidificationMonitoringMidA_Ver202310.zip",
+            "5775": "https://www.fisheries.noaa.gov/national/marine-life-distress/sea-turtle-stranding-and-salvage-network",
+            "80": "http://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip",
+            "842": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "840": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "454": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "344": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "417": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "2950": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "5258": "https://marinecadastre.gov/downloads/data/mc/WastewaterOutfall.zip",
+            "841": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "839": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "2949": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "3324": "",
+            "838": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "5311": "https://www.northeastoceandata.org/data/data-download/?data=Marine+Transportation",
+            "3927": "",
+            "843": "https://seamap.env.duke.edu/models/mdat/#more-information",
+            "4540": "",
+            "5207": "https://www.fisheries.noaa.gov/national/marine-life-distress/national-stranding-database-public-access",
+            "5220": "https://www.fisheries.noaa.gov/national/marine-life-distress/national-stranding-database-public-access",
+            "545": "",
+            "538": "",
+            "1338": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2017_Annual.zip",
+            "163": "/static/data_manager/data-download/Zip_Files/Recreation/RecreationalBoaterSurvey_MidAtl.zip",
+            "210": "/static/data_manager/data-download/Zip_Files/Recreation/MidAtlanticRecreationalUseData.zip",
+            "136": "",
+            "780": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2015_Annual.zip",
+            "1347": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2016_Annual.zip",
+            "97": "https://services.northeastoceandata.org/downloads/AIS/AIS2011.zip",
+            "1331": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2013_Annual.zip",
+            "224": "",
+            "3310": "https://oceanadapt.rutgers.edu/",
+            "4509": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2019_Annual.zip",
+            "4475": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2018_Annual.zip",
+            "1756": "/static/data_manager/data-download/Zip_Files/Marine_Life/FishSpeciesThroughTime.zip",
+            "3315": "http://tds.marine.rutgers.edu/thredds/cool/codar/cat_totals.html",
+            "4842": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
+            "4841": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
+            "4843": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
+            "142": "https://services.northeastoceandata.org/downloads/AIS/AIS2012.zip",
+            "5787": "https://www.fisheries.noaa.gov/national/marine-life-distress/sea-turtle-stranding-and-salvage-network",
+            "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
+        }
+        if str(self.pk) in v1_parent_data_downloads.keys():
+            return v1_parent_data_downloads[str(self.pk)]
+        else:
+            return None
+        
+    @property
+    def data_download_link(self):
+        # RDH: str(None) == 'None'. That is bonkers. Links will always be a string, so we just want to return ''
+        return str(self.data_download or '')
+        
+    @property
+    def metadata_link(self):
+        # RDH Backward compatibility hack: Of all parent layers, only 49 had a value for 'metadata'.
+        #   We can hardcode those 49 values to maintain 100% backward compatibility without needing to maintain new DB Fields.
+        v1_parent_metadata = {
+            "5765": "/static/data_manager/metadata/pdf/BoatRamps_WaterTrails_Metadata_20230718.pdf",
+            "3305": "",
+            "5539": "/static/data_manager/metadata/pdf/BoatRamps_WaterTrails_Metadata_20230718.pdf",
+            "5849": "/static/data_manager/metadata/pdf/AcidificationMonitoringMidA_Ver202310_metadata.pdf",
+            "5775": "/static/data_manager/metadata/pdf/SeaTurtleStrandings_Metadata_10_2023.pdf",
+            "80": None,
+            "842": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
+            "840": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_Metadata.pdf",
+            "454": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_v1_1_2016_08_29_Metadata.pdf",
+            "344": "http://seamap.env.duke.edu/models/mdat/Avian/MDAT_Avian_Summary_Products_v1_1_2016_08_29_Metadata.pdf",
+            "417": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_v1_1_2016_08_29_Metadata.pdf",
+            "2950": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
+            "5258": "https://www.fisheries.noaa.gov/inport/item/66706",
+            "841": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_Metadata.pdf",
+            "839": "http://seamap.env.duke.edu/models/mdat/Avian/MDAT_Avian_Summary_Products_Metadata.pdf",
+            "2949": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
+            "3324": "",
+            "838": "http://seamap.env.duke.edu/models/mdat/Avian/MDAT_Avian_Summary_Products_Metadata.pdf",
+            "5311": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2021.pdf",
+            "3927": "",
+            "843": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
+            "4540": "",
+            "5207": "/static/data_manager/metadata/pdf/METADATA__MarineMammalStrandings_5_2022.pdf",
+            "5220": "/static/data_manager/metadata/pdf/METADATA__MarineMammalStrandings_5_2022.pdf",
+            "545": "/static/data_manager/metadata/html/NPP_SeasonalMax.html",
+            "538": "/static/data_manager/metadata/html/Fronts_SeasonalMax.html",
+            "313": "/static/data_manager/metadata/html/CASMetadata.html",
+            "1338": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2017.pdf",
+            "163": "/static/data_manager/metadata/html/RecBoaterSurvey_All_Activities_Pts_metadata.html",
+            "210": "http://opdgig.dos.ny.gov/geoportal/catalog/search/resource/detailsnoheader.page?uuid={3B5083DA-2060-4F5D-8416-201A0A2B962B}",
+            "136": "/static/data_manager/metadata/html/CoastalRec_overview.html",
+            "780": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2015.pdf",
+            "1347": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2016.pdf",
+            "97": "/static/data_manager/metadata/html/AIS2011.html",
+            "1331": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2013.pdf",
+            "224": "/static/data_manager/metadata/pdf/AtlanticVesselDensity2013Documentation_20150710.pdf",
+            "3310": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0196127",
+            "4509": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2019.pdf",
+            "4475": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2018.pdf",
+            "1756": "/static/data_manager/metadata/html/FishSpeciesThroughTime_metadata.htm",
+            "3315": "/static/data_manager/metadata/pdf/METADATA__HFRadarSurfaceCurrents_MidAtlantic.pdf",
+            "55": "/static/data_manager/metadata/html/CASMetadata.html",
+            "4842": "https://www.northeastoceandata.org/files/metadata/Themes/Habitat/FishingEffectsPercentSeabedHabitatDisturbancemetadata.pdf",
+            "4841": "https://www.northeastoceandata.org/files/metadata/Themes/Habitat/FishingEffectsPercentSeabedHabitatDisturbancemetadata.pdf",
+            "4843": "https://www.northeastoceandata.org/files/metadata/Themes/Habitat/FishingEffectsPercentSeabedHabitatDisturbancemetadata.pdf",
+            "5126": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2020.pdf",
+            "142": "/static/data_manager/metadata/html/AIS2012.html",
+            "5787": "/static/data_manager/metadata/pdf/SeaTurtleStrandings_Metadata_10_2023.pdf",
+            "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
+
+        }
+        
+        if str(self.pk) in v1_parent_metadata.keys():
+            return v1_parent_metadata[str(self.pk)]
+        else:
+            return None
+
+    @property
+    def metadata(self):
+        return self.metadata_link
+
+    @property
+    def tiles_link(self):
+        # RDH Backwards compatibility hack -- allow some parent layer (themes) to share 'tiles' for migration testing purposes
+        if self.pk in [4878, ]:
+            return self.slug_name
+        return None
+
+    @property
+    def data_overview(self):
+        return self.overview
+
+    @property
+    def data_overview_text(self):
+        if not self.overview and self.parent:
+            return self.parent.overview
+        else:
+            return self.overview
 
     
     class Meta:
@@ -161,7 +430,7 @@ class Layer(models.Model, SiteFlags):
     #                        METADATA                    #
     ######################################################
     description = models.TextField(blank=True, default="")
-    overview = models.TextField(blank=True, default="")
+    overview = models.TextField(blank=True, default="")     #formerly data_overview in data_manager
     data_source = models.CharField(max_length=255, blank=True, null=True)
     data_notes = models.TextField(blank=True, default="")
     data_publish_date = models.DateField(auto_now=False, auto_now_add=False, null=True, blank=True, default=None, verbose_name='Date published', help_text='YYYY-MM-DD')
@@ -235,12 +504,17 @@ class Layer(models.Model, SiteFlags):
      
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
         if settings.DATA_CATALOG_ENABLED:
-            parent_theme = self.parent
+            # parent_theme = self.parent
+            try:
+                parent_theme = self.top_parents[0]
+            except IndexError:
+                parent_theme = False
+
             
             if parent_theme:
                 # Format the parent theme's name to be URL-friendly
                 # This can be custom tailored if you store slugs differently
-                parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
+                parent_theme_slug = parent_theme.name.replace(" ", "-")
                 
                 # Ensure there's a slug_name to use for constructing the URL
                 if self.slug_name:
@@ -273,6 +547,34 @@ class Layer(models.Model, SiteFlags):
             )
         except Exception as e:
             print(e)
+
+    @property
+    def data_download_link(self):
+        if self.data_download and self.data_download.lower() == 'none':
+            return None
+        if self.parent and not self.data_download and self.is_sublayer:
+            return self.parent.data_download
+        else:
+            return self.data_download
+        
+    @property
+    def metadata_link(self):
+        if self.metadata and self.metadata.lower() == 'none':
+            return None
+        if not self.metadata:
+            if self.is_sublayer and self.parent:
+                return self.parent.metadata
+            else:
+                return None
+        else:
+            return self.metadata
+        
+    @property
+    def tiles_link(self):
+        if self.is_shareable and self.layer_type in ['XYZ', 'ArcRest', 'WMS']:
+            domain = get_domain(8000)
+            return self.slug_name
+        return None
 
     @property
     def lookups(self):
@@ -331,6 +633,10 @@ class Layer(models.Model, SiteFlags):
             return {}
         
     @property
+    def data_overview(self):
+        return self.overview
+
+    @property
     def data_overview_text(self):
         if not self.overview and self.parent:
             return self.parent.overview
@@ -345,6 +651,29 @@ class Layer(models.Model, SiteFlags):
             return self.parent.description
         else:
             return self.data_overview_text
+        
+    @property
+    def is_shareable(self):
+        # RDH: Data_Manager had this option for parent layers, but ALL were == True. 
+        return self.shareable_url
+    
+    @property
+    def top_parents(self):
+        # Get the ContentType for the Layer model
+        layer_content_type = ContentType.objects.get_for_model(self.__class__)
+
+        # Find the ChildOrder instances that refer to this layer
+        child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type)
+
+        parents = []
+        for child in child_orders.order_by('parent_theme__order'):
+            parent = child.parent_theme
+            while parent.parent != None:
+                parent = parent.parent
+            parents.append(parent)
+
+        return parents
+
     
     @property
     def parent(self):
@@ -362,6 +691,15 @@ class Layer(models.Model, SiteFlags):
     @property
     def is_sublayer(self):
         return self.parent.parent != None
+    
+    @property
+    def themes(self):
+        # Get the ContentType for the Layer model
+        layer_content_type = ContentType.objects.get_for_model(self.__class__)
+
+        # Find the ChildOrder instance that refers to this layer
+        child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type)
+        return Theme.objects.filter(pk__in=[co.parent_theme.id for co in child_orders])
 
     @property
     def bookmark_link(self):
@@ -392,6 +730,26 @@ class Layer(models.Model, SiteFlags):
         panel_str = '&tab=data&legends=false&layers=true'
 
         return "%s%s%s%s%s" % (root_str, layer_str, companion_str, themes_str, panel_str)
+    
+    #RDH: Kept to maintain identical V1 results with data manager. This functionality will be deprecated in v25
+    def get_espis_link(self):
+        if settings.ESPIS_ENABLED and self.espis_enabled:
+            search_dict = {}
+            if self.espis_search:
+                search_dict['q'] = self.espis_search
+            if self.espis_region:
+                if self.espis_region == "Mid Atlantic":
+                    search_dict['bbox'] = "-81.71531609374854, 35.217958254501944, -69.19090203125185, 45.12716611403635"
+            if len(search_dict) > 0:
+                try:
+                    # python 3
+                    from urllib.parse import urlencode
+                except (ModuleNotFoundError, ImportError) as e:
+                    #python 2
+                    from urllib import urlencode
+                return 'https://esp-boem.hub.arcgis.com/search?%s' % urlencode(search_dict)
+
+        return False
 
     def __str__(self):
         return self.name

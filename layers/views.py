@@ -133,7 +133,7 @@ def get_json(request):
 
 def get_themes(request):
     data = {
-        "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.filter(theme_type = "").order_by('order')],
+        "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.filter(theme_type = "").order_by('order', 'name')],
     }
     return JsonResponse(data)
 

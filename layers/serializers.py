@@ -1,10 +1,12 @@
-from rest_framework import serializers
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.template.loader import render_to_string
 from django.forms.models import model_to_dict
+from django.template.loader import render_to_string
+from django.urls import reverse
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
+from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
-shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", 
+shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
                        "show_legend", "legend", "legend_title", "legend_subtitle", "description", "overview", "data_url",
                        "data_source", "data_notes", "metadata", "source", "annotated", "utfurl", "lookups", "attributes", 
                        # "parent", Removed, since it's in LayerSerializer
@@ -12,7 +14,7 @@ shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_dis
                        "is_multilayer_parent", "is_multilayer", "dimensions", "associated_multilayers"]
 
 vector_layer_fields = ["custom_style", "outline_width", "outline_color", "outline_opacity",
-                       "fill_opacity", "color", "point_radius", "graphic", "graphic_scale", "opacity"]
+                       "fill_opacity", "color", "point_radius", "graphic", "graphic_scale"]
 
 layer_wms_fields = ["wms_slug", "wms_version", "wms_format", "wms_srs", "wms_timing", "wms_time_item", "wms_styles", "wms_additional",
                     "wms_info", "wms_info_format"]
@@ -111,7 +113,7 @@ class DynamicLayerFieldsMixin:
                 return getter
             elif field == 'tiles':  # Handling for 'type' field
                 def getter(self, instance):
-                    return getattr(instance.layer, 'map_tiles', None)
+                    return getattr(instance.layer, 'tiles_link', None)
                 return getter
             else:
                 # For all other fields, use the default handling
@@ -143,7 +145,7 @@ class LayerSerializer(serializers.ModelSerializer):
     def get_type(self, obj):
         return obj.layer_type
     def get_tiles(self, obj):
-        return obj.map_tiles
+        return obj.tiles_link
 
 
 class LayerWMSSerializer(DynamicLayerFieldsMixin, LayerSerializer):
@@ -164,7 +166,6 @@ class LayerWMSSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     point_radius = serializers.IntegerField(default=None, read_only=True)
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
-    opacity = serializers.FloatField(default=.5, read_only=True)
 
     class Meta(LayerSerializer.Meta):
         model = LayerWMS
@@ -197,7 +198,6 @@ class LayerArcRESTSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     point_radius = serializers.IntegerField(default=None, read_only=True)
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
-    opacity = serializers.FloatField(default=.5, read_only=True)
 
     class Meta(LayerSerializer.Meta):
         model = LayerArcREST
@@ -256,7 +256,6 @@ class LayerXYZSerializer(DynamicLayerFieldsMixin, LayerSerializer):
     point_radius = serializers.IntegerField(default=None, read_only=True)
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
-    opacity = serializers.FloatField(default=.5, read_only=True)
 
     arcgis_layers = serializers.CharField(default=None, read_only=True)
     password_protected = serializers.BooleanField(default=False, read_only=True)
@@ -301,33 +300,95 @@ class LayerVectorSerializer(DynamicLayerFieldsMixin, LayerSerializer):
         return get_layer_order(obj)
 LayerVectorSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
-class ChildOrderSerializer(serializers.ModelSerializer):
-    # Serialize the generic related object
-    def to_representation(self, instance):
-        # Retrieve the related object
-        related_object = instance.content_object
-        layer_type_to_serializer = {
-            'WMS': LayerWMSSerializer,
-            'ArcRest': LayerArcRESTSerializer,
-            'ArcFeatureServer': LayerArcFeatureServiceSerializer,
-            'Vector': LayerVectorSerializer,
-            'XYZ': LayerXYZSerializer,
-            # Add more mappings as necessary
-        }
-        layer_type_to_model = {
+def get_serializer_by_layer_type(layer_type):
+    layer_type_to_serializer = {
+        'WMS': LayerWMSSerializer,
+        'ArcRest': LayerArcRESTSerializer,
+        'ArcFeatureServer': LayerArcFeatureServiceSerializer,
+        'Vector': LayerVectorSerializer,
+        'XYZ': LayerXYZSerializer,
+        # Add more mappings as necessary
+    }
+    return layer_type_to_serializer.get(layer_type)
+
+def get_model_by_layer_type(layer_type):
+    layer_type_to_model = {
         'WMS': LayerWMS,
         'ArcRest': LayerArcREST,
         'ArcFeatureServer': LayerArcFeatureService,
         'Vector': LayerVector,
         'XYZ': LayerXYZ,
         # Add more mappings as necessary
-        }
+    }
+    return layer_type_to_model.get(layer_type)
+
+def get_specific_layer_instance(layer):
+    if isinstance(layer, Layer):
+        model = get_model_by_layer_type(layer.layer_type)
+        try:
+            return model.objects.get(layer=layer)
+        except:
+            pass
+    return None
+
+
+
+def get_serialized_layer(instance):
+    specific_layer_instance = None
+    if isinstance(instance, Layer):
+        # Find the related layer model based on the layer_type
+        layer_type = instance.layer_type
+        serializer_class = get_serializer_by_layer_type(layer_type)
+        model = get_model_by_layer_type(layer_type)
+        if serializer_class:
+            # Find the specific layer instance (e.g., LayerWMS) related to this Layer
+            specific_layer_instance = model.objects.get(layer=instance)
+            if specific_layer_instance:
+                serializer = serializer_class(specific_layer_instance)
+            else:
+                # Fallback if the specific layer instance was not found
+                return {}
+        else:
+            # Fallback for unexpected layer types
+            return {}
+    elif isinstance(instance, LayerWMS):
+        serializer = LayerWMSSerializer(instance)
+    elif isinstance(instance, LayerArcREST):
+        serializer = LayerArcRESTSerializer(instance)
+    elif isinstance(instance, LayerArcFeatureService):
+        serializer = LayerArcFeatureServiceSerializer(instance)
+    elif isinstance(instance, LayerVector):
+        serializer = LayerVectorSerializer(instance)
+    elif isinstance(instance, LayerXYZ):
+        serializer = LayerXYZSerializer(instance)
+    elif isinstance(instance, Theme):
+        # Check if the theme is a subtheme (has a parent theme)
+        if instance.parent:
+            # Use SubThemeSerializer for subthemes
+            serializer = SubThemeSerializer(instance)
+        else:
+            # Use a different serializer for parent themes if necessary
+            serializer = ThemeSerializer(instance)
+    else:
+        # Fallback for unexpected types
+        return {}
+
+    # Flatten the representation to include the serialized data directly
+    serialized_data = serializer.data
+
+    return (serialized_data, specific_layer_instance)
+
+class ChildOrderSerializer(serializers.ModelSerializer):
+    # Serialize the generic related object
+    def to_representation(self, instance):
+        # Retrieve the related object
+        related_object = instance.content_object
         # Serialize the related object based on its class
         if isinstance(related_object, Layer):
             # Find the related layer model based on the layer_type
             layer_type = related_object.layer_type
-            serializer_class = layer_type_to_serializer.get(layer_type)
-            model = layer_type_to_model.get(layer_type)
+            serializer_class = get_serializer_by_layer_type(layer_type)
+            model = get_model_by_layer_type(layer_type)
             if serializer_class:
                 # Find the specific layer instance (e.g., LayerWMS) related to this Layer
                 specific_layer_instance = model.objects.get(layer=related_object)
@@ -430,22 +491,16 @@ class SubThemeSerializer(serializers.ModelSerializer):
     url = serializers.CharField(default="", read_only=True)
     proxy_url = serializers.BooleanField(default=False, read_only=True)
     is_disabled = serializers.BooleanField(default=False, read_only=True)
-    disabled_message = serializers.CharField(default="", read_only=True)
-    show_legend = serializers.BooleanField(default=True, read_only=True)
-    legend = serializers.CharField(default=None, read_only=True)
-    legend_title = serializers.CharField(default=None, read_only=True)
-    legend_subtitle = serializers.CharField(default=None, read_only=True)
+    disabled_message = serializers.CharField(default=None, read_only=True)
     overview = serializers.CharField(default="", read_only=True)
     data_source = serializers.CharField(default=None, read_only=True)
-    data_notes = serializers.CharField(default="", read_only=True)
+    data_notes = serializers.CharField(default=None, read_only=True)
     type = serializers.SerializerMethodField()
-    # need to add catalog_html
     metadata = serializers.CharField(read_only=True, default=None)
     source = serializers.CharField(read_only=True, default=None)
     annotated = serializers.BooleanField(default=False, read_only=True)
     kml = serializers.CharField(read_only=True, default=None)
     data_download = serializers.CharField(read_only=True, default=None)
-    learn_more = serializers.CharField(read_only=True, default=None)
     tiles = serializers.CharField(read_only=True, default=None)
     label_field = serializers.CharField(read_only=True, default=None)
     minZoom = serializers.FloatField(read_only=True, default=None)
@@ -478,7 +533,6 @@ class SubThemeSerializer(serializers.ModelSerializer):
     point_radius = serializers.IntegerField(default=None, read_only=True)
     graphic = serializers.CharField(default=None, read_only=True)
     graphic_scale = serializers.FloatField(default=1.0, read_only=True)
-    opacity = serializers.FloatField(default=.5, read_only=True)
     subLayers = serializers.SerializerMethodField()
     has_companion = serializers.BooleanField(default=False, read_only=True)
     companion_layers = serializers.ListField(default=[], read_only=True)
@@ -492,6 +546,8 @@ class SubThemeSerializer(serializers.ModelSerializer):
     lookups = serializers.SerializerMethodField()
     catalog_html = serializers.SerializerMethodField()
     utfurl = serializers.CharField(default=None, read_only=True)
+    # Themes do not have 'opacity' by default
+    opacity = serializers.FloatField(default=0.5)
     class Meta:
         model = Theme
         fields = shared_layer_fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers", "parent", "catalog_html"] + ["subLayers", "order"]
@@ -511,18 +567,12 @@ class SubThemeSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'theme_type') and obj.theme_type in ['radio', 'checkbox']:
             return obj.theme_type
     def get_data_url(self, obj):
-        parent_theme = obj.parent
-
-        if parent_theme:
-            # Format the parent theme's name to be URL-friendly
-            # This can be custom tailored if you store slugs differently
-            parent_theme_slug = parent_theme.name.replace(" ", "-").lower()
-
-            # Ensure there's a slug_name to use for constructing the URL
-            if obj.slug_name:
-                # Construct the URL
-                data_catalog_url = "/data-catalog/{}/{}".format(parent_theme_slug, obj.slug_name)
-                return data_catalog_url
+        if settings.DATA_CATALOG_ENABLED:
+            theme = obj.parent
+            if theme:
+                theme_url = reverse('portal.data_catalog.views.theme', args=[theme.name])
+                if theme_url:
+                    return "{0}#layer-info-{1}".format(theme_url, obj.slug_name)
         return None
     def get_attributes(self, obj):
         return {'compress_attributes': False,
@@ -540,7 +590,7 @@ class SubThemeSerializer(serializers.ModelSerializer):
             return render_to_string(
                 "data_catalog/includes/cacheless_layer_info.html",
                 {
-                    'layer': model_to_dict(obj),
+                    'layer': obj,
                     # 'sub_layers': self.sublayers.exclude(layer_type="placeholder")
                 }
             )
@@ -578,6 +628,11 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
         return None
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+        
+        specific_layer_instance = get_specific_layer_instance(instance)
+        if specific_layer_instance == None:
+            specific_layer_instance = instance
+
         layer_specific_fields = {
             'arcgis_layers': None,
             'password_protected': False,
@@ -591,7 +646,6 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
             "point_radius": None,
             "graphic": None,
             "graphic_scale": 1.0,
-            "opacity": .5,
             "wms_slug": None,
             "wms_version": None,
             "wms_srs": None,
@@ -603,61 +657,60 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
             "wms_info_format": None,
         }
         # Conditional logic for specific fields
-        if isinstance(instance, LayerWMS):
+        if isinstance(specific_layer_instance, LayerWMS):
             layer_specific_fields.update({
-                "wms_slug": instance.wms_slug,
-                "wms_version": instance.wms_version,
-                "wms_srs": instance.wms_srs,
-                "wms_timing": instance.wms_timing,
-                "wms_time_item": instance.wms_time_item,
-                "wms_styles": instance.wms_styles,
-                "wms_additional": instance.wms_additional,
-                "wms_info": instance.wms_info,
-                "wms_info_format": instance.wms_info_format,
-                "query_by_point": instance.query_by_point,
+                "wms_slug": specific_layer_instance.wms_slug,
+                "wms_version": specific_layer_instance.wms_version,
+                "wms_srs": specific_layer_instance.wms_srs,
+                "wms_timing": specific_layer_instance.wms_timing,
+                "wms_time_item": specific_layer_instance.wms_time_item,
+                "wms_styles": specific_layer_instance.wms_styles,
+                "wms_additional": specific_layer_instance.wms_additional,
+                "wms_info": specific_layer_instance.wms_info,
+                "wms_info_format": specific_layer_instance.wms_info_format,
+                "query_by_point": specific_layer_instance.query_by_point,
             })
-        elif isinstance(instance, LayerArcREST):
+        elif isinstance(specific_layer_instance, LayerArcREST):
             layer_specific_fields.update({
-                "arcgis_layers":instance.arcgis_layers,
-                "password_protected":instance.password_protected,
-                "disable_arcgis_attributes":instance.disable_arcgis_attributes,
-                "query_by_point":instance.query_by_point,
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "query_by_point":specific_layer_instance.query_by_point,
             })
-        elif isinstance(instance, LayerArcFeatureService):
+        elif isinstance(specific_layer_instance, LayerArcFeatureService):
             layer_specific_fields.update({
-                "arcgis_layers":instance.arcgis_layers,
-                "password_protected":instance.password_protected,
-                "disable_arcgis_attributes":instance.disable_arcgis_attributes,
-                "custom_style": instance.custom_style,
-                "outline_width": instance.outline_width,
-                "outline_color": instance.outline_color,
-                "fill_opacity": instance.fill_opacity,
-                "color": instance.color,
-                "point_radius": instance.point_radius,
-                "graphic": instance.graphic,
-                "graphic_scale": instance.graphic_scale,
-                "opacity": instance.opacity,
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "custom_style": specific_layer_instance.custom_style,
+                "outline_width": specific_layer_instance.outline_width,
+                "outline_color": specific_layer_instance.outline_color,
+                "fill_opacity": specific_layer_instance.fill_opacity,
+                "color": specific_layer_instance.color,
+                "point_radius": specific_layer_instance.point_radius,
+                "graphic": specific_layer_instance.graphic,
+                "graphic_scale": specific_layer_instance.graphic_scale,
+                
             })
-        elif isinstance(instance,LayerVector):
+        elif isinstance(specific_layer_instance,LayerVector):
             layer_specific_fields.update({
-                "custom_style": instance.custom_style,
-                "outline_width": instance.outline_width,
-                "outline_color": instance.outline_color,
-                "fill_opacity": instance.fill_opacity,
-                "color": instance.color,
-                "point_radius": instance.point_radius,
-                "graphic": instance.graphic,
-                "graphic_scale": instance.graphic_scale,
-                "opacity": instance.opacity,
+                "custom_style": specific_layer_instance.custom_style,
+                "outline_width": specific_layer_instance.outline_width,
+                "outline_color": specific_layer_instance.outline_color,
+                "fill_opacity": specific_layer_instance.fill_opacity,
+                "color": specific_layer_instance.color,
+                "point_radius": specific_layer_instance.point_radius,
+                "graphic": specific_layer_instance.graphic,
+                "graphic_scale": specific_layer_instance.graphic_scale,
             })
-        elif isinstance(instance, LayerXYZ):
+        elif isinstance(specific_layer_instance, LayerXYZ):
             layer_specific_fields.update({
-                "query_by_point":instance.query_by_point,
+                "query_by_point":specific_layer_instance.query_by_point,
             })
         ret.update(layer_specific_fields)
         return ret
     def get_tiles(self,obj):
-        return obj.map_tiles
+        return obj.tiles_link
     def get_type(self,obj):
         return obj.layer_type
 
@@ -690,6 +743,11 @@ class SubLayerSerializer(serializers.ModelSerializer):
         return obj.tooltip
     def to_representation(self, instance):
         ret = super().to_representation(instance)
+
+        specific_layer_instance = get_specific_layer_instance(instance)
+        if specific_layer_instance == None:
+            specific_layer_instance = instance
+
         layer_specific_fields = {
             'arcgis_layers': None,
             'password_protected': False,
@@ -703,7 +761,6 @@ class SubLayerSerializer(serializers.ModelSerializer):
             "point_radius": None,
             "graphic": None,
             "graphic_scale": 1.0,
-            "opacity": .5,
             "wms_slug": None,
             "wms_version": None,
             "wms_srs": None,
@@ -715,56 +772,54 @@ class SubLayerSerializer(serializers.ModelSerializer):
             "wms_info_format": None,
         }
         # Conditional logic for specific fields
-        if isinstance(instance, LayerWMS):
+        if isinstance(specific_layer_instance, LayerWMS):
             layer_specific_fields.update({
-                "wms_slug": instance.wms_slug,
-                "wms_version": instance.wms_version,
-                "wms_srs": instance.wms_srs,
-                "wms_timing": instance.wms_timing,
-                "wms_time_item": instance.wms_time_item,
-                "wms_styles": instance.wms_styles,
-                "wms_additional": instance.wms_additional,
-                "wms_info": instance.wms_info,
-                "wms_info_format": instance.wms_info_format,
-                "query_by_point": instance.query_by_point,
+                "wms_slug": specific_layer_instance.wms_slug,
+                "wms_version": specific_layer_instance.wms_version,
+                "wms_srs": specific_layer_instance.wms_srs,
+                "wms_timing": specific_layer_instance.wms_timing,
+                "wms_time_item": specific_layer_instance.wms_time_item,
+                "wms_styles": specific_layer_instance.wms_styles,
+                "wms_additional": specific_layer_instance.wms_additional,
+                "wms_info": specific_layer_instance.wms_info,
+                "wms_info_format": specific_layer_instance.wms_info_format,
+                "query_by_point": specific_layer_instance.query_by_point,
             })
-        elif isinstance(instance, LayerArcREST):
+        elif isinstance(specific_layer_instance, LayerArcREST):
             layer_specific_fields.update({
-                "arcgis_layers":instance.arcgis_layers,
-                "password_protected":instance.password_protected,
-                "disable_arcgis_attributes":instance.disable_arcgis_attributes,
-                "query_by_point":instance.query_by_point,
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "query_by_point":specific_layer_instance.query_by_point,
             })
-        elif isinstance(instance, LayerArcFeatureService):
+        elif isinstance(specific_layer_instance, LayerArcFeatureService):
             layer_specific_fields.update({
-                "arcgis_layers":instance.arcgis_layers,
-                "password_protected":instance.password_protected,
-                "disable_arcgis_attributes":instance.disable_arcgis_attributes,
-                "custom_style": instance.custom_style,
-                "outline_width": instance.outline_width,
-                "outline_color": instance.outline_color,
-                "fill_opacity": instance.fill_opacity,
-                "color": instance.color,
-                "point_radius": instance.point_radius,
-                "graphic": instance.graphic,
-                "graphic_scale": instance.graphic_scale,
-                "opacity": instance.opacity,
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "custom_style": specific_layer_instance.custom_style,
+                "outline_width": specific_layer_instance.outline_width,
+                "outline_color": specific_layer_instance.outline_color,
+                "fill_opacity": specific_layer_instance.fill_opacity,
+                "color": specific_layer_instance.color,
+                "point_radius": specific_layer_instance.point_radius,
+                "graphic": specific_layer_instance.graphic,
+                "graphic_scale": specific_layer_instance.graphic_scale,
             })
-        elif isinstance(instance,LayerVector):
+        elif isinstance(specific_layer_instance,LayerVector):
             layer_specific_fields.update({
-                "custom_style": instance.custom_style,
-                "outline_width": instance.outline_width,
-                "outline_color": instance.outline_color,
-                "fill_opacity": instance.fill_opacity,
-                "color": instance.color,
-                "point_radius": instance.point_radius,
-                "graphic": instance.graphic,
-                "graphic_scale": instance.graphic_scale,
-                "opacity": instance.opacity,
+                "custom_style": specific_layer_instance.custom_style,
+                "outline_width": specific_layer_instance.outline_width,
+                "outline_color": specific_layer_instance.outline_color,
+                "fill_opacity": specific_layer_instance.fill_opacity,
+                "color": specific_layer_instance.color,
+                "point_radius": specific_layer_instance.point_radius,
+                "graphic": specific_layer_instance.graphic,
+                "graphic_scale": specific_layer_instance.graphic_scale,
             })
-        elif isinstance(instance, LayerXYZ):
+        elif isinstance(specific_layer_instance, LayerXYZ):
             layer_specific_fields.update({
-                "query_by_point":instance.query_by_point,
+                "query_by_point":specific_layer_instance.query_by_point,
             })
         ret.update(layer_specific_fields)
         return ret
@@ -776,6 +831,6 @@ class SubLayerSerializer(serializers.ModelSerializer):
             return child_orders[0].parent_theme.id
         return None
     def get_tiles(self,obj):
-        return obj.map_tiles
+        return obj.tiles_link
     def get_type(self,obj):
         return obj.layer_type

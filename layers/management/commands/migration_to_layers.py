@@ -46,8 +46,18 @@ class Command(BaseCommand):
                 display_name=old_layer.name,
                 overview=old_layer.data_overview,
                 description=old_layer.description,
+                learn_more=old_layer.learn_more,
                 theme_type=layer_type,  
-                is_visible = visible
+                is_visible = visible,
+                data_notes=old_layer.data_notes,
+                disabled_message=old_layer.disabled_message,
+                data_source=old_layer.data_source,
+                source=old_layer.source,
+                show_legend=old_layer.show_legend,
+                legend=old_layer.legend,
+                legend_title=old_layer.legend_title,
+                legend_subtitle=old_layer.legend_subtitle,
+                slug_name=old_layer.slug_name,
             )
             new_entity = new_subtheme
             for site in old_layer.site.all():
@@ -99,6 +109,7 @@ class Command(BaseCommand):
                         espis_region=old_layer.espis_region,
                         minZoom=old_layer.minZoom,
                         maxZoom=old_layer.maxZoom,
+                        opacity=old_layer.opacity
                     )
             for attribute_field in old_layer.attribute_fields.all():
                 # Create a new instance of AttributeInfo with the same data
@@ -163,7 +174,6 @@ class Command(BaseCommand):
                     point_radius=old_layer.point_radius,
                     graphic=old_layer.vector_graphic,
                     graphic_scale=old_layer.vector_graphic_scale,
-                    opacity=old_layer.opacity
                     )
             elif new_layer.layer_type == "XYZ":
                 LayerXYZ.objects.create(
@@ -182,7 +192,6 @@ class Command(BaseCommand):
                     point_radius=old_layer.point_radius,
                     graphic=old_layer.vector_graphic,
                     graphic_scale=old_layer.vector_graphic_scale,
-                    opacity=old_layer.opacity
                     )
             new_entity = new_layer
             for site in old_layer.site.all():
