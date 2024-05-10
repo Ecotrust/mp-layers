@@ -15,7 +15,7 @@ def get_domain(port=8010):
         #domain = Site.objects.all()[0].domain
         domain = Site.objects.get(id=SITE_ID).domain
         if 'localhost' in domain:
-            domain = 'localhost:%s' %port
+            domain = 'localhost:{}'.format(port)
         domain = 'http://' + domain
     except:
         domain = '..'
@@ -63,10 +63,11 @@ class Theme(models.Model, SiteFlags):
     data_notes = models.TextField(blank=True, null=True, default=None)
     source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
+    data_download = models.CharField(max_length=255, blank=True, null=True, help_text='link to download the data')
 
 
-    description = models.TextField(blank=True, null=True)
-    overview = models.TextField(blank=True, null=True, default="")
+    description = models.TextField(blank=True, null=True, default=None)
+    overview = models.TextField(blank=True, null=True, default=None)
     learn_more = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='MDAT/VTR/CAS: link to learn more')
     
     slug_name = models.CharField(max_length=200, blank=True, null=True)
@@ -115,7 +116,7 @@ class Theme(models.Model, SiteFlags):
     @property
     def learn_link(self):
         domain = get_domain(8000)
-        return '%s/learn/%s' %(domain, self.name)
+        return '{}/learn/{}'.format(domain, self.name)
     
     @property
     def parent(self):
@@ -147,7 +148,7 @@ class Theme(models.Model, SiteFlags):
     def data_url(self):
      
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
-        if settings.DATA_CATALOG_ENABLED:
+        if settings.DATA_CATALOG_ENABLED and self.is_visible:
             # parent_theme = self.parent
             try:
                 parent_theme = self.top_parent
@@ -187,13 +188,13 @@ class Theme(models.Model, SiteFlags):
 
     @property
     def bookmark_link(self):
-        if self.bookmark and "%%5D=%d&" % self.id in self.bookmark:
+        if self.bookmark and "%5D={}&".format(self.id) in self.bookmark:
             return self.bookmark
 
         if self.parent and self.parent.bookmark and len(self.parent.bookmark) > 0:
             return self.parent.bookmark.replace('<layer_id>', str(self.id))
         
-        if self.parent.name in ['vtr', 'mdat', 'cas']:
+        if self.parent.name in ['vtr', 'mdat', 'cas', 'marine-life-library']:
             # RDH: Most Marine Life layers seem to have bogus bookmarks. If the first line of this def
             #   isn't true, then we likely need to give users something that will work. This should do it.
             root_str = '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean'
@@ -222,61 +223,6 @@ class Theme(models.Model, SiteFlags):
         return ''
         
     @property
-    def data_download(self):
-        # RDH Backward compatibility hack: Of all parent layers, only 44 had a value for 'data_download'.
-        #   We can hardcode those 44 values to maintain 100% backward compatibility without needing to maintain new DB Fields.
-        v1_parent_data_downloads = {
-            "3305": "",
-            "5849": "/static/data_manager/data-download/AcidificationMonitoringMidA_Ver202310.zip",
-            "5775": "https://www.fisheries.noaa.gov/national/marine-life-distress/sea-turtle-stranding-and-salvage-network",
-            "80": "http://maritimeboundaries.noaa.gov/downloads/USMaritimeLimitsAndBoundariesSHP.zip",
-            "842": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "840": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "454": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "344": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "417": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "2950": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "5258": "https://marinecadastre.gov/downloads/data/mc/WastewaterOutfall.zip",
-            "841": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "839": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "2949": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "3324": "",
-            "838": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "5311": "https://www.northeastoceandata.org/data/data-download/?data=Marine+Transportation",
-            "3927": "",
-            "843": "https://seamap.env.duke.edu/models/mdat/#more-information",
-            "4540": "",
-            "5207": "https://www.fisheries.noaa.gov/national/marine-life-distress/national-stranding-database-public-access",
-            "5220": "https://www.fisheries.noaa.gov/national/marine-life-distress/national-stranding-database-public-access",
-            "545": "",
-            "538": "",
-            "1338": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2017_Annual.zip",
-            "163": "/static/data_manager/data-download/Zip_Files/Recreation/RecreationalBoaterSurvey_MidAtl.zip",
-            "210": "/static/data_manager/data-download/Zip_Files/Recreation/MidAtlanticRecreationalUseData.zip",
-            "136": "",
-            "780": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2015_Annual.zip",
-            "1347": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2016_Annual.zip",
-            "97": "https://services.northeastoceandata.org/downloads/AIS/AIS2011.zip",
-            "1331": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2013_Annual.zip",
-            "224": "",
-            "3310": "https://oceanadapt.rutgers.edu/",
-            "4509": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2019_Annual.zip",
-            "4475": "http://www.northeastoceandata.org/files/metadata/Themes/AIS2018_Annual.zip",
-            "1756": "/static/data_manager/data-download/Zip_Files/Marine_Life/FishSpeciesThroughTime.zip",
-            "3315": "http://tds.marine.rutgers.edu/thredds/cool/codar/cat_totals.html",
-            "4842": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
-            "4841": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
-            "4843": "https://www.northeastoceandata.org/files/metadata/Themes/Fishing_Effects_Percent_Seabed_Habitat_Disturbance.zip",
-            "142": "https://services.northeastoceandata.org/downloads/AIS/AIS2012.zip",
-            "5787": "https://www.fisheries.noaa.gov/national/marine-life-distress/sea-turtle-stranding-and-salvage-network",
-            "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
-        }
-        if str(self.pk) in v1_parent_data_downloads.keys():
-            return v1_parent_data_downloads[str(self.pk)]
-        else:
-            return None
-        
-    @property
     def data_download_link(self):
         # RDH: str(None) == 'None'. That is bonkers. Links will always be a string, so we just want to return ''
         return str(self.data_download or '')
@@ -287,11 +233,9 @@ class Theme(models.Model, SiteFlags):
         #   We can hardcode those 49 values to maintain 100% backward compatibility without needing to maintain new DB Fields.
         v1_parent_metadata = {
             "5765": "/static/data_manager/metadata/pdf/BoatRamps_WaterTrails_Metadata_20230718.pdf",
-            "3305": "",
             "5539": "/static/data_manager/metadata/pdf/BoatRamps_WaterTrails_Metadata_20230718.pdf",
             "5849": "/static/data_manager/metadata/pdf/AcidificationMonitoringMidA_Ver202310_metadata.pdf",
             "5775": "/static/data_manager/metadata/pdf/SeaTurtleStrandings_Metadata_10_2023.pdf",
-            "80": None,
             "842": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
             "840": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_Metadata.pdf",
             "454": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_v1_1_2016_08_29_Metadata.pdf",
@@ -302,12 +246,9 @@ class Theme(models.Model, SiteFlags):
             "841": "http://seamap.env.duke.edu/models/mdat/Mammal/MDAT_Mammal_Summary_Products_Metadata.pdf",
             "839": "http://seamap.env.duke.edu/models/mdat/Avian/MDAT_Avian_Summary_Products_Metadata.pdf",
             "2949": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
-            "3324": "",
             "838": "http://seamap.env.duke.edu/models/mdat/Avian/MDAT_Avian_Summary_Products_Metadata.pdf",
             "5311": "https://www.northeastoceandata.org/files/metadata/Themes/AIS/AllAISVesselTransitCounts2021.pdf",
-            "3927": "",
             "843": "http://seamap.env.duke.edu/models/mdat/Fish/MDAT_NEFSC_Fish_Summary_Products_Metadata.pdf",
-            "4540": "",
             "5207": "/static/data_manager/metadata/pdf/METADATA__MarineMammalStrandings_5_2022.pdf",
             "5220": "/static/data_manager/metadata/pdf/METADATA__MarineMammalStrandings_5_2022.pdf",
             "545": "/static/data_manager/metadata/html/NPP_SeasonalMax.html",
@@ -335,7 +276,6 @@ class Theme(models.Model, SiteFlags):
             "142": "/static/data_manager/metadata/html/AIS2012.html",
             "5787": "/static/data_manager/metadata/pdf/SeaTurtleStrandings_Metadata_10_2023.pdf",
             "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
-
         }
         
         if str(self.pk) in v1_parent_metadata.keys():
@@ -388,7 +328,7 @@ class Layer(models.Model, SiteFlags):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     slug_name = models.CharField(max_length=200, blank=True, null=True)
     layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
-    url = models.TextField(blank=True, default="")
+    url = models.TextField(blank=True, null=True, default=None)
     site = models.ManyToManyField(Site, related_name='%(class)s_site')
     objects = CurrentSiteManager('site')
     all_objects = AllObjectsManager()
@@ -398,7 +338,7 @@ class Layer(models.Model, SiteFlags):
     ######################################################
     opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
-    disabled_message = models.CharField(max_length=255, blank=True, null=True, default="")
+    disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
     is_visible = models.BooleanField(default=True)
 
     ######################################################
@@ -429,10 +369,10 @@ class Layer(models.Model, SiteFlags):
     ######################################################
     #                        METADATA                    #
     ######################################################
-    description = models.TextField(blank=True, default="")
-    overview = models.TextField(blank=True, default="")     #formerly data_overview in data_manager
+    description = models.TextField(blank=True, null=True)
+    overview = models.TextField(blank=True, null=True, default=None)     #formerly data_overview in data_manager
     data_source = models.CharField(max_length=255, blank=True, null=True)
-    data_notes = models.TextField(blank=True, default="")
+    data_notes = models.TextField(blank=True, null=True, default=None)
     data_publish_date = models.DateField(auto_now=False, auto_now_add=False, null=True, blank=True, default=None, verbose_name='Date published', help_text='YYYY-MM-DD')
     
     ######################################################
@@ -506,12 +446,12 @@ class Layer(models.Model, SiteFlags):
         if settings.DATA_CATALOG_ENABLED:
             # parent_theme = self.parent
             try:
-                parent_theme = self.top_parents[0]
+                parent_theme = self.themes.first()
             except IndexError:
                 parent_theme = False
 
             
-            if parent_theme:
+            if parent_theme and parent_theme.is_visible:
                 # Format the parent theme's name to be URL-friendly
                 # This can be custom tailored if you store slugs differently
                 parent_theme_slug = parent_theme.name.replace(" ", "-")
@@ -638,7 +578,7 @@ class Layer(models.Model, SiteFlags):
 
     @property
     def data_overview_text(self):
-        if not self.overview and self.parent:
+        if not self.overview and self.is_sublayer and self.parent:
             return self.parent.overview
         else:
             return self.overview
@@ -682,10 +622,20 @@ class Layer(models.Model, SiteFlags):
         layer_content_type = ContentType.objects.get_for_model(self.__class__)
 
         # Find the ChildOrder instance that refers to this layer
-        child_order = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type).first()
-
-        if child_order:
-            return child_order.parent_theme
+        child_orders = ChildOrder.objects.filter(
+            object_id=self.id, content_type=layer_content_type
+        ).order_by(
+            'order', 'parent_theme__name', 'parent_theme__id'
+        )
+        for co in child_orders:
+            # A layer can be a sublayer in one theme and a top-level layer in another.
+            # This identifies the highest level parent theme
+            # This is helpful for matching the old data_manager API v1: bookmark_link <- is_sublayer <- parent
+            # It's not terribly important otherwise
+            if co.parent_theme.parent == None:
+                return co.parent_theme
+        if child_orders.count() > 0:
+            return child_orders.first().parent_theme
         return None
     
     @property
@@ -703,7 +653,7 @@ class Layer(models.Model, SiteFlags):
 
     @property
     def bookmark_link(self):
-        if self.bookmark and "%%5D=%d&" % self.id in self.bookmark:
+        if self.bookmark and "%5D={}&".format(self.id) in self.bookmark:
             return self.bookmark
 
         if self.is_sublayer and self.parent.bookmark and len(self.parent.bookmark) > 0:
@@ -717,19 +667,19 @@ class Layer(models.Model, SiteFlags):
         # RDH: Most Marine Life layers seem to have bogus bookmarks. If the first line of this def
         #   isn't true, then we likely need to give users something that will work. This should do it.
         root_str = '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean'
-        layer_str = '&dls%%5B%%5D=true&dls%%5B%%5D=%s&dls%%5B%%5D=%d' % (str(self.opacity), self.id)
+        layer_str = '&dls%5B%5D=true&dls%5B%5D={}&dls%5B%5D={}'.format(str(self.opacity), self.id)
         companion_str = ''
         if self.has_companion:
-            for companion in self.connect_companion_layers_to.all():
-                companion_str += '&dls%%5B%%5D=false&dls%%5B%%5D=%s&dls%%5B%%5D=%d' % (str(companion.opacity), companion.id)
+            for companionship in self.companionships.all():
+                for companion in companionship.companions.exclude(pk=self.pk):
+                    companion_str += '&dls%5B%5D=false&dls%5B%5D={}&dls%5B%5D={}'.format(str(companion.opacity), companion.id)
         themes_str = ''
         if self.themes.all().count() > 0:
-            for theme in self.themes.all():
-                themes_str = '&themes%%5Bids%%5D%%5B%%5D=%d' % theme.id
+            themes_str = '&themes%5Bids%5D%5B%5D={}'.format(self.themes.all().order_by('order', 'name', 'id').first().id)
 
         panel_str = '&tab=data&legends=false&layers=true'
 
-        return "%s%s%s%s%s" % (root_str, layer_str, companion_str, themes_str, panel_str)
+        return "{}{}{}{}{}".format(root_str, layer_str, companion_str, themes_str, panel_str)
     
     #RDH: Kept to maintain identical V1 results with data manager. This functionality will be deprecated in v25
     def get_espis_link(self):
@@ -747,7 +697,7 @@ class Layer(models.Model, SiteFlags):
                 except (ModuleNotFoundError, ImportError) as e:
                     #python 2
                     from urllib import urlencode
-                return 'https://esp-boem.hub.arcgis.com/search?%s' % urlencode(search_dict)
+                return 'https://esp-boem.hub.arcgis.com/search?{}'.format(urlencode(search_dict))
 
         return False
 
@@ -884,7 +834,7 @@ class LayerWMS(RasterType):
     wms_timing = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='http://docs.geoserver.org/stable/en/user/services/wms/time.html#specifying-a-time', verbose_name='WMS Time')
     wms_time_item = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='Time Attribute Field, if different from "TIME". Proxy only.', verbose_name='WMS Time Field')
     wms_styles = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='pre-determined styles, if exist', verbose_name='WMS Styles')
-    wms_additional = models.TextField(blank=True, null=True, default="", help_text='additional WMS key-value pairs: &key=value...', verbose_name='WMS Additional Fields')
+    wms_additional = models.TextField(blank=True, null=True, default=None, help_text='additional WMS key-value pairs: &key=value...', verbose_name='WMS Additional Fields')
     wms_info = models.BooleanField(default=False, help_text='enable Feature Info requests on click')
     wms_info_format = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='Available supported feature info formats')
     def save(self, *args, **kwargs):
@@ -969,10 +919,10 @@ class MultilayerDimensionValue(models.Model):
     associations = models.ManyToManyField(MultilayerAssociation)
 
     def __unicode__(self):
-        return '%s: %s' % (self.dimension, self.value)
+        return '{}: {}'.format(self.dimension, self.value)
 
     def __str__(self):
-        return '%s: %s' % (self.dimension, self.value)
+        return '{}: {}'.format(self.dimension, self.value)
 
     class Meta:
         ordering = ('order',)
@@ -1039,7 +989,7 @@ class AttributeInfo(models.Model):
     preserve_format = models.BooleanField(default=False, help_text='Prevent portal from making any changes to the data to make it human-readable')
 
     def __unicode__(self):
-        return unicode('%s' % (self.field_name))
+        return unicode('{}'.format(self.field_name))
 
     def __str__(self):
         return str(self.field_name)
@@ -1091,7 +1041,7 @@ class LookupInfo(models.Model):
     def __unicode__(self):
         if self.description:
             return unicode('{}: {}'.format(self.value, self.description))
-        return unicode('%s' % (self.value))
+        return unicode('{}'.format(self.value))
 
     def __str__(self):
         if self.description:

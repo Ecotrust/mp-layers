@@ -884,34 +884,34 @@ class LiveAPITests(APITestCase):
                             self.assertEqual(child[key], match[key])
 
     def loop_though_theme_layers(self, layer_list):
-        for layer in layer_list:
+        for index, layer in enumerate(layer_list):
             if not layer['type'] in ['slider',]:
                 dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(layer['id']))
                 ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(layer['id']))
                 old_layer_data = json.loads(dm_layer_response.content)
                 new_layer_data = json.loads(ls_layer_response.content)
-                if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
-                    import ipdb; ipdb.set_trace()
+                # if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
+                #     import ipdb; ipdb.set_trace()
                 self.assertEqual(old_layer_data.keys(), new_layer_data.keys())
-                # self.assertEqual(len(old_theme_data['layers']), len(new_theme_data['layers']))
-                self.compare_layers(old_layer_data, new_layer_data)
+                self.compare_layers(old_layer_data, new_layer_data, index)
             else:
                 print("TODO: create logic for type '{}'".format(layer['type']))
 
-    def compare_layers(self, old_layer, new_layer):
+    def compare_layers(self, old_layer, new_layer, layer_count):
         for key in old_layer.keys():
-            if key not in ['date_modified','subLayers','attributes', 'lookups']: # objects and dates?
+            if key not in ['date_modified','subLayers','attributes', 'lookups', 'companion_layers']: # objects and dates?
                 if not old_layer[key] == new_layer[key]:
                     if (
                         # old empty strings are new nulls
                         key in [
-                            'arcgis_layers', 'wms_slug', 'wms_format', 'wms_srs', 'wms_styles', 'wms_timing', 'wms_time_item', 'utfurl', 'legend', 'legend_title', 
-                            'legend_subtitle', 'learn_more', 'outline_color', 'data_download',
+                            'arcgis_layers', 'wms_slug', 'wms_format', 'wms_srs', 'wms_styles', 'wms_timing', 
+                            'wms_time_item', 'utfurl', 'legend', 'legend_title', 
+                            'legend_subtitle', 'learn_more', 'outline_color', 'data_download', 'wms_version'
                         ] and old_layer[key] == '' and new_layer[key] == None
                     ) or (
                         # old nulls are new empty strings
                         key in [
-                            'source', 
+                            'source', 'wms_version', 'wms_additional'
                         ] and old_layer[key] == None and new_layer[key] == ""
                     ) or (
                         #fields are set that have no business being set on parent layers/themes
@@ -925,7 +925,7 @@ class LiveAPITests(APITestCase):
                         new_layer['type'] not in [
                             'ArcFeatureService', 'vector',
                         ] and key in [
-                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'graphic_scale',
+                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'graphic_scale', 'point_radius',
                         ]
                     ):
                         old_layer[key] = new_layer[key]
@@ -937,16 +937,37 @@ class LiveAPITests(APITestCase):
                         old_layer['has_companion'] = len(old_layer['companion_layers']) > 0
                     if not old_layer[key] == new_layer[key]:
                         print("=================")
+                        print("Layer #{} for theme".format(layer_count))
                         print("ID: {}".format(old_layer['id']))
                         print("Name: {}".format(old_layer['name']))
                         print("KEY: {}".format(key))
                         print("OLD: {}".format(old_layer[key]))
                         print("NEW: {}".format(new_layer[key]))
-                        import ipdb; ipdb.set_trace()
+                        # import ipdb; ipdb.set_trace()
                         print("=================")
                 if not key in ['data_notes','disabled_message']:
                     self.assertEqual(old_layer[key], new_layer[key])
-            # elif key in ['subLayers', 'attributes', 'lookups']:
+            elif key == 'companion_layers':
+                if old_layer['has_companion'] == False:
+                    old_layer['companion_layers'] = []
+                self.assertEqual(len(old_layer[key]), len(new_layer[key]))
+                for index, old_companion in enumerate(old_layer[key]):
+                    new_companion = new_layer[key][index]
+                    old_keys = old_companion.keys()
+                    new_keys = new_companion.keys()
+                    key_diff = 0
+                    for old_key in old_keys:
+                        if not old_key in new_keys:
+                            key_diff += 1
+                            print("OLD KEY: '{}' not in new keys".format(old_key))
+                    for new_key in new_keys:
+                        if not new_key in old_keys:
+                            key_diff += 1
+                            print("NEW KEY: '{}' not in old keys".format(new_key))
+                    if key_diff > 0:
+                        print("Total num of different keys: {}".format(key_diff))
+                    self.compare_layers(old_companion, new_companion, layer_count)
+            # elif key in ['subLayers', 'attributes', 'lookups', 'companion_layers']:
             #     if not (type(old_layer[key]) == str or type(new_layer[key])==str):
             #         self.compare_lists(old_layer[key], new_layer[key])
             #     else:
