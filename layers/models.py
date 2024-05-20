@@ -340,6 +340,7 @@ class Layer(models.Model, SiteFlags):
     is_disabled = models.BooleanField(default=False, help_text='when disabled, the layer will still appear in the TOC, only disabled')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
     is_visible = models.BooleanField(default=True)
+    search_query = models.BooleanField(default=False, help_text='Select when layers are queryable - e.g. MDAT and CAS')
 
     ######################################################
     #                     DATA CATALOG                   #
@@ -842,8 +843,6 @@ class LayerWMS(RasterType):
             self.layer_type = 'WMS'
         super(LayerWMS, self).save(*args, **kwargs)
 
-class Library(Layer):
-    queryable = models.BooleanField(default=False, help_text='Select when layers are queryable - e.g. MDAT and CAS')
 
 class ChildOrder(models.Model):
     parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')

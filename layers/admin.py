@@ -240,8 +240,38 @@ class BaseLayerInline(nested_admin.NestedStackedInline):
 class ArcRESTInline(BaseLayerInline):
     model = LayerArcREST
 
-class ArcRESTServerInline(BaseLayerInline):
+vectorStyleOverrides = ('Display & Style', {
+            'classes': ('collapse',),
+            'fields': (
+                'custom_style',
+                (
+                    'outline_width',
+                    'outline_color', 
+                ),
+                (
+                    'fill_opacity',
+                    'color', 
+                ),
+                (
+                    'point_radius',
+                    'graphic',
+                    'graphic_scale',
+                ),
+            )
+        })
+
+class ArcRESTFeatureServerInline(BaseLayerInline):
     model = LayerArcFeatureService
+
+    fieldsets = (
+        ('', {
+            'fields': (
+                ('arcgis_layers',),
+                ('password_protected', 'disable_arcgis_attributes',)
+            )
+        }),
+        vectorStyleOverrides,
+    )
 
 class WMSInline(BaseLayerInline):
     model = LayerWMS
@@ -275,7 +305,15 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         return child_order.order if child_order else 'None'
     get_order.short_description = 'Order'  # Sets column name
 
-    list_display = ('name', 'layer_type', 'date_modified', "get_parent_theme", "get_order", 'data_publish_date', 'data_source')
+    def formfield_for_manytomany(self, db_field, request=None, **kwargs):
+        if db_field.name == 'site':
+            kwargs['widget'] = forms.CheckboxSelectMultiple()
+            kwargs['widget'].attrs['style'] = 'list-style-type: none;'
+            kwargs['widget'].can_add_related = False
+
+        return db_field.formfield(**kwargs)
+
+    list_display = ('name', 'layer_type', 'date_modified', "get_parent_theme", "get_order", 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
     search_fields = ['name', 'layer_type', 'date_modified', 'url', 'data_source']
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
@@ -314,10 +352,24 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 # ('is_disabled','disabled_message')
             )
         }),
+        ('APPEARANCE', {
+            'classes': ('collapse',),
+            'fields': (
+                'opacity',
+                (
+                    'minZoom',
+                    'maxZoom'
+                ),
+                (
+                    'lookup_field',
+                    'lookup_table',
+                ),
+            )
+        }),
         ('METADATA', {
             'classes': ('collapse',),
             'fields': (
-                'description', 'overview','data_source','data_notes', 'data_publish_date','utfurl',
+                'description', 'overview','data_source','data_notes', 'data_publish_date',
             )
         }),
         ('LEGEND', {
@@ -342,8 +394,18 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             'fields': (
                 'shareable_url',
             )
+        }),
+        ('Dynamic Layers (MDAT & CAS)', {
+            'classes': ('collapse',),
+            'fields': (
+                'search_query',
+            )
+        }),
+        ('UTF Grid Layers', {
+            'classes': ('collapse',),
+            'fields': ('utfurl',)
         }),)
-    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTServerInline, NestedMultilayerDimensionInline,
+    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
     def get_queryset(self, request):
@@ -480,7 +542,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             'WMS': [WMSInline],
             'XYZ': [XYZInline],
             'Vector': [VectorInline],
-            'ArcFeatureServer': [ArcRESTServerInline],
+            'ArcFeatureServer': [ArcRESTFeatureServerInline],
             'slider': [NestedMultilayerDimensionInline, NestedMultilayerAssociationInline],
         }
         return mapping.get(layer_type)
