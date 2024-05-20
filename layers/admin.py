@@ -184,7 +184,7 @@ class ThemeAdmin(admin.ModelAdmin):
 
 class LayerForm(forms.ModelForm):
 
-    order = forms.IntegerField(required=False)
+    order = forms.IntegerField(required=True)
     themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
@@ -228,6 +228,9 @@ class LayerForm(forms.ModelForm):
             # Check if there are any companions to determine the initial value of has_companion
             has_companions = self.instance.companionships.exists()
             self.fields['has_companion'].initial = has_companions
+        else:
+            self.fields['order'].initial = 10
+
 
 class BaseLayerInline(nested_admin.NestedStackedInline):
     extra = 1

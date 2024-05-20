@@ -48,7 +48,7 @@ class Theme(models.Model, SiteFlags):
     display_name = models.CharField(max_length=100)
     theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
-    order = models.PositiveIntegerField(null=True, blank=True) 
+    order = models.PositiveIntegerField(null=True, blank=True, default=10) 
 
     ######################################################
     #           DATES                                    #
@@ -853,7 +853,7 @@ class ChildOrder(models.Model):
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
     
-    order = models.PositiveIntegerField()
+    order = models.PositiveIntegerField(blank=True, null=True, default=10)
 
     ######################################################
     #           DATES                                    #
