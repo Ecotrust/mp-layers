@@ -125,10 +125,14 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
 
         # Find the ChildOrder instance that refers to this theme
-        child_order = ChildOrder.objects.filter(object_id=self.id, content_type=content_type).first()
+        child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
+        # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
+        #   and themes, we can query 'objects' by the possible ids of matching themes
+        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_theme = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id').first()
 
-        if child_order:
-            return child_order.parent_theme
+        if parent_theme:
+            return parent_theme
         return None
     
     @property
@@ -445,12 +449,13 @@ class Layer(models.Model, SiteFlags):
      
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
         if settings.DATA_CATALOG_ENABLED:
-            # parent_theme = self.parent
+            parent_theme = False
             try:
-                parent_theme = self.themes.first()
+                parent_theme = self.parent
+                if not parent_theme in self.themes:
+                    parent_theme = self.themes.order_by('order', 'name', 'id').first()
             except IndexError:
-                parent_theme = False
-
+                pass
             
             if parent_theme and parent_theme.is_visible:
                 # Format the parent theme's name to be URL-friendly
@@ -626,17 +631,22 @@ class Layer(models.Model, SiteFlags):
         child_orders = ChildOrder.objects.filter(
             object_id=self.id, content_type=layer_content_type
         ).order_by(
-            'order', 'parent_theme__name', 'parent_theme__id'
+            'parent_theme__order', 'order', 'parent_theme__name', 'parent_theme__id'
         )
-        for co in child_orders:
+        # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
+        #   and themes, we can query 'objects' by the possible ids of matching themes
+        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_themes = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
+        for pt in parent_themes:
             # A layer can be a sublayer in one theme and a top-level layer in another.
             # This identifies the highest level parent theme
             # This is helpful for matching the old data_manager API v1: bookmark_link <- is_sublayer <- parent
             # It's not terribly important otherwise
-            if co.parent_theme.parent == None:
-                return co.parent_theme
-        if child_orders.count() > 0:
-            return child_orders.first().parent_theme
+            if pt.parent == None:
+                return pt
+            
+        if parent_themes.count() > 0:
+            return parent_themes.first()
         return None
     
     @property
@@ -650,7 +660,7 @@ class Layer(models.Model, SiteFlags):
 
         # Find the ChildOrder instance that refers to this layer
         child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type)
-        return Theme.objects.filter(pk__in=[co.parent_theme.id for co in child_orders])
+        return Theme.objects.filter(pk__in=[co.parent_theme.id for co in child_orders]).order_by('order', 'name', 'id')
 
     @property
     def bookmark_link(self):
@@ -676,7 +686,7 @@ class Layer(models.Model, SiteFlags):
                     companion_str += '&dls%5B%5D=false&dls%5B%5D={}&dls%5B%5D={}'.format(str(companion.opacity), companion.id)
         themes_str = ''
         if self.themes.all().count() > 0:
-            themes_str = '&themes%5Bids%5D%5B%5D={}'.format(self.themes.all().order_by('order', 'name', 'id').first().id)
+            themes_str = '&themes%5Bids%5D%5B%5D={}'.format(self.parent.id)
 
         panel_str = '&tab=data&legends=false&layers=true'
 
@@ -859,6 +869,12 @@ class ChildOrder(models.Model):
     ######################################################
     date_created = models.DateTimeField(auto_now_add=True)
     date_modified = models.DateTimeField(auto_now=True)
+
+    # @property
+    # def site(self):
+    #     parent_site_ids = [x.pk for x in self.parent_theme.site.all()]
+    #     content_site_ids = [x.pk for x in self.content_object.site.all()]
+    #     return Site.objects.filter(pk__in=parent_site_ids).filter(pk__in=content_site_ids)
 
     class Meta:
         ordering = ['order']
