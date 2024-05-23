@@ -110,6 +110,7 @@ class ThemeForm(forms.ModelForm):
 
 class ThemeAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'name', 'order', 'primary_site', 'preview_site')
+    search_fields = ['display_name', 'name',]
     form = ThemeForm
 
     class Media:
