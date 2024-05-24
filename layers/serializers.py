@@ -313,22 +313,11 @@ def get_serializer_by_layer_type(layer_type):
     }
     return layer_type_to_serializer.get(layer_type)
 
-def get_model_by_layer_type(layer_type):
-    layer_type_to_model = {
-        'WMS': LayerWMS,
-        'ArcRest': LayerArcREST,
-        'ArcFeatureServer': LayerArcFeatureService,
-        'Vector': LayerVector,
-        'XYZ': LayerXYZ,
-        # Add more mappings as necessary
-    }
-    return layer_type_to_model.get(layer_type)
-
 def get_specific_layer_instance(layer):
     if isinstance(layer, Layer):
-        model = get_model_by_layer_type(layer.layer_type)
+        # model = get_model_by_layer_type(layer.layer_type)
         try:
-            return model.objects.get(layer=layer)
+            return layer.model.objects.get(layer=layer)
         except:
             pass
     return None
@@ -341,11 +330,10 @@ def get_serialized_layer(instance):
         # Find the related layer model based on the layer_type
         layer_type = instance.layer_type
         serializer_class = get_serializer_by_layer_type(layer_type)
-        model = get_model_by_layer_type(layer_type)
         if serializer_class:
             # Find the specific layer instance (e.g., LayerWMS) related to this Layer
-            specific_layer_instance = model.objects.get(layer=instance)
-            if specific_layer_instance:
+            specific_layer_instance = instance.specific_instance
+            if not specific_layer_instance == None:
                 serializer = serializer_class(specific_layer_instance)
             else:
                 # Fallback if the specific layer instance was not found
@@ -390,10 +378,9 @@ class ChildOrderSerializer(serializers.ModelSerializer):
             # Find the related layer model based on the layer_type
             layer_type = related_object.layer_type
             serializer_class = get_serializer_by_layer_type(layer_type)
-            model = get_model_by_layer_type(layer_type)
             if serializer_class:
                 # Find the specific layer instance (e.g., LayerWMS) related to this Layer
-                specific_layer_instance = model.objects.get(layer=related_object)
+                specific_layer_instance = related_object.specific_instance
                 if specific_layer_instance:
                     serializer = serializer_class(specific_layer_instance)
                 else:

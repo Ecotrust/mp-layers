@@ -106,7 +106,6 @@ class Command(BaseCommand):
                         data_download=old_layer.data_download,
                         learn_more=old_layer.learn_more,
                         map_tiles=old_layer.map_tiles,
-                        lookup_field=old_layer.lookup_field,
                         espis_enabled=old_layer.espis_enabled,
                         espis_search=old_layer.espis_search,
                         espis_region=old_layer.espis_region,
@@ -125,19 +124,6 @@ class Command(BaseCommand):
                 )
                 # Add the new instance to the new layer's attribute_fields
                 new_layer.attribute_fields.add(new_attribute_field)
-            for old_lookup in old_layer.lookup_table.all():
-                new_lookup = LookupInfo.objects.create(
-                    value=old_lookup.value,
-                    description=old_lookup.description,
-                    color=old_lookup.color,
-                    stroke_color=old_lookup.stroke_color,
-                    stroke_width=old_lookup.stroke_width,
-                    dashstyle=old_lookup.dashstyle,
-                    fill=old_lookup.fill,
-                    graphic=old_lookup.graphic,
-                    graphic_scale=old_lookup.graphic_scale,
-                )
-                new_layer.lookup_table.add(new_lookup)
             new_layer.save()
             if new_layer.layer_type == "WMS":
                 LayerWMS.objects.create(
@@ -177,6 +163,7 @@ class Command(BaseCommand):
                     point_radius=old_layer.point_radius,
                     graphic=old_layer.vector_graphic,
                     graphic_scale=old_layer.vector_graphic_scale,
+                    lookup_field=old_layer.lookup_field,
                     )
             elif new_layer.layer_type == "XYZ":
                 LayerXYZ.objects.create(
@@ -195,7 +182,23 @@ class Command(BaseCommand):
                     point_radius=old_layer.point_radius,
                     graphic=old_layer.vector_graphic,
                     graphic_scale=old_layer.vector_graphic_scale,
+                    lookup_field=old_layer.lookup_field,
                     )
+            if new_layer.layer_type in ['ArcFeatureServer', 'Vector']:
+                for old_lookup in old_layer.lookup_table.all():
+                    new_lookup = LookupInfo.objects.create(
+                        value=old_lookup.value,
+                        description=old_lookup.description,
+                        color=old_lookup.color,
+                        stroke_color=old_lookup.stroke_color,
+                        stroke_width=old_lookup.stroke_width,
+                        dashstyle=old_lookup.dashstyle,
+                        fill=old_lookup.fill,
+                        graphic=old_lookup.graphic,
+                        graphic_scale=old_lookup.graphic_scale,
+                    )
+                    new_layer.specific_instance.lookup_table.add(new_lookup)
+
             new_entity = new_layer
             for site in old_layer.site.all():
                 new_layer.site.add(site)

@@ -411,11 +411,6 @@ class Layer(models.Model, SiteFlags):
     compress_display = models.BooleanField(default=False)
     mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
     
-    #use field to specify attribute on layer that you wish to be considered in adding conditional style formatting
-    lookup_field = models.CharField(max_length=255, blank=True, null=True, help_text="To override the style based on specific attributes, provide the attribute name here and define your attributes in the Lookup table below.")
-    #use widget along with creating Lookup Info records to apply conditional styling to your layer
-    lookup_table = models.ManyToManyField('LookupInfo', blank=True)
-
     ######################################################
     #           ESPIS                                    #
     ######################################################
@@ -527,8 +522,16 @@ class Layer(models.Model, SiteFlags):
 
     @property
     def lookups(self):
-        return {'field': self.lookup_field,
-                'details': [{'value': lookup.value, 'color': lookup.color, 'stroke_color': lookup.stroke_color, 'stroke_width': lookup.stroke_width, 'dashstyle': lookup.dashstyle, 'fill': lookup.fill, 'graphic': lookup.graphic, 'graphic_scale': lookup.graphic_scale} for lookup in self.lookup_table.all()]}
+        if not self.specific_instance == None and (
+            hasattr(self.specific_instance, 'lookup_field') and
+            hasattr(self.specific_instance, 'lookup_table')
+        ):
+            return {'field': self.specific_instance.lookup_field,
+                    'details': [{'value': lookup.value, 'color': lookup.color, 'stroke_color': lookup.stroke_color, 'stroke_width': lookup.stroke_width, 'dashstyle': lookup.dashstyle, 'fill': lookup.fill, 'graphic': lookup.graphic, 'graphic_scale': lookup.graphic_scale} for lookup in self.specific_instance.lookup_table.all()]}
+        return {
+            'field': None,
+            'details': []
+        }
 
     def dimensionRecursion(self, dimensions, associations):
         associationArray = {}
@@ -715,6 +718,26 @@ class Layer(models.Model, SiteFlags):
 
         return False
 
+    @property
+    def model(self):
+        layer_type_to_model = {
+            'WMS': LayerWMS,
+            'ArcRest': LayerArcREST,
+            'ArcFeatureServer': LayerArcFeatureService,
+            'Vector': LayerVector,
+            'XYZ': LayerXYZ,
+            # Add more mappings as necessary
+        }
+        if self.layer_type in layer_type_to_model.keys():
+            return layer_type_to_model.get(self.layer_type)
+        return None
+    
+    @property
+    def specific_instance(self):
+        if not self.model == None:
+            return self.model.objects.get(layer=self)
+        return None
+
     def __str__(self):
         return self.name
 
@@ -787,6 +810,11 @@ class VectorType(LayerType):
     #if you need to resize vector graphic image so it looks appropriate on map
     #to make image smaller, use value less than 1, to make image larger, use values larger than 1
     graphic_scale = models.FloatField(blank=True, null=True, default=1.0, verbose_name="Vector Graphic Scale", help_text="Scale for the vector graphic from original size.")
+
+    #use field to specify attribute on layer that you wish to be considered in adding conditional style formatting
+    lookup_field = models.CharField(max_length=255, blank=True, null=True, help_text="To override the style based on specific attributes, provide the attribute name here and define your attributes in the Lookup table below.")
+    #use widget along with creating Lookup Info records to apply conditional styling to your layer
+    lookup_table = models.ManyToManyField('LookupInfo', blank=True)
 
 
     class Meta:

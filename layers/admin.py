@@ -241,6 +241,19 @@ class BaseLayerInline(nested_admin.NestedStackedInline):
 class ArcRESTInline(BaseLayerInline):
     model = LayerArcREST
 
+    fieldsets = (
+        ('', {
+            'fields': (
+                ('arcgis_layers',),
+                (
+                    'password_protected',
+                    'query_by_point',
+                    'disable_arcgis_attributes',
+                ),
+            )
+        }),
+    )
+
 vectorStyleOverrides = ('Vector Display & Style', {
             'classes': ('collapse',),
             'fields': (
@@ -257,6 +270,10 @@ vectorStyleOverrides = ('Vector Display & Style', {
                     'point_radius',
                     'graphic',
                     'graphic_scale',
+                ),
+                (
+                    'lookup_field',
+                    'lookup_table',
                 ),
             )
         })
@@ -353,20 +370,6 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 # ('is_disabled','disabled_message')
             )
         }),
-        ('APPEARANCE', {
-            'classes': ('collapse',),
-            'fields': (
-                'opacity',
-                (
-                    'minZoom',
-                    'maxZoom'
-                ),
-                (
-                    'lookup_field',
-                    'lookup_table',
-                ),
-            )
-        }),
         ('METADATA', {
             'classes': ('collapse',),
             'fields': (
@@ -417,6 +420,16 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 ),
                 # These fields are no longer used, but would have gone here.
                 # ('is_annotated', 'compress_display')
+            )
+        }),
+        ('APPEARANCE', {
+            'classes': ('collapse',),
+            'fields': (
+                'opacity',
+                (
+                    'minZoom',
+                    'maxZoom'
+                ),
             )
         }),
     )
