@@ -241,7 +241,7 @@ class BaseLayerInline(nested_admin.NestedStackedInline):
 class ArcRESTInline(BaseLayerInline):
     model = LayerArcREST
 
-vectorStyleOverrides = ('Display & Style', {
+vectorStyleOverrides = ('Vector Display & Style', {
             'classes': ('collapse',),
             'fields': (
                 'custom_style',
@@ -405,7 +405,21 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         ('UTF Grid Layers', {
             'classes': ('collapse',),
             'fields': ('utfurl',)
-        }),)
+        }),
+        ('ATTRIBUTE REPORTING (Vector/Tile, ArcREST/Feature, and WMS)', {
+            'classes': ('collapse',),
+            'fields': (
+                'label_field',
+                (
+                    'attribute_event',
+                    'attribute_fields',
+                    'mouseover_field',
+                ),
+                # These fields are no longer used, but would have gone here.
+                # ('is_annotated', 'compress_display')
+            )
+        }),
+    )
     inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     

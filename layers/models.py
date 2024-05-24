@@ -404,7 +404,10 @@ class Layer(models.Model, SiteFlags):
     # attribute_title = models.CharField(max_length=255, blank=True, null=True)
     attribute_event = models.CharField(max_length=35, choices=EVENT_CHOICES, default='click')
     attribute_fields = models.ManyToManyField('AttributeInfo', blank=True)
+    # RDH: 2024-05-24: Annotated DOES have visualization logic tied to it,
+    #   BUT: all known records are set to 'False'
     annotated = models.BooleanField(default=False)
+    # RDH: 2024-05-24: compress_display is NOT USED anymore.
     compress_display = models.BooleanField(default=False)
     mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
     
