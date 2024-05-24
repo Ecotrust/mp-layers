@@ -460,6 +460,13 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
     inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
+    change_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Layer/change_form.html'
+
+    def change_view(self, request, object_id, form_url='', extra_context={}):
+        extra_context['CATALOG_TECHNOLOGY'] = settings.CATALOG_TECHNOLOGY
+        extra_context['CATALOG_PROXY'] = settings.CATALOG_PROXY
+        return super(LayerAdmin, self).change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
     def get_queryset(self, request):
         #use our manager, rather than the default one
         qs = self.model.all_objects.get_queryset()
