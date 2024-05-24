@@ -297,6 +297,13 @@ class WMSInline(BaseLayerInline):
 class XYZInline(BaseLayerInline):
     model = LayerXYZ
 
+    # query_by_point is not relevant to XYZ layers
+    fieldsets = (
+        ('', {
+            'fields': (),
+        }),
+    )
+
 class VectorInline(BaseLayerInline):
     model = LayerVector
 
