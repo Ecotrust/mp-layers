@@ -300,6 +300,10 @@ class XYZInline(BaseLayerInline):
 class VectorInline(BaseLayerInline):
     model = LayerVector
 
+    fieldsets = (
+        vectorStyleOverrides,
+    )
+
 class LayerAdmin(nested_admin.NestedModelAdmin):
     def get_parent_theme(self, obj):
         # Fetch the ContentType for the Layer model
@@ -597,8 +601,13 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
     def get_form(self, request, obj=None, **kwargs):
         form = super(LayerAdmin, self).get_form(request, obj, **kwargs)
         return form
+    
+class LookupInfoAdmin(admin.ModelAdmin):
+    list_display = ('value', 'description', 'color', 'stroke_color', 'dashstyle', 'fill', 'graphic')
+
 # if hasattr(settings, 'DATA_MANAGER_ADMIN'):
 #     admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Theme, ThemeAdmin)
 # admin.site.register(Layer, LayerAdmin)
 admin.site.register(Layer, LayerAdmin)
+admin.site.register(LookupInfo, LookupInfoAdmin)
