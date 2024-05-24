@@ -294,6 +294,19 @@ class ArcRESTFeatureServerInline(BaseLayerInline):
 class WMSInline(BaseLayerInline):
     model = LayerWMS
 
+    fieldsets = (
+        ('', {
+            'fields': (
+                'wms_help',
+                ('wms_slug', 'wms_version'),
+                ('wms_format', 'wms_srs'),
+                ('wms_timing', 'wms_time_item'),
+                ('wms_styles', 'wms_additional'),
+                ('wms_info', 'wms_info_format'),
+            ),
+        }),
+    )
+
 class XYZInline(BaseLayerInline):
     model = LayerXYZ
 
