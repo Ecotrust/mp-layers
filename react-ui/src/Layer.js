@@ -8,10 +8,12 @@ const Layer = ({
   borderColor,
   childData,
   topLevelThemeId,
-  themeType
+  themeType,
+  isActive,
+  handleToggleLayerChangeState
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
-  const [isActive, setIsActive] = useState(false);
+
 
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
@@ -20,8 +22,8 @@ const Layer = ({
         event.detail.layerId
       );
       // Check if the event is for this specific layer
-      if (layer.id === event.detail.layerId) {
-        setIsActive(false);
+      if (layer.id === event.detail.layerId && isActive) {
+        handleToggleLayerChangeState(layer.id)
       }
     };
 
@@ -32,6 +34,17 @@ const Layer = ({
     };
   }, [layer.id]);
 
+  useEffect(() => {
+    if (isActive) {
+      var event = new CustomEvent('ReactLayerActivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
+      window.dispatchEvent(event);
+    }
+    else {
+      var event = new CustomEvent('ReactLayerDeactivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
+      window.dispatchEvent(event);
+    }
+  }, [isActive])
+  
   const toggleLinkBar = (event) => {
     event.preventDefault();
     event.stopPropagation(); // Prevent click from bubbling up to parent theme click handler
@@ -49,11 +62,13 @@ const Layer = ({
     console.log("bye", theme_id);
     event.stopPropagation(); // Again, prevent click from affecting parent
     if (theme_id && layer.id) {
-      window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
-      setIsActive(!isActive);
+      // window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
+      handleToggleLayerChangeState(layer.id)
     }
     // Implement additional logic as needed
   };
+
+
   const iconClass = () => {
     if (themeType === "checkbox") {
       return isActive ? "fas fa-check-square" : "far fa-square";
