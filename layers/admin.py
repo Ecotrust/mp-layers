@@ -297,7 +297,7 @@ class WMSInline(BaseLayerInline):
     fieldsets = (
         ('', {
             'fields': (
-                'wms_help',
+                ('wms_help',),
                 ('wms_slug', 'wms_version'),
                 ('wms_format', 'wms_srs'),
                 ('wms_timing', 'wms_time_item'),
@@ -460,6 +460,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
     inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
+    add_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Layer/change_form.html'
     change_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Layer/change_form.html'
 
     def change_view(self, request, object_id, form_url='', extra_context={}):
@@ -554,13 +555,13 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         elif layer_type == "slider":
             InlineModel = [MultilayerDimension, MultilayerAssociation]
         elif layer_type == "ArcFeatureServer":
-            InlineModel == LayerArcFeatureService
+            InlineModel = LayerArcFeatureService
 
         # If an inline model is determined, proceed to save it
         if InlineModel is not None:
             InlineFormSet = inlineformset_factory(Layer, InlineModel, fields='__all__')
             formset = InlineFormSet(request.POST, request.FILES, instance=obj)
-            if formset.is_valid():
+            if formset.is_valid() and InlineModel.objects.filter(layer=obj).count() == 1:
                 formset.save()
 
     def handle_layer_type_change(self, request, obj, original_layer_type, new_layer_type):
@@ -573,7 +574,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             print(InlineModelClass)
             if InlineModelClass is not None:
                 # Get or create the inline instance
-                inline_instance, created = InlineModelClass.objects.get_or_create(layer=obj)
+                # inline_instance, created = InlineModelClass.objects.get_or_create(layer=obj)
 
                 # Process the inline formset
                 InlineFormSetClass = self.get_inline_model(InlineModelClass)

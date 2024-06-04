@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.sites.managers import CurrentSiteManager
 from django.contrib.sites.models import Site
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.template.defaultfilters import slugify
 from django.urls import reverse
@@ -93,7 +93,7 @@ class Theme(models.Model, SiteFlags):
     legend_title = models.CharField(max_length=255, blank=True, null=True, help_text='alternative to using the layer name')
     legend_subtitle = models.CharField(max_length=255, blank=True, null=True)
 
-
+    order_records = GenericRelation('ChildOrder')
 
     objects = CurrentSiteManager('site')
     all_objects = AllObjectsManager()
@@ -334,6 +334,9 @@ class Layer(models.Model, SiteFlags):
     layer_type = models.CharField(max_length=50, choices=LAYER_TYPE_CHOICES, help_text='use placeholder to temporarily remove layer from TOC')
     url = models.TextField(blank=True, null=True, default=None)
     site = models.ManyToManyField(Site, related_name='%(class)s_site')
+
+    order_records = GenericRelation('ChildOrder')
+    
     objects = CurrentSiteManager('site')
     all_objects = AllObjectsManager()
 
@@ -752,8 +755,35 @@ class Companionship(models.Model):
     # (Each companionship can relate to multiple Layers and vice versa)
     companions = models.ManyToManyField(Layer, related_name='companion_to')
 
+class ChildOrder(models.Model):
+    parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')
+    
+    # The generic relation to point to either Theme or Layer
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
+    order = models.PositiveIntegerField(blank=True, null=True, default=10)
+
+    ######################################################
+    #           DATES                                    #
+    ######################################################
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_modified = models.DateTimeField(auto_now=True)
+
+    # @property
+    # def site(self):
+    #     parent_site_ids = [x.pk for x in self.parent_theme.site.all()]
+    #     content_site_ids = [x.pk for x in self.content_object.site.all()]
+    #     return Site.objects.filter(pk__in=parent_site_ids).filter(pk__in=content_site_ids)
+
+    class Meta:
+        ordering = ['order']
+
+
+
 class LayerType(models.Model):
-    layer = models.ForeignKey(Layer, on_delete=models.CASCADE)
+    layer = models.ForeignKey(Layer, on_delete=models.CASCADE, unique=True)
 
     class Meta:
         abstract = True
@@ -834,33 +864,35 @@ class ArcServer(LayerType):
     class Meta:
         abstract = True
 
-
 class LayerArcREST(ArcServer, RasterType):
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance
-            self.layer_type = 'ArcRest'
+            self.layer.layer_type = 'ArcRest'
+            self.layer.save()
         super(LayerArcREST, self).save(*args, **kwargs)
 
 class LayerArcFeatureService(ArcServer, VectorType):
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance
-            self.layer_type = 'ArcFeatureServer'
+            self.layer.layer_type = 'ArcFeatureServer'
+            self.layer.save()
         super(LayerArcFeatureService, self).save(*args, **kwargs)
 
 class LayerXYZ(RasterType):
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance
-            self.layer_type = 'XYZ'
+            self.layer.layer_type = 'XYZ'
+            self.layer.save()
         super(LayerXYZ, self).save(*args, **kwargs)
 
 class LayerVector(VectorType):
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance
-            self.layer_type = 'Vector'
+            self.layer.layer_type = 'Vector'
+            self.layer.save()
         super(LayerVector, self).save(*args, **kwargs)
 
 class LayerWMS(RasterType):
-    # Are we using wms_help for anything? 
     wms_help = models.BooleanField(default=False, help_text='Enable simple selection for WMS fields. Only supports WMS 1.1.1')
     WMS_VERSION_CHOICES = (
         (None, ''),
@@ -879,36 +911,13 @@ class LayerWMS(RasterType):
     wms_additional = models.TextField(blank=True, null=True, default=None, help_text='additional WMS key-value pairs: &key=value...', verbose_name='WMS Additional Fields')
     wms_info = models.BooleanField(default=False, help_text='enable Feature Info requests on click')
     wms_info_format = models.CharField(max_length=255, blank=True, null=True, default=None, help_text='Available supported feature info formats')
+    
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance
-            self.layer_type = 'WMS'
+            self.layer.layer_type = 'WMS'
+            self.layer.save()
         super(LayerWMS, self).save(*args, **kwargs)
 
-
-class ChildOrder(models.Model):
-    parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')
-    
-    # The generic relation to point to either Theme or Layer
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
-    content_object = GenericForeignKey('content_type', 'object_id')
-    
-    order = models.PositiveIntegerField(blank=True, null=True, default=10)
-
-    ######################################################
-    #           DATES                                    #
-    ######################################################
-    date_created = models.DateTimeField(auto_now_add=True)
-    date_modified = models.DateTimeField(auto_now=True)
-
-    # @property
-    # def site(self):
-    #     parent_site_ids = [x.pk for x in self.parent_theme.site.all()]
-    #     content_site_ids = [x.pk for x in self.content_object.site.all()]
-    #     return Site.objects.filter(pk__in=parent_site_ids).filter(pk__in=content_site_ids)
-
-    class Meta:
-        ordering = ['order']
 
 
 class MultilayerDimension(models.Model):
