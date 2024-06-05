@@ -66,6 +66,10 @@ body {
   color: #00a564;
 }
 
+.fa.fa-eye-slash {
+  float: right;
+}
+
 .fas.fa-check-square{
   float: right;
   color: #00a564;

@@ -8,10 +8,12 @@ const Layer = ({
   borderColor,
   childData,
   topLevelThemeId,
-  themeType
+  themeType,
+  isActive,
+  handleToggleLayerChangeState
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
-  const [isActive, setIsActive] = useState(false);
+  const [isLayerInvisible, setIsLayerInvisible] = useState(false)
 
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
@@ -20,8 +22,9 @@ const Layer = ({
         event.detail.layerId
       );
       // Check if the event is for this specific layer
-      if (layer.id === event.detail.layerId) {
-        setIsActive(false);
+      if (layer.id === event.detail.layerId && isActive) {
+        console.log("im going to toggle state change")
+        handleToggleLayerChangeState(layer.id)
       }
     };
 
@@ -30,8 +33,35 @@ const Layer = ({
     return () => {
       window.removeEventListener("LayerDeactivated", handleLayerDeactivation);
     };
-  }, [layer.id]);
+  }, [layer.id, isActive]);
 
+  useEffect(() => {
+    // Event handler for the custom event
+    const handleLayerVisibilityChange = (event) => {
+        setIsLayerInvisible(event.detail.isInvisible);
+        console.log(event.detail)
+    };
+
+    // Add the event listener
+    window.addEventListener('layerVisibilityChanged', handleLayerVisibilityChange);
+
+    // Clean up the event listener on component unmount
+    return () => {
+        window.removeEventListener('layerVisibilityChanged', handleLayerVisibilityChange);
+    };
+}, []);
+
+  useEffect(() => {
+    if (isActive) {
+      var event = new CustomEvent('ReactLayerActivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
+      window.dispatchEvent(event);
+    }
+    else {
+      var event = new CustomEvent('ReactLayerDeactivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
+      window.dispatchEvent(event);
+    }
+  }, [isActive])
+  
   const toggleLinkBar = (event) => {
     event.preventDefault();
     event.stopPropagation(); // Prevent click from bubbling up to parent theme click handler
@@ -49,17 +79,23 @@ const Layer = ({
     console.log("bye", theme_id);
     event.stopPropagation(); // Again, prevent click from affecting parent
     if (theme_id && layer.id) {
-      window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
-      setIsActive(!isActive);
+      // window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
+      handleToggleLayerChangeState(layer.id)
     }
     // Implement additional logic as needed
   };
+
+
   const iconClass = () => {
-    if (themeType === "checkbox") {
-      return isActive ? "fas fa-check-square" : "far fa-square";
+    if (isLayerInvisible && isActive) {
+      return "fa fa-eye-slash";
     } else {
-      
-    return isActive ? "fa fa-check-circle" : "far fa-circle";} // Default icons
+      if (themeType === "checkbox") {
+        return isActive ? "fas fa-check-square" : "far fa-square";
+      } else {
+        return isActive ? "fa fa-check-circle" : "far fa-circle";
+      }
+    } // Default icons
   };
   const infoIconColor = showLinkBar ? "black" : "green";
   return (

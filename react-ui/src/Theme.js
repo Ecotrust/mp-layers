@@ -1,29 +1,124 @@
-import React from "react";
+import React, {useEffect} from "react"; 
 import axios from 'axios';
 import Layer from "./Layer"
 
 const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   const [expanded, setExpanded] = React.useState(false);
   const [childrenThemes, setChildrenThemes] = React.useState([]);
+  const [layersActiveStatus, setLayersActiveStatus] = React.useState({});
 
-  const fetchChildren = async () => {
-    try {
-      const response = await axios.get(`http://localhost:8002/layers/children/${theme.id}`);
-      const fetchedChildren = response.data; // Adjust this based on the actual response structure
-      setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
-    } catch (error) {
-      console.error('Error fetching children themes:', error);
-    }
-  };
-  
-  const handleClick = () => {
-    if (!expanded && childrenThemes.length === 0) {
-      console.log(theme)
-      window["reactToggleTheme"](theme.id);
+
+  useEffect(() => {
+    const initialize = async () => {
+      const hash = window.location.hash;
+
+      const searchParams = (new URL(window.location)).searchParams;
+
+      // Remove the leading `#` character
+      const hashParams = hash.slice(1);
+
+      // Parse the parameters from the hash
+      const params = new URLSearchParams(hashParams);
+
+      // Extract `themes[ids][]` parameters
+      const themeIds = params.getAll('themes[ids][]').map(id => parseInt(id, 10));
+      const searchThemeIds = searchParams.getAll('themes[ids][]').map(id => parseInt(id, 10));
+
+      // Extract `dls[]` parameters
+      const dls = params.getAll("dls[]");
+
+      // Initialize the dictionary for layers active status
+      const layersActiveStatusDict = {};
+
+      // Process the `dls` array in groups of three
+      for (let i = 0; i < dls.length; i += 3) {
+        const isVisible = dls[i] === 'true';
+        const opacity = parseFloat(dls[i + 1]);
+        const id = parseInt(dls[i + 2], 10);
+
+        // Add to dictionary with key as id and value as true or false based on visibility
+        layersActiveStatusDict[id] = isVisible;
+      }
+
+      // Merge with the existing state
+      setLayersActiveStatus(prevState => ({
+        ...prevState,
+        ...layersActiveStatusDict
+      }));
+      // Set expanded if the theme ID is in the URL
+      if (themeIds.includes(theme.id) || searchThemeIds.includes(theme.id)) {
+        setExpanded(true);
+      }
+      
+    };
+
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    const fetchChildren = async () => {
+      try {
+        var event = new CustomEvent('ReactThemeExpanded', { detail: { themeId : theme.id } });
+        window.dispatchEvent(event);
+        const response = await axios.get(`http://localhost:8002/layers/children/${theme.id}`);
+        const fetchedChildren = response.data; // Adjust this based on the actual response structure
+        setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
+        const layerDict = {}
+        fetchedChildren.forEach(child => {
+          layerDict[child.id] = false
+        });
+        // Merge with the existing state
+        setLayersActiveStatus(prevState => ({
+          ...layerDict,
+          ...prevState
+        }));
+      } catch (error) {
+        console.error('Error fetching children themes:', error);
+      }
+    };
+    
+    if (childrenThemes.length === 0 && expanded) {
       fetchChildren();
     }
+    
+  }, [childrenThemes, expanded, layersActiveStatus])
+  
+  useEffect(() => {
+    const handleLayerActivated = (event) => {
+      const { layerId} = event.detail;
+
+
+      // Set the layer's active status to true
+      setLayersActiveStatus(prevState => ({
+        ...prevState,
+        [layerId]: true
+      }));
+    };
+
+    window.addEventListener('layerActivated', handleLayerActivated);
+  }, [])
+  // 1. this needs to change, it renders once only
+  // 2. when i close a theme, it doesnt update the url for themes
+  
+  const handleClick = () => {
+    window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
+
+  const handleToggleLayerChangeState = (layerId) => {
+    setLayersActiveStatus(prevState => ({
+      ...prevState,
+      [layerId]: !prevState[layerId]
+    }))
+    const keyTrue = Object.keys(layersActiveStatus).find(key => layersActiveStatus[key] === true)
+    if ((theme.theme_type === "radio") && keyTrue) {
+      //deactivate current active layer and activate layer that was clicked
+      setLayersActiveStatus(prevState => ({
+        ...prevState,
+        [keyTrue]: !prevState[keyTrue]
+      }))
+    }
+  }
 
   // Determine the top-level theme ID to pass to child components
   const currentTopLevelThemeId = level === 0 ? theme.id : topLevelThemeId;
@@ -79,7 +174,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
               child.type === "theme" ? (
                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)} topLevelThemeId={currentTopLevelThemeId}/>
               ) : (
-                <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child}/>
+                <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState}/>
               )
             ))}
           </ul>
