@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import LinkBar from "./LinkBar";
 
@@ -14,7 +14,7 @@ const Layer = ({
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
   const [isLayerInvisible, setIsLayerInvisible] = useState(false)
-
+  const isInitialMount = useRef(true);
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
       console.log(
@@ -52,13 +52,27 @@ const Layer = ({
 }, []);
 
   useEffect(() => {
-    if (isActive) {
-      var event = new CustomEvent('ReactLayerActivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
-      window.dispatchEvent(event);
-    }
-    else {
-      var event = new CustomEvent('ReactLayerDeactivated', { detail: { "layerId": layer.id, "theme_id": theme_id, "topLevelThemeId": topLevelThemeId } });
-      window.dispatchEvent(event);
+
+    if (isInitialMount.current) {
+      // Skip the effect on the initial mount
+      isInitialMount.current = false;
+    } else {
+      // Only run this code on subsequent updates to isActive
+      if (isActive === true) {
+        // Dispatch the ReactLayerActivated event
+        const event = new CustomEvent('ReactLayerActivated', {
+          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId }
+        });
+        window.dispatchEvent(event);
+      } else if (isActive === false) {
+        // Dispatch the ReactLayerDeactivated event
+        const event = new CustomEvent('ReactLayerDeactivated', {
+          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId }
+        });
+        window.dispatchEvent(event);
+      } else {
+        console.log('isActive is undefined or null');
+      }
     }
   }, [isActive])
   

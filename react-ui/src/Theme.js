@@ -63,14 +63,15 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
         const response = await axios.get(`http://localhost:8002/layers/children/${theme.id}`);
         const fetchedChildren = response.data; // Adjust this based on the actual response structure
         setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
-        const layerDict = {}
+        const layerDict = {};
         fetchedChildren.forEach(child => {
-          layerDict[child.id] = false
+            layerDict[child.id] = layersActiveStatus[child.id] || false;
         });
+        
         // Merge with the existing state
         setLayersActiveStatus(prevState => ({
-          ...layerDict,
-          ...prevState
+            ...prevState,
+            ...layerDict
         }));
       } catch (error) {
         console.error('Error fetching children themes:', error);
@@ -84,9 +85,22 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   }, [childrenThemes, expanded, layersActiveStatus])
   
   useEffect(() => {
-    const handleLayerActivated = (event) => {
-      const { layerId} = event.detail;
+    if (expanded) {
+      childrenThemes.forEach((child) => {
+        if (layersActiveStatus[child.id]) {
+          setExpanded(true);
+        }
+      });
+    }
+  }, [expanded, childrenThemes, layersActiveStatus]);
 
+  useEffect(() => {
+    const handleLayerActivated = (event) => {
+      const { layerId, themeId} = event.detail;
+
+      if (themeId === theme.id) {
+        setExpanded(true);
+      }
 
       // Set the layer's active status to true
       setLayersActiveStatus(prevState => ({
@@ -101,6 +115,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   // 2. when i close a theme, it doesnt update the url for themes
   
   const handleClick = () => {
+    console.log("this is theme when clicked: ", theme.id)
     window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
@@ -164,22 +179,26 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
     </div>
     {expanded && (
       <div>
-        {childrenThemes === "no-children" ? (
-          <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
-            No layers
-          </div>
-        ) : (
-          <ul className="children-list">
-            {childrenThemes && childrenThemes.map(child => (
-              child.type === "theme" ? (
-                <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)} topLevelThemeId={currentTopLevelThemeId}/>
-              ) : (
-                <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState}/>
-              )
-            ))}
-          </ul>
-        )}
-      </div>
+      {childrenThemes === "no-children" ? (
+        <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+          No layers
+        </div>
+      ) : childrenThemes.length === 0 ? (
+        <div className="loading-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+          Loading...
+        </div>
+      ) : (
+        <ul className="children-list">
+          {childrenThemes && childrenThemes.map(child => (
+            child.type === "theme" ? (
+              <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)} topLevelThemeId={currentTopLevelThemeId} />
+            ) : (
+              <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} />
+            )
+          ))}
+        </ul>
+      )}
+    </div>
     )}
   </div>
   );
