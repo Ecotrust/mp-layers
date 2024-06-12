@@ -664,6 +664,8 @@ class LayerData:
     data_download:str
     kml:str
     description:str
+    minzoom:int
+    maxzoom:int
 
 # def picker_wrapper(request, template="picker_wrapper.html"):
 #     top_level_themes = Theme.all_objects.filter(theme_type="")
@@ -715,6 +717,8 @@ def get_children(request, parent_id):
                     'data_download': child_layer.data_download,
                     'kml': child_layer.kml,
                     'description': child_layer.description,
+                    "minzoom": child_layer.minZoom,
+                    "maxzoom": child_layer.maxZoom,
                 }
             if child_data:
                 child_data['order'] = child.order

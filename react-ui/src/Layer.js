@@ -14,6 +14,7 @@ const Layer = ({
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
   const [isLayerInvisible, setIsLayerInvisible] = useState(false)
+  const [stateZ, setStateZ] = useState(null);
   const isInitialMount = useRef(true);
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
@@ -35,21 +36,6 @@ const Layer = ({
     };
   }, [layer.id, isActive]);
 
-  useEffect(() => {
-    // Event handler for the custom event
-    const handleLayerVisibilityChange = (event) => {
-        setIsLayerInvisible(event.detail.isInvisible);
-        console.log(event.detail)
-    };
-
-    // Add the event listener
-    window.addEventListener('layerVisibilityChanged', handleLayerVisibilityChange);
-
-    // Clean up the event listener on component unmount
-    return () => {
-        window.removeEventListener('layerVisibilityChanged', handleLayerVisibilityChange);
-    };
-}, []);
 
   useEffect(() => {
 
@@ -75,6 +61,32 @@ const Layer = ({
       }
     }
   }, [isActive])
+
+  useEffect(() => {
+    const checkZoomLevel = () => {
+      const currentZoom = window.app.map.zoom();
+      setStateZ(currentZoom);
+
+      if (layer.hasOwnProperty('minzoom') && layer.hasOwnProperty('maxzoom')) {
+        if ((layer.minzoom && currentZoom < layer.minzoom) || (layer.maxzoom && currentZoom > layer.maxzoom)) {
+          setIsLayerInvisible(true);
+        } else {
+          setIsLayerInvisible(false);
+        }
+      }
+    };
+
+    // Initial check
+    checkZoomLevel();
+
+    // Add event listener for zoom changes
+    window.app.map.getView().on('change:resolution', checkZoomLevel);
+
+    // Clean up the event listener on component unmount
+    return () => {
+      window.app.map.getView().un('change:resolution', checkZoomLevel);
+    };
+  }, [layer.minZoom, layer.maxZoom]);
   
   const toggleLinkBar = (event) => {
     event.preventDefault();
@@ -90,7 +102,7 @@ const Layer = ({
   // Handler for the main layer item click (excluding the info icon)
   const layerClickHandler = (event) => {
     event.preventDefault();
-    console.log("bye", theme_id);
+    console.log(layer)
     event.stopPropagation(); // Again, prevent click from affecting parent
     if (theme_id && layer.id) {
       // window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
