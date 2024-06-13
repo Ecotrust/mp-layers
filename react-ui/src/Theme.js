@@ -37,7 +37,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
         const id = parseInt(dls[i + 2], 10);
 
         // Add to dictionary with key as id and value as true or false based on visibility
-        layersActiveStatusDict[id] = isVisible;
+        layersActiveStatusDict[id] = true;
       }
 
       // Merge with the existing state
