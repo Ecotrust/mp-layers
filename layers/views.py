@@ -730,7 +730,7 @@ def get_children(request, parent_id):
     return JsonResponse(final_children, safe=False)
 
 def top_level_themes(request):
-    top_level_themes = Theme.objects.filter(theme_type="")
+    top_level_themes = Theme.objects.filter(theme_type="", is_visible=True).exclude(display_name="Companion").order_by("order", "name")
     themes = []
     for theme in top_level_themes:
         data = {
