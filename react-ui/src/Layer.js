@@ -125,32 +125,35 @@ const Layer = ({
   };
   const infoIconColor = showLinkBar ? "black" : "green";
   return (
-    <div
-      className="children-item"
-      onClick={layerClickHandler}
-      style={layerStyle}
-    >
-      {/* <i className={isActive ? "fa fa-check-circle" : "far fa-circle"}></i>{" "} */}
-      <i className={iconClass()}></i>
-      {/* This could represent a selection state, adjust as needed */}
-      {layer.name}
+    <div className="children-item" onClick={layerClickHandler} style={layerStyle}>
+      <div className="main-content">
+      <div className="icon-container">
       <i
         className="fa fa-info-circle"
         onClick={toggleLinkBar}
         style={{ color: infoIconColor }}
       ></i>
-      {showLinkBar && (
-        <LinkBar
-          theme={layer}
-          isVisible={showLinkBar}
-          kml={childData.kml} // Assume the URLs are in the 'childData' object
-          data_download={childData.data_download}
-          metadata={childData.metadata}
-          source={childData.source}
-          description={childData.description}
-        />
-      )}
     </div>
+    
+    <div className="text-container">
+      {layer.name}
+    </div>
+    <div className="icon-container">
+      <i className={iconClass()}></i>
+    </div>
+    </div>
+    {showLinkBar && (
+      <LinkBar
+        theme={layer}
+        isVisible={showLinkBar}
+        kml={childData.kml} 
+        data_download={childData.data_download}
+        metadata={childData.metadata}
+        source={childData.source}
+        description={childData.description}
+      />
+    )}
+  </div>
   );
 };
 
