@@ -70,30 +70,10 @@ body {
   color: #00a564;
   margin: 10px; /* Space between icons and text */
 }
-/* .far.fa-circle {
-  float: right;
-  color: #00a564;
-}
 
 .fa.fa-eye-slash {
-  float: right;
+  font-size: 12px;
 }
-
-.fas.fa-check-square{
-  float: right;
-  color: #00a564;
-} 
-
-.far.fa-square{
-  float: right;
-  color: #00a564;
-}
-
-.fa-check-circle {
-  float: right;
-  color: #00a564;
-} */
-
 .children-item:hover {
   background-color: #e9e9e9;
 }
@@ -107,13 +87,10 @@ ul {
   background-color: transparent;
   align-items: center;
   padding: 8px;
-  margin-bottom: 1px;
   cursor: pointer;
   font-size: 16px;
+  border-bottom: 1px solid #dddddd;
 }
-/* .children-item .fas.fa-chevron-right {
-  float: right;
-} */
 
 .main-content {
   display: flex;

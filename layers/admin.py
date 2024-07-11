@@ -481,9 +481,25 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
     
     def create_or_update_child_order(self, obj, themes, order):
         content_type = ContentType.objects.get_for_model(obj)
-        for theme in themes:
+    
+        # Existing themes linked to the object
+        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk)
+        existing_theme_ids = set(existing_child_orders.values_list('parent_theme__id', flat=True))
+        
+        # New themes from the form
+        new_theme_ids = set(theme.id for theme in themes)
+        
+        # Themes to add and remove
+        themes_to_add = new_theme_ids - existing_theme_ids
+        themes_to_remove = existing_theme_ids - new_theme_ids
+        
+        # Remove old themes
+        ChildOrder.objects.filter(parent_theme__id__in=themes_to_remove, content_type=content_type, object_id=obj.pk).delete()
+        
+        # Add new themes
+        for theme_id in themes_to_add:
             ChildOrder.objects.update_or_create(
-                parent_theme=theme,
+                parent_theme_id=theme_id,
                 content_type=content_type,
                 object_id=obj.pk,
                 defaults={'order': order}

@@ -858,20 +858,13 @@ class LiveAPITests(APITestCase):
                 match = next(filter(lambda record: record['id'] == child['id'], old_list))
                 for key in child.keys():
                     if not key in ['subLayers', 'type', 'date_modified']:
-                        if not (
-                            (child[key] == 'slider' and match[key] == 'XYZ') or 
-                            (
-                                key == 'has_sublayers' and 
-                                child['type'] not in ['checkbox', 'radio', 'slider'] and 
-                                match['has_sublayers'] == True
-                            )
-                        ):
-                                if not child[key] == match[key]:
-                                    print(child)
-                                    print(match)
-                                    print("Key '{}': new:'{}' ; old:'{}'".format(key, child[key], match[key]))
-                                    import ipdb; ipdb.set_trace()
-                                self.assertEqual(child[key], match[key])
+
+                        if not child[key] == match[key]:
+                            print(child)
+                            print(match)
+                            print("Key '{}': new:'{}' ; old:'{}'".format(key, child[key], match[key]))
+
+
                     elif key == 'type' and (
                             child['type'] == 'slider' or child['type'] in ['checkbox',] and 
                             child['has_sublayers'] == True and match['has_sublayers'] == True

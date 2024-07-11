@@ -537,18 +537,27 @@ class Layer(models.Model, SiteFlags):
         }
 
     def dimensionRecursion(self, dimensions, associations):
-        associationArray = {}
+        if not dimensions:
+            return None
+
         dimension = dimensions.pop(0)
+        associationArray = {}
+
         for value in sorted(dimension.multilayerdimensionvalue_set.all(), key=lambda x: x.order):
             value_associations = associations.filter(pk__in=[x.pk for x in value.associations.all()])
+            
+            print(f"Processing dimension value: {value.value}")
+            print(f"Filtered associations: {value_associations}")
 
-            if len(dimensions) > 0:
-                associationArray[str(value.value)] = self.dimensionRecursion(list(dimensions), value_associations)
-            else:
-                if len(value_associations) == 1 and value_associations[0].layer:
+            if dimensions:  # If there are more dimensions to process
+                nested_association_array = self.dimensionRecursion(list(dimensions), value_associations)
+                associationArray[str(value.value)] = nested_association_array
+            else:  # No more dimensions, just collect the layers
+                if len(value_associations) >= 1 and value_associations[0].layer:
                     associationArray[str(value.value)] = value_associations[0].layer.pk
                 else:
                     associationArray[str(value.value)] = None
+
         return associationArray
 
     @property

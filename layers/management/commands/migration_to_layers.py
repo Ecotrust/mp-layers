@@ -99,7 +99,7 @@ class Command(BaseCommand):
                         data_publish_date=old_layer.data_publish_date,
                         catalog_name=old_layer.catalog_name,
                         catalog_id=old_layer.catalog_id,
-                        metadata=old_layer.metadata,
+                        metadata=old_layer.metadata_link,
                         source=old_layer.source,
                         bookmark=old_layer.bookmark,
                         kml=old_layer.kml,
@@ -385,21 +385,25 @@ class Command(BaseCommand):
             self.stdout.write(f'Migrated association: {dm_association.name}')
 
         # LOOP 8: for each DM MLDV, create layers MLDV
+        dimension_values = []
         for dm_value in DataManagerMultilayerDimensionValue.objects.all():
-            dimension = MultilayerDimension.objects.get(uuid=dm_value.dimension.uuid)  # Ensure the dimension exists
-            dimension_value = MultilayerDimensionValue.objects.create(
+            dimension = MultilayerDimension.objects.get(uuid=dm_value.dimension.uuid)
+            dimension_value = MultilayerDimensionValue(
                 uuid=dm_value.uuid,
                 dimension=dimension,
                 value=dm_value.value,
                 label=dm_value.label,
                 order=dm_value.order,
             )
-            # Migrate associations for each value
+            dimension_values.append(dimension_value)
+
+        # Bulk create instances
+        MultilayerDimensionValue.objects.bulk_create(dimension_values)
+
+        # Migrate associations for each value
+        for dm_value in DataManagerMultilayerDimensionValue.objects.all():
+            dimension_value = MultilayerDimensionValue.objects.get(uuid=dm_value.uuid)
             for dm_association in dm_value.associations.all():
                 association = MultilayerAssociation.objects.get(uuid=dm_association.uuid)
                 dimension_value.associations.add(association)
             self.stdout.write(f'Migrated dimension value: {dm_value.value}')
-
-# when you create the associations and tie with layer, url is created based on .../mapserver/export?time={EPOCHTIME}
-
-                

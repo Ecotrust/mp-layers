@@ -19,6 +19,7 @@ layer_type_to_model = {
     'ArcRest': LayerArcREST,
     'ArcFeatureServer': LayerArcFeatureService,
     'Vector': LayerVector,
+    "slider": Layer
 }
 
 layer_type_to_serializer = {
@@ -27,6 +28,7 @@ layer_type_to_serializer = {
     'ArcRest': LayerArcRESTSerializer,
     'ArcFeatureServer': LayerArcFeatureServiceSerializer,
     'Vector': LayerVectorSerializer,
+    "slider": SliderLayerSerializer
 }
 def dictLayerCache(layer, site_id=None):
     from django.core.cache import cache
@@ -246,25 +248,32 @@ def get_layer_details(request, layerID):
     serialized_data = {}
     try:
         # First, get the generic layer instance
-        layer = Layer.objects.get(pk=layerID)
-
+        layer = Layer.all_objects.get(pk=layerID)
+        specific_layer_model = None
         # Use the layer_type attribute to get the specific model class
-        specific_layer_model = layer_type_to_model.get(layer.layer_type)
-
+        if layer.layer_type != "slider":
+            specific_layer_model = layer_type_to_model.get(layer.layer_type)
+            print(f"Specific Layer Model: {specific_layer_model}")
         # Now, use the specific model class to get the specific layer instance
-        if specific_layer_model:
+        if specific_layer_model and specific_layer_model != Layer:
             specific_layer = specific_layer_model.objects.get(layer=layer)
+            print(f"Specific Layer: {specific_layer}")
+        else: 
+            specific_layer = layer
         specific_layer_serializer_class = layer_type_to_serializer.get(layer.layer_type)
-
+        print(f"Specific Layer Serializer Class: {specific_layer_serializer_class}")
         # Instantiate the serializer with the specific layer instance
         if specific_layer_serializer_class:
             specific_layer_serializer = specific_layer_serializer_class(specific_layer)
-
+            print(f"Specific Layer Serializer: {specific_layer_serializer}")
             # Now you can use the serializer to get the serialized data
             serialized_data = specific_layer_serializer.data
+            print(f"Serialized Data: {serialized_data}")
+        else:
+            serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
         return JsonResponse(serialized_data)
     except ObjectDoesNotExist as e:
-        subtheme = Theme.objects.get(pk=layerID)
+        subtheme = Theme.all_objects.get(pk=layerID)
         serialized_data = SubThemeSerializer(subtheme).data
         return JsonResponse(serialized_data)
 

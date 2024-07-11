@@ -97,7 +97,8 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   useEffect(() => {
     const handleLayerActivated = (event) => {
       const { layerId, themeId} = event.detail;
-
+      console.log("this is the event's theme: " + themeId)
+      console.log("this is the theme" + theme.id)
       if (themeId === theme.id) {
         setExpanded(true);
       }
@@ -172,7 +173,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
     <div>
     <div className={level < 1 ? "column-item picker" : "column-item"} onClick={handleClick} style={{
           backgroundColor: expanded ? getGreenShade(level) : "",
-          border: borderColor ? `3px solid ${themeBorderColor}` : "none"
+          borderLeft: borderColor ? `7px solid ${themeBorderColor}` : "none"
         }}>
       {theme.name}
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>

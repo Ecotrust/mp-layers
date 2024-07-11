@@ -317,7 +317,10 @@ def get_specific_layer_instance(layer):
     if isinstance(layer, Layer):
         # model = get_model_by_layer_type(layer.layer_type)
         try:
-            return layer.model.objects.get(layer=layer)
+            if layer.layer_type == "slider":
+                return layer
+            else: 
+                return layer.model.objects.get(layer=layer)
         except:
             pass
     return None
@@ -836,3 +839,48 @@ class SubLayerSerializer(serializers.ModelSerializer):
         return obj.tiles_link
     def get_type(self,obj):
         return obj.layer_type
+    
+class SliderLayerSerializer(serializers.ModelSerializer):
+    order = serializers.SerializerMethodField()
+    parent = serializers.SerializerMethodField()
+    type = serializers.CharField(default="slider", read_only=True)
+    tiles = serializers.SerializerMethodField()
+    queryable = serializers.BooleanField(default=False, read_only=True)
+    wms_slug = serializers.CharField(default=None, read_only=True)
+    wms_version = serializers.CharField(default=None, read_only=True)
+    wms_format = serializers.CharField(default=None, read_only=True)
+    wms_srs = serializers.CharField(default=None, read_only=True)
+    wms_timing = serializers.CharField(default=None, read_only=True)
+    wms_time_item = serializers.CharField(default=None, read_only=True)
+    wms_styles = serializers.CharField(default=None, read_only=True)
+    wms_additional = serializers.CharField(default="", read_only=True)
+    wms_info = serializers.BooleanField(default=False, read_only=True)
+    wms_info_format = serializers.CharField(default=None, read_only=True)
+
+    custom_style = serializers.CharField(default=None, read_only=True)
+    outline_width = serializers.IntegerField(default=None, read_only=True)
+    outline_color = serializers.CharField(default=None, read_only=True)
+    outline_opacity = serializers.FloatField(default=None, read_only=True)
+    fill_opacity = serializers.FloatField(default=None, read_only=True)
+    color = serializers.CharField(default=None, read_only=True)
+    point_radius = serializers.IntegerField(default=None, read_only=True)
+    graphic = serializers.CharField(default=None, read_only=True)
+    graphic_scale = serializers.FloatField(default=1.0, read_only=True)
+
+    arcgis_layers = serializers.CharField(default=None, read_only=True)
+    password_protected = serializers.BooleanField(default=False, read_only=True)
+    disable_arcgis_attributes = serializers.BooleanField(default=False, read_only=True)
+    query_by_point = serializers.BooleanField(default=False, read_only=True)
+    companion_layers = serializers.ListField(default=[], read_only=True)
+    subLayers = serializers.ListField(default=[], read_only=True)
+    class Meta(LayerSerializer.Meta):
+        model = Layer
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
+    def get_order(self, obj):
+        return get_layer_order(obj)
+    def get_parent(self, obj):
+        return None
+    def get_tiles(self,obj):
+        tiles_name = obj.slug_name
+
+        return tiles_name

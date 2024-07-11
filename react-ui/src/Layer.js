@@ -96,7 +96,7 @@ const Layer = ({
     console.log("LinkBar Toggled", !showLinkBar);
   };
   const layerStyle = {
-    border: `3px solid ${borderColor}`,
+    borderLeft: `7px solid ${borderColor}`,
     // ... other styles you might have
   };
   // Handler for the main layer item click (excluding the info icon)
