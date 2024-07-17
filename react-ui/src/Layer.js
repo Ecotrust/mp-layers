@@ -18,13 +18,10 @@ const Layer = ({
   const isInitialMount = useRef(true);
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
-      console.log(
-        "Received Layer Deactivation for layerId:",
-        event.detail.layerId
-      );
+
       // Check if the event is for this specific layer
       if (layer.id === event.detail.layerId && isActive) {
-        console.log("im going to toggle state change")
+
         handleToggleLayerChangeState(layer.id)
       }
     };
@@ -91,9 +88,9 @@ const Layer = ({
   const toggleLinkBar = (event) => {
     event.preventDefault();
     event.stopPropagation(); // Prevent click from bubbling up to parent theme click handler
-    console.log("LinkBar Clicked");
+
     setShowLinkBar(!showLinkBar);
-    console.log("LinkBar Toggled", !showLinkBar);
+
   };
   const layerStyle = {
     borderLeft: `7px solid ${borderColor}`,
@@ -102,7 +99,7 @@ const Layer = ({
   // Handler for the main layer item click (excluding the info icon)
   const layerClickHandler = (event) => {
     event.preventDefault();
-    console.log(layer)
+
     event.stopPropagation(); // Again, prevent click from affecting parent
     if (theme_id && layer.id) {
       // window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);

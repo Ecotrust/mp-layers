@@ -15,7 +15,6 @@ const LinkBar = ({
     event.stopPropagation();
     // Further code if needed
   };
-  console.log(kml);
   const renderLink = (href, text, tooltip) => {
     return (
       <OverlayTrigger overlay={<Tooltip>{tooltip}</Tooltip>}>

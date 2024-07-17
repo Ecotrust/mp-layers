@@ -97,8 +97,6 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   useEffect(() => {
     const handleLayerActivated = (event) => {
       const { layerId, themeId} = event.detail;
-      console.log("this is the event's theme: " + themeId)
-      console.log("this is the theme" + theme.id)
       if (themeId === theme.id) {
         setExpanded(true);
       }
@@ -116,7 +114,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   // 2. when i close a theme, it doesnt update the url for themes
   
   const handleClick = () => {
-    console.log("this is theme when clicked: ", theme.id)
+
     window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
