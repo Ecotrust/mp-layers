@@ -72,9 +72,15 @@ class CompanionLayerChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
         return obj.name
+    
+class ChildrenLayerChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        # Return the name of the Theme object to be used as the label for the choice
+        return obj.name
 
 class ThemeForm(forms.ModelForm):
-    themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
+    children_themes = ThemeChoiceField(queryset=Theme.all_objects.filter(theme_type__in=['radio', 'checkbox']), required=False, widget = admin.widgets.FilteredSelectMultiple('children themes', False))
+    children_layers = ChildrenLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('children layers', False))
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 
@@ -82,29 +88,57 @@ class ThemeForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         theme_type = cleaned_data.get('theme_type')
-        themes = cleaned_data.get('themes')
+        # themes = cleaned_data.get('themes')
         order = cleaned_data.get('order')
 
-        if theme_type in ['radio', 'checkbox']:
-            if not themes:
-                self.add_error('themes', 'A theme must be selected.')
-            if order is None:
-                self.add_error('order', 'Order must be filled out.')
+        # if theme_type in ['radio', 'checkbox']:
+        #     if not themes:
+        #         self.add_error('themes', 'A theme must be selected.')
+        #     if order is None:
+        #         self.add_error('order', 'Order must be filled out.')
 
         return cleaned_data
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
-            content_type = ContentType.objects.get_for_model(self.instance)
-            child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=self.instance.pk)
-            initial_themes = child_orders.values_list('parent_theme', flat=True)
-            self.fields['themes'].initial = list(initial_themes)
+            content_type_for_theme = ContentType.objects.get_for_model(self.instance)
+            content_type_for_layer = ContentType.objects.get_for_model(Layer)
+            child_orders_for_theme = ChildOrder.objects.filter(content_type=content_type_for_theme, parent_theme=self.instance)
+            child_orders_for_layers =ChildOrder.objects.filter(content_type=content_type_for_layer, parent_theme=self.instance )
+            initial_themes = child_orders_for_theme.values_list('object_id', flat=True)
+            initial_layers = child_orders_for_layers.values_list('object_id', flat=True)
+            # Recursively find all ancestors of the initially selected themes
+            def find_all_ancestors(theme_ids):
+                ancestors = set()
+                themes_to_check = list(theme_ids)
+                
+                while themes_to_check:
+                    current_theme_id = themes_to_check.pop()
+                    parent_orders = ChildOrder.objects.filter(content_type=content_type_for_theme, object_id=current_theme_id)
+                    for parent_order in parent_orders:
+                        parent_theme_id = parent_order.parent_theme_id
+                        if parent_theme_id not in ancestors:
+                            ancestors.add(parent_theme_id)
+                            themes_to_check.append(parent_theme_id)
+                
+                return ancestors
+
+            parents_of_initial_themes = find_all_ancestors(initial_themes)
+            
+            # Exclude these parents from the queryset
+            filtered_queryset = Theme.all_objects.filter(
+                theme_type__in=['radio', 'checkbox']
+            ).exclude(id__in=parents_of_initial_themes)
+            
+            self.fields['children_themes'].queryset = filtered_queryset
+            self.fields['children_themes'].initial = list(initial_themes)
+            self.fields['children_layers'].initial = list(initial_layers)
          # Prefill the order field based on ChildOrder, if theme_type is radio or checkbox
         if self.instance.theme_type in ['radio', 'checkbox']:
             # Assuming there's at least one ChildOrder, using the order from the first one.
             # Adjust as necessary to select a different ChildOrder if there are multiple.
-            first_child_order = child_orders.first()
+            first_child_order = child_orders_for_theme.first()
             if first_child_order:
                 self.fields['order'].initial = first_child_order.order
 
@@ -112,6 +146,59 @@ class ThemeAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'name', 'order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
+
+    fieldsets = (
+        ('BASIC INFO', {
+            'fields': (
+                'name',
+                'display_name',
+                'site',
+                "order",
+                "is_visible",
+            )
+        }),
+        ("METADATA", {
+            "fields": (
+                "description",
+                "overview",
+                "learn_more",
+                "data_notes",
+                "source",
+                "disabled_message",
+                "data_download",
+                # "slug_name",
+            )
+        }),
+        ('CHILD THEME ORGANIZATION', {
+            # 'classes': ('collapse', 'open',),
+            'fields': (
+                'children_themes',
+                'children_layers',
+                "theme_type",
+                # "order_records"
+            )
+        }),
+        ("CATALOG DISPLAY", {
+            "fields": (
+                "header_image",
+                "header_attrib",
+                "thumbnail", 
+                "factsheet_thumb",
+                "factsheet_link",
+                "feature_image",
+                "feature_excerpt",
+                "feature_link",
+            )
+        }),
+        ("LEGEND", {
+            "fields": (
+                "show_legend",
+                "legend",
+                "legend_title", 
+                "legend_subtitle",
+            )
+        })
+    )
 
     class Media:
         js = ['theme_admin.js',]
@@ -135,53 +222,74 @@ class ThemeAdmin(admin.ModelAdmin):
 
         return db_field.formfield(**kwargs)
     
+    def create_or_update_child_order_for_themes(self, obj, themes):
+        content_type = ContentType.objects.get_for_model(obj)
+    
+        # Existing themes linked to the object
+        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, parent_theme=obj)
+        existing_theme_ids = set(existing_child_orders.values_list('object_id', flat=True))
+        
+        # New themes from the form
+        new_theme_ids = set(theme.id for theme in themes)
+        
+        # Themes to add and remove
+        themes_to_add = new_theme_ids - existing_theme_ids
+        themes_to_remove = existing_theme_ids - new_theme_ids
+        
+        # Remove old themes
+        ChildOrder.objects.filter(parent_theme=obj, content_type=content_type, object_id__in=themes_to_remove).delete()
+        
+        # Add new themes
+        for theme_id in themes_to_add:
+            ChildOrder.objects.update_or_create(
+                parent_theme_id=obj.pk,
+                content_type=content_type,
+                object_id=theme_id,
+                defaults={'order': 0}
+            )
+
+    def create_or_update_child_order_for_layers(self, obj, layers):
+        content_type = ContentType.objects.get_for_model(Layer)
+    
+        # Existing themes linked to the object
+        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, parent_theme=obj)
+        existing_layer_ids = set(existing_child_orders.values_list('object_id', flat=True))
+
+        # New themes from the form
+        new_layer_ids = set(layer.id for layer in layers)
+
+        # Themes to add and remove
+        layers_to_add = new_layer_ids - existing_layer_ids
+        layers_to_remove = existing_layer_ids - new_layer_ids
+
+        # Remove old themes
+        ChildOrder.objects.filter(parent_theme=obj, content_type=content_type, object_id__in=layers_to_remove).delete()
+        
+        # Add new themes
+        for layer_id in layers_to_add:
+            ChildOrder.objects.update_or_create(
+                parent_theme_id=obj.pk,
+                content_type=content_type,
+                object_id=layer_id,
+                defaults={'order': 0}
+            )
+
     def save_model(self, request, obj, form, change):
 
         with transaction.atomic():
-            # When creating a new theme
-            if not change:
-                # If theme_type is 'radio' or 'checkbox', we don't want to use the 'order' field
-                if form.cleaned_data['theme_type'] in ['radio', 'checkbox']:
-                    obj.order = None  # Set order to None to ignore it when saving the Theme
             
             # When updating an existing theme
             if change:
                 original_theme = Theme.all_objects.get(pk=obj.pk)
-                original_theme_type = original_theme.theme_type
-                new_theme_type = form.cleaned_data.get('theme_type')
-                # Check if theme_type was changed from 'radio' or 'checkbox' to something else
-                theme_type_changed_from_radio_checkbox = original_theme_type in ['radio', 'checkbox'] and new_theme_type not in ['radio', 'checkbox']
-                # Check if theme_type was changed to 'radio' or 'checkbox' from another value (including None)
-                theme_type_changed_to_radio_checkbox = original_theme_type not in ['radio', 'checkbox'] and new_theme_type in ['radio', 'checkbox']
-                
-                # If changing away from 'radio' or 'checkbox', delete associated ChildOrder
-                if theme_type_changed_from_radio_checkbox:
-                    content_type = ContentType.objects.get_for_model(obj)
-                    ChildOrder.objects.filter(content_type=content_type, object_id=obj.id).delete()
-                
-                # If changing to 'radio' or 'checkbox', set order to None
-                if theme_type_changed_to_radio_checkbox:
-                    obj.order = None
-            
+
             # Save the Theme object
             super().save_model(request, obj, form, change)
             
-            if (not change or theme_type_changed_to_radio_checkbox) and form.cleaned_data['theme_type'] in ['radio', 'checkbox']:
-                parent_themes = form.cleaned_data.get('themes', [])
-                order = form.cleaned_data.get('order', None)
-                content_type = ContentType.objects.get_for_model(obj)
-
-                if parent_themes:
-                    for parent_theme in parent_themes:
-                        ChildOrder.objects.update_or_create(
-                            parent_theme=parent_theme,
-                            content_type=content_type,
-                            object_id=obj.pk,
-                            defaults={'order': order}
-                        )
-
-
-
+            themes = form.cleaned_data.get('children_themes', [])
+            layers = form.cleaned_data.get('children_layers', [])
+            print(layers)
+            self.create_or_update_child_order_for_themes(obj, themes)
+            self.create_or_update_child_order_for_layers(obj, layers)
 
 class LayerForm(forms.ModelForm):
 

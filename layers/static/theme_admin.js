@@ -7,23 +7,23 @@ document.addEventListener("DOMContentLoaded", function() {
     if (themeTypeSelectBox && themesSelectorDiv) {
         themeTypeSelectBox.closest('.form-row').insertAdjacentElement('afterend', themesSelectorDiv);
     }
-    function updateThemesVisibility() {
-        // Get the selected value of the theme_type dropdown
-        var themeTypeValue = document.querySelector('#id_theme_type').value;
+    // function updateThemesVisibility() {
+    //     // Get the selected value of the theme_type dropdown
+    //     var themeTypeValue = document.querySelector('#id_theme_type').value;
 
-        // Select the div that contains the themes selector
-        var themeSelectorDiv = document.querySelector('.form-row.field-themes');
+    //     // Select the div that contains the themes selector
+    //     var themeSelectorDiv = document.querySelector('.form-row.field-themes');
 
-        // If the selected value is 'radio' or 'checkbox', show the themes selector, otherwise hide it
-        if (themeTypeValue === 'radio' || themeTypeValue === 'checkbox') {
-            themeSelectorDiv.style.display = ''; // Show the theme selector
-        } else {
-            themeSelectorDiv.style.display = 'none'; // Hide the theme selector
-        }
-    }
+    //     // If the selected value is 'radio' or 'checkbox', show the themes selector, otherwise hide it
+    //     // if (themeTypeValue === 'radio' || themeTypeValue === 'checkbox') {
+    //     //     themeSelectorDiv.style.display = ''; // Show the theme selector
+    //     // } else {
+    //     //     themeSelectorDiv.style.display = 'none'; // Hide the theme selector
+    //     // }
+    // }
     
-    // Run once on load in case of pre-selected value
-    updateThemesVisibility();
+    // // Run once on load in case of pre-selected value
+    // updateThemesVisibility();
     
     document.querySelector('#id_theme_type').addEventListener('change', updateThemesVisibility);
 });

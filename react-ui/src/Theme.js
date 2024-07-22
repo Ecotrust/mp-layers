@@ -85,7 +85,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   }, [childrenThemes, expanded, layersActiveStatus])
   
   useEffect(() => {
-    if (expanded) {
+    if (expanded && childrenThemes!= "no-children") {
       childrenThemes.forEach((child) => {
         if (layersActiveStatus[child.id]) {
           setExpanded(true);
