@@ -143,6 +143,46 @@ class Theme(models.Model, SiteFlags):
 
         return parent
 
+    @property
+    def ancestor_ids(self):
+        # Get the ContentType for the Theme model
+        content_type = ContentType.objects.get_for_model(self.__class__)
+
+        # Find the ChildOrder instance that refers to this theme
+        child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
+        # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
+        #   and themes, we can query 'objects' by the possible ids of matching themes
+        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_themes = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
+
+        # Initialize an empty list to hold ancestor theme ids
+        ancestor_theme_ids = []
+
+        # Helper function to get ancestors recursively
+        def get_ancestor_ids(theme):
+            content_type = ContentType.objects.get_for_model(theme.__class__)
+            child_orders = ChildOrder.objects.filter(object_id=theme.id, content_type=content_type)
+            parent_ids = [x.parent_theme.pk for x in child_orders]
+            if parent_ids:
+                ancestor_theme_ids.extend(parent_ids)
+                parents = Theme.objects.filter(pk__in=parent_ids).order_by('order', 'name', 'id')
+                for parent in parents:
+                    get_ancestor_ids(parent)
+
+        # For each parent, get its ancestor theme ids
+        for parent_theme in parent_themes:
+            get_ancestor_ids(parent_theme)
+
+        # Return ancestor theme ids
+        return ancestor_theme_ids
+        # TO DO: create ancestor theme ids array
+        # FOR EACH PARENT, GET PARENT ANCESTOR THEME IDS
+        # APPEND TO ANCESTOR THEME IDS ARRAY
+        # RETURN ANCESTOR THEME IDS
+
+    @property
+    def ancestors(self):
+        return Theme.objects.filter(pk__in=self.ancestor_ids)
 
     ######################################################
     #           CATALOG COMPATIBILITY                    #

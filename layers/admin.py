@@ -575,6 +575,11 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         extra_context['CATALOG_TECHNOLOGY'] = settings.CATALOG_TECHNOLOGY
         extra_context['CATALOG_PROXY'] = settings.CATALOG_PROXY
         return super(LayerAdmin, self).change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+    def add_view(self, request, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['CATALOG_TECHNOLOGY'] = getattr(settings, 'CATALOG_TECHNOLOGY', 'default')
+        extra_context['CATALOG_PROXY'] = getattr(settings, 'CATALOG_PROXY', '')
+        return super(LayerAdmin, self).add_view(request, form_url=form_url, extra_context=extra_context)
 
     def get_queryset(self, request):
         #use our manager, rather than the default one

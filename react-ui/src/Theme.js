@@ -166,12 +166,12 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
     return `hsl(${newHue}, ${baseSaturation}%, ${newLight}%, .7)`;
     // Adjust the percentage for the desired effect
   };
+  const indentationWidth = 20;
   const themeBorderColor = borderColor || getGreenShade(level);
   return (
     <div>
     <div className={level < 1 ? "column-item picker" : "column-item"} onClick={handleClick} style={{
           backgroundColor: expanded ? getGreenShade(level) : "",
-          borderLeft: borderColor ? `7px solid ${themeBorderColor}` : "none"
         }}>
       {theme.name}
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
@@ -189,11 +189,22 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
       ) : (
         <ul className="children-list">
           {childrenThemes && childrenThemes.map(child => (
-            child.type === "theme" ? (
-              <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level)} topLevelThemeId={currentTopLevelThemeId} />
-            ) : (
-              <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} />
-            )
+             <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
+             <div style={{
+               position: 'absolute',
+               left: 0,
+               width: `${indentationWidth}px`,
+               height: '100%',
+               backgroundColor: getGreenShade(level + 1)
+             }}></div>
+             <div style={{ paddingLeft: `${indentationWidth}px` }}>
+               {child.type === "theme" ? (
+                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} />
+               ) : (
+                 <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} />
+               )}
+             </div>
+           </div>
           ))}
         </ul>
       )}

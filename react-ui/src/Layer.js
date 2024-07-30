@@ -44,13 +44,13 @@ const Layer = ({
       if (isActive === true) {
         // Dispatch the ReactLayerActivated event
         const event = new CustomEvent('ReactLayerActivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId }
+          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
         });
         window.dispatchEvent(event);
       } else if (isActive === false) {
         // Dispatch the ReactLayerDeactivated event
         const event = new CustomEvent('ReactLayerDeactivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId }
+          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
         });
         window.dispatchEvent(event);
       } else {
@@ -93,7 +93,7 @@ const Layer = ({
 
   };
   const layerStyle = {
-    borderLeft: `7px solid ${borderColor}`,
+    // borderLeft: `7px solid ${borderColor}`,
     // ... other styles you might have
   };
   // Handler for the main layer item click (excluding the info icon)
