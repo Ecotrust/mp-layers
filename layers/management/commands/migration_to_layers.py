@@ -365,7 +365,13 @@ class Command(BaseCommand):
         # Find the corresponding layer in the Layers module by UUID
                 corresponding_layer = LayersLayer.all_objects.get(uuid=dm_association.layer.uuid)
             except LayersLayer.DoesNotExist:
-                self.stdout.write(self.style.ERROR(f'Layer {dm_association.layer.name} with UUID {dm_association.layer.uuid} not found in Layers module'))
+                if dm_association.layer:
+                    self.stdout.write(self.style.ERROR(f'Layer {dm_association.layer.name} with UUID {dm_association.layer.uuid} not found in Layers module'))
+                else:
+                    print("ERROR: MultiLayer Association {} has no layer.".format(dm_association.pk))
+                continue
+            except AttributeError:
+                print("ERROR: MultiLayer Association {} has no layer.".format(dm_association.pk))
                 continue
 
             try:
@@ -387,23 +393,35 @@ class Command(BaseCommand):
         # LOOP 8: for each DM MLDV, create layers MLDV
         dimension_values = []
         for dm_value in DataManagerMultilayerDimensionValue.objects.all():
-            dimension = MultilayerDimension.objects.get(uuid=dm_value.dimension.uuid)
-            dimension_value = MultilayerDimensionValue(
-                uuid=dm_value.uuid,
-                dimension=dimension,
-                value=dm_value.value,
-                label=dm_value.label,
-                order=dm_value.order,
-            )
-            dimension_values.append(dimension_value)
+            try:
+                dimension = MultilayerDimension.objects.get(uuid=dm_value.dimension.uuid)
+                dimension_value = MultilayerDimensionValue(
+                    uuid=dm_value.uuid,
+                    dimension=dimension,
+                    value=dm_value.value,
+                    label=dm_value.label,
+                    order=dm_value.order,
+                )
+                dimension_values.append(dimension_value)
+            except MultilayerDimension.DoesNotExist:
+                print("MultilayerDimension with uuid {} does not exist.".format(dm_value.dimension.uuid))
+                continue
 
         # Bulk create instances
         MultilayerDimensionValue.objects.bulk_create(dimension_values)
 
         # Migrate associations for each value
         for dm_value in DataManagerMultilayerDimensionValue.objects.all():
-            dimension_value = MultilayerDimensionValue.objects.get(uuid=dm_value.uuid)
-            for dm_association in dm_value.associations.all():
-                association = MultilayerAssociation.objects.get(uuid=dm_association.uuid)
-                dimension_value.associations.add(association)
-            self.stdout.write(f'Migrated dimension value: {dm_value.value}')
+            try:
+                dimension_value = MultilayerDimensionValue.objects.get(uuid=dm_value.uuid)
+                for dm_association in dm_value.associations.all():
+                    try:
+                        association = MultilayerAssociation.objects.get(uuid=dm_association.uuid)
+                        dimension_value.associations.add(association)
+                    except MultilayerAssociation.DoesNotExist:
+                        print("MultilayerAssociation with uuid {} does not exist.".format(dm_association.uuid))
+                        pass
+                self.stdout.write(f'Migrated dimension value: {dm_value.value}')
+            except MultilayerDimensionValue.DoesNotExist:
+                print("MultilayerDimensionValue with uuid {} does not exist.".format(dm_value.uuid))
+                pass
