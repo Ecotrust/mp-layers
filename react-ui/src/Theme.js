@@ -60,7 +60,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
       try {
         var event = new CustomEvent('ReactThemeExpanded', { detail: { themeId : theme.id } });
         window.dispatchEvent(event);
-        const response = await axios.get(`http://localhost:8002/layers/children/${theme.id}`);
+        const response = await axios.get(`/layers/children/${theme.id}`);
         const fetchedChildren = response.data; // Adjust this based on the actual response structure
         setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
         const layerDict = {};

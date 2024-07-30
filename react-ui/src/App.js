@@ -8,7 +8,7 @@ const App = () => {
   const [themes, setThemes] = React.useState([]); // You'd fetch this data
 
   React.useEffect(() => {
-    axios.get('http://localhost:8002/layers/top_level_themes/')
+    axios.get('/layers/top_level_themes/')
       .then(response => {
         setThemes(response.data.top_level_themes);
       })
