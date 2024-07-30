@@ -195,7 +195,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
                left: 0,
                width: `${indentationWidth}px`,
                height: '100%',
-               backgroundColor: getGreenShade(level + 1)
+               backgroundColor: getGreenShade(level)
              }}></div>
              <div style={{ paddingLeft: `${indentationWidth}px` }}>
                {child.type === "theme" ? (
