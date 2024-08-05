@@ -889,19 +889,34 @@ class LiveAPITests(APITestCase):
 
     def loop_though_theme_layers(self, layer_list):
         for index, layer in enumerate(layer_list):
-            if not layer['type'] in ['slider',]:
-                dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(layer['id']))
-                ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(layer['id']))
+            dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(layer['id']))
+            ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(layer['id']))
+            old_layer_data = json.loads(dm_layer_response.content)
+            new_layer_data = json.loads(ls_layer_response.content)
+            # if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
+            #     import ipdb; ipdb.set_trace()
+            self.assertEqual(old_layer_data.keys(), new_layer_data.keys())
+            self.compare_layers(old_layer_data, new_layer_data, index)
+
+    def loop_through_slider_associations(self, associated_multilayers):
+        for index, key in enumerate(associated_multilayers.keys()):
+            if type(associated_multilayers[key]) == dict:
+                self.loop_through_slider_associations(associated_multilayers[key])
+            elif type(associated_multilayers[key]) == int:
+                print(f"Associated Multilayer: {associated_multilayers[key]}")
+                dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(associated_multilayers[key]))
+                ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(associated_multilayers[key]))
                 old_layer_data = json.loads(dm_layer_response.content)
                 new_layer_data = json.loads(ls_layer_response.content)
                 # if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
                 #     import ipdb; ipdb.set_trace()
                 self.assertEqual(old_layer_data.keys(), new_layer_data.keys())
                 self.compare_layers(old_layer_data, new_layer_data, index)
-            else:
-                print("TODO: create logic for type '{}'".format(layer['type']))
-
+ 
     def compare_layers(self, old_layer, new_layer, layer_count):
+        if 'type' in new_layer.keys() and new_layer['type'] == 'slider':
+            new_layer['type'] = old_layer['type']
+            self.loop_through_slider_associations(new_layer['associated_multilayers'])
         for key in old_layer.keys():
             if key not in ['date_modified','subLayers','attributes', 'lookups', 'companion_layers']: # objects and dates?
                 if not old_layer[key] == new_layer[key]:

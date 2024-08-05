@@ -558,7 +558,7 @@ class Layer(models.Model, SiteFlags):
         
     @property
     def tiles_link(self):
-        if self.is_shareable and self.layer_type in ['XYZ', 'ArcRest', 'WMS']:
+        if self.is_shareable and self.layer_type in ['XYZ', 'ArcRest', 'WMS', 'slider']:
             domain = get_domain(8000)
             return self.slug_name
         return None
@@ -586,9 +586,6 @@ class Layer(models.Model, SiteFlags):
         for value in sorted(dimension.multilayerdimensionvalue_set.all(), key=lambda x: x.order):
             value_associations = associations.filter(pk__in=[x.pk for x in value.associations.all()])
             
-            print(f"Processing dimension value: {value.value}")
-            print(f"Filtered associations: {value_associations}")
-
             if dimensions:  # If there are more dimensions to process
                 nested_association_array = self.dimensionRecursion(list(dimensions), value_associations)
                 associationArray[str(value.value)] = nested_association_array
