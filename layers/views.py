@@ -106,9 +106,7 @@ def get_json(request):
         current_site_pk = 2
     else:
         current_site_pk = shortcuts.get_current_site(request).pk
-        print(current_site_pk)
     data = cache.get('layers_json_site_%d' % current_site_pk)
-    print(data)
     # if not data or not data["themes"]:
     child_orders = ChildOrder.objects.all()
     processed_items = []
@@ -195,7 +193,6 @@ def get_layer_search_data(request):
     return JsonResponse(search_dict)
 
 def get_layers_for_theme(request, themeID):
-    print(themeID)
     theme = Theme.objects.get(pk=themeID)
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
@@ -241,7 +238,6 @@ def get_layers_for_theme(request, themeID):
         else:
             #placeholder layer
             pass
-    print(layer_list)
     return JsonResponse({'layers': layer_list})
 
 def get_layer_details(request, layerID):
@@ -253,22 +249,17 @@ def get_layer_details(request, layerID):
         # Use the layer_type attribute to get the specific model class
         if layer.layer_type != "slider":
             specific_layer_model = layer_type_to_model.get(layer.layer_type)
-            print(f"Specific Layer Model: {specific_layer_model}")
         # Now, use the specific model class to get the specific layer instance
         if specific_layer_model and specific_layer_model != Layer:
             specific_layer = specific_layer_model.objects.get(layer=layer)
-            print(f"Specific Layer: {specific_layer}")
         else: 
             specific_layer = layer
         specific_layer_serializer_class = layer_type_to_serializer.get(layer.layer_type)
-        print(f"Specific Layer Serializer Class: {specific_layer_serializer_class}")
         # Instantiate the serializer with the specific layer instance
         if specific_layer_serializer_class:
             specific_layer_serializer = specific_layer_serializer_class(specific_layer)
-            print(f"Specific Layer Serializer: {specific_layer_serializer}")
             # Now you can use the serializer to get the serialized data
             serialized_data = specific_layer_serializer.data
-            print(f"Serialized Data: {serialized_data}")
         else:
             serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
         return JsonResponse(serialized_data)
@@ -575,7 +566,6 @@ def migration_layer_details(request, uuid=None):
             for layer_key in layer_ids:
                 try:
                     layer = Layer.all_objects.get(uuid=layer_key)
-                    print(layer)
                     # Assuming you have different serializers based on layer_type or other conditions
                     if layer.layer_type == 'WMS':
                         wmslayer = LayerWMS.objects.get(layer=layer)
@@ -620,7 +610,6 @@ def migration_layer_details(request, uuid=None):
                 wmslayer = LayerWMS.objects.get(layer=layer)
                 serialized_data = LayerWMSSerializer(wmslayer).data
             elif layer.layer_type == "ArcRest":
-                print("hello")
                 arcrestlayer = LayerArcREST.objects.get(layer=layer)
                 serialized_data = LayerArcRESTSerializer(arcrestlayer).data
             elif layer.layer_type == "ArcFeatureServer":
@@ -705,7 +694,6 @@ def get_children(request, parent_id):
         try:
             child_data = {}
             if child.content_type == theme_content_type:
-                print(f"[get_children]: fetching theme with id: {child.object_id}")
                 child_theme = Theme.objects.get(id=child.object_id)
                 child_data = {
                     'id': child_theme.id,
@@ -714,7 +702,6 @@ def get_children(request, parent_id):
                     "theme_type": child_theme.theme_type
                 }
             elif child.content_type == layer_content_type:
-                print(f"[get_children]: fetching layer with id: {child.object_id}")
                 child_layer = Layer.objects.get(id=child.object_id)
                 #Sidebar is a temporary replacement for serializer
                 child_data = {
