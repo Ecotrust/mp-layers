@@ -290,7 +290,9 @@ class Command(BaseCommand):
                 continue
             
             # Iterate over each layer associated with the dm_theme
-            for dm_layer in dm_theme.layer_set.all():
+            # for dm_layer in dm_theme.layer_set.all():
+            # RDH: this is hackier than the above line, but captures layers not associated with the production site.
+            for dm_layer in DataManagerLayer.all_objects.filter(themes=dm_theme):
                 # Try to find the corresponding layer or subtheme in LayersLayer or LayersTheme
                 if (dm_layer.is_sublayer == False):
                     try:
