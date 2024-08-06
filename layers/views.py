@@ -100,6 +100,13 @@ def dictThemeCache(theme, site_id=None):
 def get_json(request):
     from django.core.cache import cache
     from django.contrib.sites import shortcuts
+    # if (
+    #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
+    #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
+    # ):
+    #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
+    #     current_site_pk = request.site.id
+    # if request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
     if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
         current_site_pk = 1
     elif request.META['HTTP_HOST'] in ['localhost:8002',]:
@@ -197,9 +204,22 @@ def get_layers_for_theme(request, themeID):
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
 
+    if (
+        Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and 
+        not request.site == Site.objects.get(domain=request.META['HTTP_HOST']) 
+    ):
+        request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
+
     child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
-        ).order_by("order")
+        )
+
+    site_valid_order_ids = []
+    for order in child_orders:
+        if request.site in order.content_object.site.all():
+            site_valid_order_ids.append(order.id)
+    child_orders = child_orders.filter(id__in=site_valid_order_ids).order_by("order")
+
     sorted_child_orders = sorted(
         list(child_orders), 
         key=lambda x: (x.order, getattr(x.content_object, 'name', ""))
