@@ -79,11 +79,14 @@ class ChildrenLayerChoiceField(forms.ModelMultipleChoiceField):
         return obj.name
 
 class ThemeForm(forms.ModelForm):
-    children_themes = ThemeChoiceField(queryset=Theme.all_objects.filter(theme_type__in=['radio', 'checkbox']), required=False, widget = admin.widgets.FilteredSelectMultiple('children themes', False))
+    children_themes = ThemeChoiceField(queryset=Theme.all_objects.none(), required=False, widget = admin.widgets.FilteredSelectMultiple('children themes', False))
     children_layers = ChildrenLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('children layers', False))
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 
+        # labels = {
+        #     'dynamic_url': 'URL',  # This will change the label in the form
+        # }
     
     def clean(self):
         cleaned_data = super().clean()
@@ -98,55 +101,76 @@ class ThemeForm(forms.ModelForm):
         #         self.add_error('order', 'Order must be filled out.')
 
         return cleaned_data
-    
+
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.instance.pk:
-            content_type_for_theme = ContentType.objects.get_for_model(self.instance)
-            content_type_for_layer = ContentType.objects.get_for_model(Layer)
-            child_orders_for_theme = ChildOrder.objects.filter(content_type=content_type_for_theme, parent_theme=self.instance)
-            child_orders_for_layers =ChildOrder.objects.filter(content_type=content_type_for_layer, parent_theme=self.instance )
-            initial_themes = child_orders_for_theme.values_list('object_id', flat=True)
-            initial_layers = child_orders_for_layers.values_list('object_id', flat=True)
-            # Recursively find all ancestors of the initially selected themes
-            def find_all_ancestors(theme_ids):
-                ancestors = set()
-                themes_to_check = list(theme_ids)
+        if self.instance.pk:  
+            def get_all_ancestor_ids(theme_ids, ancestor_ids=set()):
+                # Initialize a set to hold parent IDs at the current level
+                parent_ids = set()
                 
-                while themes_to_check:
-                    current_theme_id = themes_to_check.pop()
-                    parent_orders = ChildOrder.objects.filter(content_type=content_type_for_theme, object_id=current_theme_id)
-                    for parent_order in parent_orders:
-                        parent_theme_id = parent_order.parent_theme_id
-                        if parent_theme_id not in ancestors:
-                            ancestors.add(parent_theme_id)
-                            themes_to_check.append(parent_theme_id)
-                
-                return ancestors
+                # Get ContentType for the Theme model
+                content_type_for_theme = ContentType.objects.get_for_model(Theme)
 
-            parents_of_initial_themes = find_all_ancestors(initial_themes)
-            
-            # Exclude these parents from the queryset
-            filtered_queryset = Theme.all_objects.filter(
-                theme_type__in=['radio', 'checkbox']
-            ).exclude(id__in=parents_of_initial_themes)
-            
-            self.fields['children_themes'].queryset = filtered_queryset
+                for theme_id in theme_ids:
+                    # Find parent themes using ChildOrder
+                    child_orders = ChildOrder.objects.filter(object_id=theme_id, content_type=content_type_for_theme)
+                    parent_ids.update([x.parent_theme.pk for x in child_orders])
+
+                # If parent_ids are found, add them to ancestor_ids and recurse
+                if parent_ids:
+                    ancestor_ids.update(parent_ids)
+                    get_all_ancestor_ids(parent_ids, ancestor_ids)
+
+                return ancestor_ids
+
+                # Initial themes that are children of the current theme
+            content_type_for_theme = ContentType.objects.get_for_model(self.instance)
+            child_orders_for_theme = ChildOrder.objects.filter(content_type=content_type_for_theme, parent_theme=self.instance)
+            initial_themes = child_orders_for_theme.values_list('object_id', flat=True)
+
+            # Collect all ancestor IDs recursively
+            ancestor_ids = get_all_ancestor_ids([self.instance.pk])
+
+            # Ensure self.instance is excluded from the queryset
+            ancestor_ids.add(self.instance.pk)
+
+            print(f"Excluding the following ancestor IDs: {ancestor_ids}")
+
+            # Update the queryset for children_themes
+            self.fields['children_themes'].queryset = Theme.all_objects.exclude(pk__in=ancestor_ids)
+
+            # Set initial values for children themes
             self.fields['children_themes'].initial = list(initial_themes)
+            content_type_for_layer = ContentType.objects.get_for_model(Layer)
+            child_orders_for_layers = ChildOrder.objects.filter(content_type=content_type_for_layer, parent_theme=self.instance)
+            initial_layers = child_orders_for_layers.values_list('object_id', flat=True)
             self.fields['children_layers'].initial = list(initial_layers)
-         # Prefill the order field based on ChildOrder, if theme_type is radio or checkbox
-        if self.instance.theme_type in ['radio', 'checkbox']:
-            # Assuming there's at least one ChildOrder, using the order from the first one.
-            # Adjust as necessary to select a different ChildOrder if there are multiple.
-            first_child_order = child_orders_for_theme.first()
-            if first_child_order:
-                self.fields['order'].initial = first_child_order.order
+
+            # Set the initial order value
+            if not ancestor_ids:
+                first_child_order = ChildOrder.objects.filter(
+                    content_type=content_type_for_theme,
+                    parent_theme=self.instance
+                ).first()
+                if first_child_order:
+                    self.fields['order'].initial = first_child_order.order
+            else:
+                self.fields['order'].initial = 10
+        else:
+            # For new instances, set the queryset to include all themes (since there are no ancestors to exclude yet)
+            self.fields['children_themes'].queryset = Theme.all_objects
+            self.fields['order'].initial = 10
+    
+
 
 class ThemeAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'name', 'order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
-
+    
+    print(Theme._meta.get_fields())
     fieldsets = (
         ('BASIC INFO', {
             'fields': (
@@ -155,6 +179,8 @@ class ThemeAdmin(admin.ModelAdmin):
                 'site',
                 "order",
                 "is_visible",
+                # "is_dynamic",
+                # "dynamic_url",
             )
         }),
         ("METADATA", {
@@ -202,6 +228,8 @@ class ThemeAdmin(admin.ModelAdmin):
 
     class Media:
         js = ['theme_admin.js',]
+        
+    change_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Theme/change_form.html'
 
     def get_queryset(self, request):
         # use our manager, rather than the default one
@@ -222,6 +250,34 @@ class ThemeAdmin(admin.ModelAdmin):
 
         return db_field.formfield(**kwargs)
     
+    def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
+        context['add_theme_url'] = reverse('admin:layers_theme_add')  
+        context['add_layer_url'] = reverse('admin:layers_layer_add')  
+        return super().render_change_form(request, context, add, change, form_url, obj)
+    
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['CATALOG_TECHNOLOGY'] = getattr(settings, 'CATALOG_TECHNOLOGY', 'default')
+        extra_context['CATALOG_PROXY'] = getattr(settings, 'CATALOG_PROXY', '')
+        return super(ThemeAdmin, self).change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['CATALOG_TECHNOLOGY'] = getattr(settings, 'CATALOG_TECHNOLOGY', 'default')
+        extra_context['CATALOG_PROXY'] = getattr(settings, 'CATALOG_PROXY', '')
+        return super(ThemeAdmin, self).add_view(request, form_url=form_url, extra_context=extra_context)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == 'children_themes':
+            formfield.widget = forms.SelectMultiple(attrs={'data-url': self.reverse_add_url('theme')})
+        if db_field.name == 'children_layers':
+            formfield.widget = forms.SelectMultiple(attrs={'data-url': self.reverse_add_url('layer')})
+        return formfield
+
+    def reverse_add_url(self, model_name):
+        return reverse(f'admin:layers_{model_name}_add')
+
     def create_or_update_child_order_for_themes(self, obj, themes):
         content_type = ContentType.objects.get_for_model(obj)
     
@@ -294,7 +350,7 @@ class ThemeAdmin(admin.ModelAdmin):
 class LayerForm(forms.ModelForm):
 
     order = forms.IntegerField(required=True)
-    themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
+    # themes = ThemeChoiceField(queryset=Theme.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('themes', False))
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
     class Meta:
@@ -326,14 +382,17 @@ class LayerForm(forms.ModelForm):
         if self.instance.pk:
             self.fields['companion_layers'].initial = self.instance.companionships.values_list('companions__id', flat=True)
             # For themes
-            content_type = ContentType.objects.get_for_model(self.instance)
+            content_type = ContentType.objects.get_for_model(Layer)
             child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=self.instance.pk)
-            initial_themes = child_orders.values_list('parent_theme', flat=True)
-            self.fields['themes'].initial = list(initial_themes)
+            # initial_themes = child_orders.values_list('parent_theme', flat=True)
+            # self.fields['themes'].initial = list(initial_themes)
             if child_orders.exists():
+                print("Loading order", child_orders.first().order, "for layer", self.instance.pk)
                 # Assuming the first one if there are multiple (consider how you want to handle multiple themes)
                 initial_order = child_orders.first().order
                 self.fields['order'].initial = initial_order
+            else:
+                self.fields['order'].initial = 10
             # Check if there are any companions to determine the initial value of has_companion
             has_companions = self.instance.companionships.exists()
             self.fields['has_companion'].initial = has_companions
@@ -446,13 +505,13 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
 
     def get_order(self, obj):
         # Fetch the ContentType for the Layer model
-        content_type = ContentType.objects.get_for_model(obj)
-        
+        content_type = ContentType.objects.get_for_model(Layer)
+        print("this is obj: ", obj)
         # Try to fetch the corresponding ChildOrder for this Layer
         child_order = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk).first()
         
         # Return the order if exists
-        return child_order.order if child_order else 'None'
+        return child_order.order if child_order else 10
     get_order.short_description = 'Order'  # Sets column name
 
     def formfield_for_manytomany(self, db_field, request=None, **kwargs):
@@ -487,7 +546,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         basic_fields = (
                 ('name','layer_type',),
                 ('url', 'proxy_url'),
-                'site'
+                'site', 
             )
     fieldsets = (
         ('BASIC INFO', {
@@ -496,7 +555,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         ('LAYER ORGANIZATION', {
             # 'classes': ('collapse', 'open',),
             'fields': (
-                ('order','themes'),
+                ('order'),
                 ('has_companion','companion_layers'),
                 # RDH 2019-10-25: We don't use this, and it doesn't seem helpful
                 # ('is_disabled','disabled_message')
@@ -592,31 +651,13 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         
         return qs
     
-    def create_or_update_child_order(self, obj, themes, order):
+    def update_child_order(self, obj, themes, order):
         content_type = ContentType.objects.get_for_model(obj)
     
-        # Existing themes linked to the object
-        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk)
-        existing_theme_ids = set(existing_child_orders.values_list('parent_theme__id', flat=True))
-        
-        # New themes from the form
-        new_theme_ids = set(theme.id for theme in themes)
-        
-        # Themes to add and remove
-        themes_to_add = new_theme_ids - existing_theme_ids
-        themes_to_remove = existing_theme_ids - new_theme_ids
-        
-        # Remove old themes
-        ChildOrder.objects.filter(parent_theme__id__in=themes_to_remove, content_type=content_type, object_id=obj.pk).delete()
-        
-        # Add new themes
-        for theme_id in themes_to_add:
-            ChildOrder.objects.update_or_create(
-                parent_theme_id=theme_id,
-                content_type=content_type,
-                object_id=obj.pk,
-                defaults={'order': order}
-            )
+        # Update the order for all ChildOrder instances where the content_object is the current layer
+        ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk).update(order=order)
+
+        print("Updated order for", obj.pk, "to", order)
 
 
     def create_or_update_companionship(self, obj, companion_layer_ids):
@@ -660,9 +701,10 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             # Handling ChildOrder after the layer is saved
             themes = form.cleaned_data.get('themes', [])
             order = form.cleaned_data.get('order', 0)
-            self.create_or_update_child_order(obj, themes, order)
+            print("this is order", order)
+            self.update_child_order(obj, themes, order)
 
-             # Handling Companionship after the layer is saved
+            # Handling Companionship after the layer is saved
             companion_layers = set(form.cleaned_data.get('companion_layers', []))
             companion_layer_ids = {layer.id for layer in companion_layers}
             self.create_or_update_companionship(obj, companion_layer_ids)
