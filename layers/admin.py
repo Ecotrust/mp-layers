@@ -1,11 +1,15 @@
 from django.contrib import admin
 from django.conf import settings
-from .models import *
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
 import nested_admin
+import os
+from .models import *
 # Register your models here.
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class ThemeChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
@@ -229,7 +233,8 @@ class ThemeAdmin(admin.ModelAdmin):
     class Media:
         js = ['theme_admin.js',]
         
-    change_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Theme/change_form.html'
+    change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_form.html')
+
 
     def get_queryset(self, request):
         # use our manager, rather than the default one
@@ -627,8 +632,8 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
     inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
-    add_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Layer/change_form.html'
-    change_form_template = '/usr/local/apps/madrona_portal/apps/mp-layers/layers/templates/admin/layers/Layer/change_form.html'
+    add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
+    change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
 
     def change_view(self, request, object_id, form_url='', extra_context={}):
         extra_context['CATALOG_TECHNOLOGY'] = settings.CATALOG_TECHNOLOGY
