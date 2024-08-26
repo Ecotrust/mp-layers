@@ -719,7 +719,9 @@ def get_children(request, parent_id):
                     'id': child_theme.id,
                     'name': child_theme.name,
                     'type': "theme",
-                    "theme_type": child_theme.theme_type
+                    "theme_type": child_theme.theme_type, 
+                    "is_dynamic": child_theme.is_dynamic,
+                    "url": child_theme.dynamic_url
                 }
             elif child.content_type == layer_content_type:
                 child_layer = Layer.objects.get(id=child.object_id)

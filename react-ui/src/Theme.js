@@ -2,7 +2,7 @@ import React, {useEffect} from "react";
 import axios from 'axios';
 import Layer from "./Layer"
 
-const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
+const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   const [expanded, setExpanded] = React.useState(false);
   const [childrenThemes, setChildrenThemes] = React.useState([]);
   const [layersActiveStatus, setLayersActiveStatus] = React.useState({});
@@ -78,7 +78,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
       }
     };
     
-    if (childrenThemes.length === 0 && expanded) {
+    if (childrenThemes.length === 0 && expanded && !theme.is_dynamic) {
       fetchChildren();
     }
     
@@ -113,8 +113,69 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   // 1. this needs to change, it renders once only
   // 2. when i close a theme, it doesnt update the url for themes
   
-  const handleClick = () => {
+  const handleClick = async (parentTheme) => {
+    if (theme.is_dynamic === true) {
+      try {
+        // Make the JSON request to the dynamic_url
+        const response = await fetch(theme.url + "?f=pjson");
+  
+        // Check if the response is OK
+        if (response.ok) {
+          // Parse the JSON data
+          const data = await response.json();
 
+          let category = "mdat"; // Default to MDAT
+
+          // Check if the passed parent theme is dynamic
+          if (parentTheme && parentTheme.is_dynamic) {
+              category = "vtr"; // If the parent is dynamic, categorize as VTR
+          }
+
+  
+          // Check for the presence of the keys 'services' or 'layers'
+          if ('services' in data) {
+            const serviceThemes = data.services.map(service => {
+              // Extract the year range or name
+              const nameParts = service.name.split('/');
+              const yearRange = nameParts[nameParts.length - 1];
+
+              // Replace underscores with hyphens
+              const newYearRange = yearRange.replace(/_/g, '-');
+    
+              return {
+                name: newYearRange,
+                url: theme.url + "/" + yearRange + "/MapServer",
+                is_dynamic: true,
+                type: "theme",
+                // Add other necessary properties here if needed
+              };
+            });
+            const fetchedChildren = [...serviceThemes];
+            // Set the children themes state
+            setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
+            // Add behavior for 'services' here
+          } else if ('layers' in data) {
+            const layerThemes = data.layers.map(layer => {
+              return {
+                name: layer.name, // Extract the layer name
+                id: layer.id,
+                url: theme.url.replace('/MapServer', ''),
+                dateRangeDirectory: data,
+                category: category, 
+              };
+            });
+            // Set the children themes state with layers
+            setChildrenThemes(layerThemes.length > 0 ? layerThemes : "no-children");
+          } else {
+            console.log("Neither 'services' nor 'layers' found.");
+          }
+        } else {
+          console.error(`Request failed with status: ${response.status}`);
+        }
+      } catch (error) {
+        console.error("Error fetching the dynamic URL:", error);
+      }
+    }
     window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
@@ -170,7 +231,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
   const themeBorderColor = borderColor || getGreenShade(level);
   return (
     <div>
-    <div className={level < 1 ? "column-item picker" : "column-item"} onClick={handleClick} style={{
+    <div className={level < 1 ? "column-item picker" : "column-item"} onClick={() => handleClick(parentTheme)} style={{
           backgroundColor: expanded ? getGreenShade(level) : "",
         }}>
       {theme.name}
@@ -199,7 +260,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId }) => {
              }}></div>
              <div style={{ paddingLeft: `${indentationWidth}px` }}>
                {child.type === "theme" ? (
-                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} />
+                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
                ) : (
                  <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} />
                )}

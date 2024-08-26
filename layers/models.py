@@ -58,6 +58,9 @@ class Theme(models.Model, SiteFlags):
 
     is_visible = models.BooleanField(default=True)
 
+    is_dynamic = models.BooleanField(default=False)
+    dynamic_url = models.TextField(blank=True, null=True, default=None)
+
     # need to add data_source, data_notes, source, (prop) data_url, (prop) catalog_html to match v1 subtheme/parent layer creation
     data_source = models.CharField(max_length=255, blank=True, null=True)
     data_notes = models.TextField(blank=True, null=True, default=None)

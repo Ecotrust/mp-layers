@@ -84,9 +84,9 @@ class ThemeForm(forms.ModelForm):
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 
-        # labels = {
-        #     'dynamic_url': 'URL',  # This will change the label in the form
-        # }
+        labels = {
+            'dynamic_url': 'URL',  # This will change the label in the form
+        }
     
     def clean(self):
         cleaned_data = super().clean()
@@ -179,8 +179,8 @@ class ThemeAdmin(admin.ModelAdmin):
                 'site',
                 "order",
                 "is_visible",
-                # "is_dynamic",
-                # "dynamic_url",
+                "is_dynamic",
+                "dynamic_url",
             )
         }),
         ("METADATA", {

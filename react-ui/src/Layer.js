@@ -99,13 +99,23 @@ const Layer = ({
   // Handler for the main layer item click (excluding the info icon)
   const layerClickHandler = (event) => {
     event.preventDefault();
-
+    console.log(layer)
     event.stopPropagation(); // Again, prevent click from affecting parent
+    // If VTR/MDAT, will not have theme_id
     if (theme_id && layer.id) {
       // window["reactToggleLayer"](layer.id, theme_id, topLevelThemeId);
       handleToggleLayerChangeState(layer.id)
     }
-    // Implement additional logic as needed
+    if (layer.category) {
+      console.log('hello')
+      if (layer.category === "vtr") {
+        // Dispatch a custom event for VTR activation
+        const event = new CustomEvent('ReactVTRLayer', {
+          detail: { layer: layer}
+        });
+        window.dispatchEvent(event);
+      }
+    }
   };
 
 
