@@ -1,12 +1,15 @@
-import React, {useEffect} from "react"; 
+import React, {useEffect, useState} from "react"; 
 import axios from 'axios';
 import Layer from "./Layer"
+import SearchBox from "./Searchbox";
 
 const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   const [expanded, setExpanded] = React.useState(false);
   const [childrenThemes, setChildrenThemes] = React.useState([]);
+  const [filteredChildrenThemes, setFilteredChildrenThemes] = useState([]); 
   const [layersActiveStatus, setLayersActiveStatus] = React.useState({});
-
+  const [searchQuery, setSearchQuery] = useState('');
+  const [populatedByServices, setPopulatedByServices] = useState(false);
 
   useEffect(() => {
     const initialize = async () => {
@@ -63,6 +66,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         const response = await axios.get(`/layers/children/${theme.id}`);
         const fetchedChildren = response.data; // Adjust this based on the actual response structure
         setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
+        setFilteredChildrenThemes(fetchedChildren);
         const layerDict = {};
         fetchedChildren.forEach(child => {
             layerDict[child.id] = layersActiveStatus[child.id] || false;
@@ -84,6 +88,16 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     
   }, [childrenThemes, expanded, layersActiveStatus])
   
+  useEffect(() => {
+    // Initially filter by default_keyword when no search query is present
+    if (!searchQuery && theme.is_dynamic && !populatedByServices) {
+      const filteredByDefault = childrenThemes.filter(layer =>
+        layer.name.toLowerCase().includes(theme.default_keyword.toLowerCase())
+      );
+      setFilteredChildrenThemes(filteredByDefault);
+    }
+  }, [childrenThemes, searchQuery]);
+
   useEffect(() => {
     if (expanded && childrenThemes!= "no-children") {
       childrenThemes.forEach((child) => {
@@ -147,25 +161,43 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                 url: theme.url + "/" + yearRange + "/MapServer",
                 is_dynamic: true,
                 type: "theme",
+                default_keyword: theme.default_keyword,
+                placeholder_text: theme.placeholder_text
                 // Add other necessary properties here if needed
               };
             });
             const fetchedChildren = [...serviceThemes];
             // Set the children themes state
             setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
-            // Add behavior for 'services' here
+            setFilteredChildrenThemes(serviceThemes);
+            setPopulatedByServices(true);
           } else if ('layers' in data) {
-            const layerThemes = data.layers.map(layer => {
+            const filteredLayers = data.layers.filter(layer => !layer.subLayerIds);
+            const parentDirectory = {
+              ...data,
+              serviceLayers: filteredLayers  // Add the filtered layers to serviceLayers
+            };
+            const layerThemes = data.layers
+            .filter(layer => layer.type !== "Group Layer" && !layer.subLayerIds)  // Filter out Group Layers and those with subLayerIds
+            .map(layer => {
+              const isVTR = category === "vtr";
+              
               return {
                 name: layer.name, // Extract the layer name
                 id: layer.id,
-                url: theme.url.replace('/MapServer', ''),
-                dateRangeDirectory: data,
+                url: theme.url + "/export",
+                ...(isVTR 
+                  ? { dateRangeDirectory: data } 
+                  : { parentDirectory: parentDirectory }), // Conditionally add properties
                 category: category, 
+                type: "ArcRest",
+                arcgis_layers: layer.id,
               };
-            });
+          });
             // Set the children themes state with layers
             setChildrenThemes(layerThemes.length > 0 ? layerThemes : "no-children");
+            setFilteredChildrenThemes(layerThemes);
+            setPopulatedByServices(false);
           } else {
             console.log("Neither 'services' nor 'layers' found.");
           }
@@ -179,6 +211,47 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+  
+    if (query.trim() === '') {
+      // Apply defaultKeyword filter when searchQuery is empty
+      const filteredByDefault = childrenThemes.filter(layer =>
+        layer.name.toLowerCase().includes(theme.default_keyword.toLowerCase())
+      );
+      setFilteredChildrenThemes(filteredByDefault);
+    } else {
+      // Apply searchQuery filter when there's input
+      const filtered = childrenThemes.filter(layer =>
+        layer.name.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredChildrenThemes(filtered);
+    }
+  };
+
+  // const handleLayerSelect = (layer) => {
+  //   // Handle what happens when a layer is selected from the dropdown
+  //   if (layer.category) {
+  //     if (layer.category === "vtr") {
+  //       // Dispatch a custom event for VTR activation
+  //       const event = new CustomEvent('ReactVTRLayer', {
+  //         detail: { layer: layer}
+  //       });
+  //       window.dispatchEvent(event);
+  //     }
+  //     else if (layer.category === "mdat") {
+  //       // Dispatch a custom event for MDAT activation
+  //       const event = new CustomEvent('ReactMDATLayer', {
+  //         detail: { layer: layer,
+  //           parentTheme: parentTheme,
+  //         }
+  //       });
+  //       window.dispatchEvent(event);
+  //     }
+  //   }
+  // };
 
   const handleToggleLayerChangeState = (layerId) => {
     setLayersActiveStatus(prevState => ({
@@ -239,37 +312,74 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     </div>
     {expanded && (
       <div>
-      {childrenThemes === "no-children" ? (
-        <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
-          No layers
-        </div>
-      ) : childrenThemes.length === 0 ? (
-        <div className="loading-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
-          Loading...
-        </div>
-      ) : (
-        <ul className="children-list">
-          {childrenThemes && childrenThemes.map(child => (
-             <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
-             <div style={{
-               position: 'absolute',
-               left: 0,
-               width: `${indentationWidth}px`,
-               height: '100%',
-               backgroundColor: getGreenShade(level)
-             }}></div>
-             <div style={{ paddingLeft: `${indentationWidth}px` }}>
-               {child.type === "theme" ? (
-                 <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
-               ) : (
-                 <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} />
-               )}
-             </div>
-           </div>
-          ))}
-        </ul>
-      )}
-    </div>
+        {/* Wrap SearchBox in a div with the same padding as children */}
+        {theme.is_dynamic && !populatedByServices && (
+          <div style={{
+            paddingLeft: `${indentationWidth}px`,
+            backgroundColor: getGreenShade(level),
+            position: 'relative'
+          }}>
+            <SearchBox 
+              placeholder={theme.placeholder_text} 
+              value={searchQuery} 
+              onChange={handleSearchChange} 
+            />
+          </div>
+        )}
+
+        {/* Conditionally show "No layers" or "Loading" based on state */}
+        {childrenThemes === "no-children" ? (
+          <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+            No layers
+          </div>
+        ) : childrenThemes.length === 0 ? (
+          <div className="loading-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+            Loading...
+          </div>
+        ) : (
+          <ul className="children-list">
+            {/* Display filtered childrenThemes if the theme is dynamic and a search query exists */}
+            {(theme.is_dynamic) ? filteredChildrenThemes.map(child => (
+              <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
+                <div style={{
+                  position: 'absolute',
+                  left: 0,
+                  width: `${indentationWidth}px`,
+                  height: '100%',
+                  backgroundColor: getGreenShade(level)
+                }}></div>
+                <div style={{ paddingLeft: `${indentationWidth}px` }}>
+                  {child.type === "theme" ? (
+                    <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
+                  ) : (
+                    <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
+                  )}
+                </div>
+              </div>
+            )) : (
+              // Display normal childrenThemes if no search query or if theme is not dynamic
+              childrenThemes.map(child => (
+                <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    width: `${indentationWidth}px`,
+                    height: '100%',
+                    backgroundColor: getGreenShade(level)
+                  }}></div>
+                  <div style={{ paddingLeft: `${indentationWidth}px` }}>
+                    {child.type === "theme" ? (
+                      <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
+                    ) : (
+                      <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
     )}
   </div>
   );

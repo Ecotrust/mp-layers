@@ -45,6 +45,8 @@ class Theme(models.Model, SiteFlags):
     site = models.ManyToManyField(Site,  related_name='%(class)s_site')
     name = models.CharField(max_length=100)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    default_keyword = models.CharField(max_length=100)
+    placeholder_text = models.CharField(max_length=100)
     display_name = models.CharField(max_length=100)
     theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional

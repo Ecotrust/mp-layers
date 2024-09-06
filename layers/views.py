@@ -213,13 +213,13 @@ def get_layers_for_theme(request, themeID):
     child_orders = ChildOrder.objects.filter(
             parent_theme=theme,
         )
-
-    site_valid_order_ids = []
-    for order in child_orders:
-        if request.site in order.content_object.site.all():
-            site_valid_order_ids.append(order.id)
-    child_orders = child_orders.filter(id__in=site_valid_order_ids).order_by("order")
-
+    
+    # site_valid_order_ids = []
+    # for order in child_orders:
+    #     if request.site in order.content_object.site.all():
+    #         site_valid_order_ids.append(order.id)
+    # child_orders = child_orders.filter(id__in=site_valid_order_ids).order_by("order")
+    # print(child_orders)
     sorted_child_orders = sorted(
         list(child_orders), 
         key=lambda x: (x.order, getattr(x.content_object, 'name', ""))
@@ -721,7 +721,9 @@ def get_children(request, parent_id):
                     'type': "theme",
                     "theme_type": child_theme.theme_type, 
                     "is_dynamic": child_theme.is_dynamic,
-                    "url": child_theme.dynamic_url
+                    "url": child_theme.dynamic_url,
+                    "placeholder_text": child_theme.placeholder_text,
+                    "default_keyword": child_theme.default_keyword,
                 }
             elif child.content_type == layer_content_type:
                 child_layer = Layer.objects.get(id=child.object_id)

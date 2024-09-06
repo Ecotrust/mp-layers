@@ -179,8 +179,7 @@ class ThemeAdmin(admin.ModelAdmin):
                 'site',
                 "order",
                 "is_visible",
-                "is_dynamic",
-                "dynamic_url",
+
             )
         }),
         ("METADATA", {
@@ -193,6 +192,14 @@ class ThemeAdmin(admin.ModelAdmin):
                 "disabled_message",
                 "data_download",
                 # "slug_name",
+            )
+        }),
+        ('DYNAMIC THEME', {
+            'fields': (
+                "is_dynamic",
+                "dynamic_url",
+                "default_keyword",
+                "placeholder_text",
             )
         }),
         ('CHILD THEME ORGANIZATION', {
