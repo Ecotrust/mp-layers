@@ -1,17 +1,18 @@
-from django.shortcuts import render
+from dataclasses import dataclass, asdict
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.template import RequestContext
 from django.views.decorators.cache import cache_page
+import json
+import requests
+from rest_framework import viewsets
 from .models import *
 from .serializers import *
-from rest_framework import viewsets
-import json, requests
-from dataclasses import dataclass, asdict
 
 layer_type_to_model = {
     'XYZ': LayerXYZ,
@@ -139,8 +140,11 @@ def get_json(request):
     return JsonResponse(data)
 
 def get_themes(request):
+    themeContentType = ContentType.objects.get_for_model(Theme)
+    themeOrders = ChildOrder.objects.filter(content_type=themeContentType)
+    subtheme_ids = [x.object_id for x in themeOrders]
     data = {
-        "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.filter(theme_type = "").order_by('order', 'name')],
+        "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.exclude(pk__in=subtheme_ids).order_by('order', 'name')],
     }
     return JsonResponse(data)
 
@@ -750,7 +754,10 @@ def get_children(request, parent_id):
     return JsonResponse(final_children, safe=False)
 
 def top_level_themes(request):
-    top_level_themes = Theme.objects.filter(theme_type="", is_visible=True).exclude(display_name="Companion").order_by("order", "name")
+    themeContentType = ContentType.objects.get_for_model(Theme)
+    themeOrders = ChildOrder.objects.filter(content_type=themeContentType)
+    subtheme_ids = [x.object_id for x in themeOrders]
+    top_level_themes =  Theme.objects.exclude(pk__in=subtheme_ids).exclude(display_name="Companion").filter(is_visible=True).order_by('order', 'name')
     themes = []
     for theme in top_level_themes:
         data = {
