@@ -722,7 +722,7 @@ def get_children(request, parent_id):
                 child_theme = Theme.objects.get(id=child.object_id)
                 child_data = {
                     'id': child_theme.id,
-                    'name': child_theme.name,
+                    'name': child_theme.display_name,
                     'type': "theme",
                     "theme_type": child_theme.theme_type, 
                     "is_dynamic": child_theme.is_dynamic,
