@@ -114,6 +114,18 @@ def get_json(request):
         current_site_pk = 2
     else:
         current_site_pk = shortcuts.get_current_site(request).pk
+
+    # if (
+    #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
+    #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
+    # ):
+    #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
+    #     current_site_pk = request.site.id
+    # elif request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    #     current_site_pk = 1
+    # else:
+    #     current_site_pk = shortcuts.get_current_site(request).pk
+
     data = cache.get('layers_json_site_%d' % current_site_pk)
     # if not data or not data["themes"]:
     child_orders = ChildOrder.objects.all()
