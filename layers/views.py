@@ -226,7 +226,8 @@ def get_layers_for_theme(request, themeID):
     # print(child_orders)
     sorted_child_orders = sorted(
         list(child_orders), 
-        key=lambda x: (x.order, getattr(x.content_object, 'name', ""))
+        # Sort 1st by type (theme, then layer), Next by order, and finally by name
+        key=lambda x:({'theme': 0, 'layer':1}[x.content_type.name], x.order, x.content_object.name)
     )
     
     layer_list = []
@@ -251,7 +252,7 @@ def get_layers_for_theme(request, themeID):
                 'has_sublayers': has_sublayers,
                 'subLayers': sublayers_data,
             })
-        elif not (child_order.content_type == layer_content_type and child_order.content_object.layer_type == 'placeholder'):
+        elif child_order.content_type == layer_content_type and not child_order.content_object.layer_type == 'placeholder':
             layer_list.append({
                 'id': child.id,
                 'name': child.name,
@@ -729,7 +730,7 @@ def get_children(request, parent_id):
                     "placeholder_text": child_theme.placeholder_text,
                     "default_keyword": child_theme.default_keyword,
                 }
-            elif child.content_type == layer_content_type:
+            elif child.content_type == layer_content_type and not child.content_object.layer_type == 'placeholder':
                 child_layer = Layer.objects.get(id=child.object_id)
                 #Sidebar is a temporary replacement for serializer
                 child_data = {
@@ -749,7 +750,8 @@ def get_children(request, parent_id):
                 children.append(child_data)
         except ObjectDoesNotExist:
             continue
-    children_sorted = sorted(children, key=lambda x: (x['order'], x['name']))
+    # Sort 1st by type (theme, then layer), Next by order, and finally by name
+    children_sorted = sorted(children, key=lambda x: ({'theme': 0, 'layer': 1}[x['type']], x['order'], x['name']))
     final_children = [{key: value for key, value in child.items() if key != 'order'} for child in children_sorted]
     return JsonResponse(final_children, safe=False)
 
