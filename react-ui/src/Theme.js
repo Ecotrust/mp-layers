@@ -184,8 +184,8 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
               
               return {
                 name: layer.name, // Extract the layer name
-                id: layer.id,
-                url: theme.url + "/export",
+                id: category === "mdat" ? 'mdat_layer_' + theme.name + layer.id : 'vtr_layer_' + theme.name + layer.id,
+                url: parentTheme && parentTheme.is_dynamic ? theme.url.replace("/MapServer", "") : theme.url,
                 ...(isVTR 
                   ? { dateRangeDirectory: data } 
                   : { parentDirectory: parentDirectory }), // Conditionally add properties

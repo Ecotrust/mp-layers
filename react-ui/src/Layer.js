@@ -19,14 +19,18 @@ const Layer = ({
   
   // Ensure that customLayerId is used everywhere for both activation and deactivation
   const getCustomLayerId = () => {
-    const layerIdPrefix = layer.category === 'mdat' ? 'mdat_layer_' : 'vtr_layer_';
-    return `${layerIdPrefix}${layer.id}`;
+    if (layer.category) {
+      const layerIdPrefix = layer.category === 'mdat' ? 'mdat_layer_' + layer.name : 'vtr_layer_' + layer.name;
+      return `${layerIdPrefix}${layer.id}`;
+    }
+    return layer.id
   };
 
   useEffect(() => {
     const handleLayerDeactivation = (event) => {
-      const customLayerId = getCustomLayerId();
-      if (customLayerId === event.detail.layerId && isActive) {
+
+      if (layer.id === event.detail.layerId && isActive) {
+
         handleToggleLayerChangeState(layer.id);  // Toggle state in React
       }
     };
@@ -43,7 +47,7 @@ const Layer = ({
       isInitialMount.current = false;
     } else {
       const customLayerId = getCustomLayerId();
-      if (isActive === true) {
+      if (isActive === true && !layer.category) {
         // Layer activated in React, dispatch to Knockout
         const event = new CustomEvent('ReactLayerActivated', {
           detail: { layerId: customLayerId, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
@@ -101,30 +105,24 @@ const Layer = ({
     event.preventDefault();
     event.stopPropagation();
 
-    // Get the current active state before toggling
-    const currentIsActive = isActive;
-
     // Toggle the active state first
     handleToggleLayerChangeState(layer.id);
-
     // Delay dispatching the events until after the state is updated
       if (layer.category) {
-        const customLayerId = getCustomLayerId();
-        if (currentIsActive) {
-          // If the layer was active, dispatch the ReactLayerDeactivated event
-          const deactivatedEvent = new CustomEvent('ReactLayerDeactivated', {
-            detail: {
-              layerId: customLayerId,  // Use the custom layerId
-              theme_id: theme_id,
-              topLevelThemeId: topLevelThemeId,
-              layerName: layer.name
-            }
-          });
-          window.dispatchEvent(deactivatedEvent);
-        } else {
+        // if (currentIsActive) {
+        //   // If the layer was active, dispatch the ReactLayerDeactivated event
+        //   const deactivatedEvent = new CustomEvent('ReactLayerDeactivated', {
+        //     detail: {
+        //       layerId: layer.id,  
+        //       theme_id: theme_id,
+        //       topLevelThemeId: topLevelThemeId,
+        //       layerName: layer.name
+        //     }
+        //   });
+        //   window.dispatchEvent(deactivatedEvent);
+        // } else {
           // If the layer was not active, dispatch the appropriate activation event
           if (layer.category === "vtr") {
-
             const vtrEvent = new CustomEvent('ReactVTRLayer', {
               detail: { layer: layer }
             });
@@ -138,7 +136,7 @@ const Layer = ({
             });
             window.dispatchEvent(mdatEvent);
           }
-        }
+        // }
       }
   };
 
