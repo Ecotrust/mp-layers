@@ -723,15 +723,21 @@ def picker_wrapper(request, template="picker_wrapper.html"):
     return render(request, template)
 
 def get_children(request, parent_id):
-    child_orders = Theme.objects.get(id=parent_id).children.order_by('order') 
+ # Get the ContentTypes for Theme and Layer
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
+    
+    # Get the child orders (ChildOrder records) for the parent theme, ordered by 'order'
+    child_orders = ChildOrder.objects.filter(parent_theme_id=parent_id).order_by('order')
     children = []
-    for child in child_orders:
+    
+    # Loop through each ChildOrder to fetch child objects (Themes or Layers)
+    for child_order in child_orders:
         try:
             child_data = {}
-            if child.content_type == theme_content_type:
-                child_theme = Theme.objects.get(id=child.object_id)
+            if child_order.content_type == theme_content_type:
+                # If the child object is a Theme
+                child_theme = Theme.objects.get(id=child_order.object_id)
                 child_data = {
                     'id': child_theme.id,
                     'name': child_theme.display_name,
@@ -741,30 +747,38 @@ def get_children(request, parent_id):
                     "url": child_theme.dynamic_url,
                     "placeholder_text": child_theme.placeholder_text,
                     "default_keyword": child_theme.default_keyword,
+                    "child_order": child_order.order  # Order from ChildOrder
                 }
-            elif child.content_type == layer_content_type and not child.content_object.layer_type == 'placeholder':
-                child_layer = Layer.objects.get(id=child.object_id)
-                #Sidebar is a temporary replacement for serializer
-                child_data = {
-                    'id': child_layer.id,
-                    'name': child_layer.name,
-                    'type': "layer",
-                    'metadata': child_layer.metadata,
-                    'source': child_layer.source,
-                    'data_download': child_layer.data_download,
-                    'kml': child_layer.kml,
-                    'description': child_layer.description,
-                    "minzoom": child_layer.minZoom,
-                    "maxzoom": child_layer.maxZoom,
-                }
+            elif child_order.content_type == layer_content_type:
+                # If the child object is a Layer (and not of 'placeholder' type)
+                child_layer = Layer.objects.get(id=child_order.object_id)
+                if child_layer.layer_type != 'placeholder':
+                    child_data = {
+                        'id': child_layer.id,
+                        'name': child_layer.name,
+                        'type': "layer",
+                        'metadata': child_layer.metadata,
+                        'source': child_layer.source,
+                        'data_download': child_layer.data_download,
+                        'kml': child_layer.kml,
+                        'description': child_layer.description,
+                        "minzoom": child_layer.minZoom,
+                        "maxzoom": child_layer.maxZoom,
+                        "child_order": child_order.order  # Order from ChildOrder
+                    }
+            
             if child_data:
-                child_data['order'] = child.order
                 children.append(child_data)
+
         except ObjectDoesNotExist:
             continue
-    # Sort 1st by type (theme, then layer), Next by order, and finally by name
-    children_sorted = sorted(children, key=lambda x: ({'theme': 0, 'layer': 1}[x['type']], x['order'], x['name']))
-    final_children = [{key: value for key, value in child.items() if key != 'order'} for child in children_sorted]
+
+    # Sort by type, order, and name
+    children_sorted = sorted(children, key=lambda x: ({'theme': 0, 'layer': 1}[x['type']], x['child_order'], x['name']))
+
+    # Remove 'order' key from the final output if you don't want it in the response
+    final_children = [{key: value for key, value in child.items() if key != 'child_order'} for child in children_sorted]
+
     return JsonResponse(final_children, safe=False)
 
 def top_level_themes(request):

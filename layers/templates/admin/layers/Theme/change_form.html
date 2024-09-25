@@ -54,13 +54,18 @@
                     // Call a function in the parent window to add the new theme to the selected list
                     window.opener.addNewTheme(newThemeId, newThemeName);
 
-                    // Close the popup
+                    // Close the pop up
                     window.close();
                 })
                 .catch(error => {
                     console.error('Error:', error);
                 });
             });
+        }
+        // Set the value of the order field based on extra_context
+        var orderField = document.getElementById('id_order');  
+        if (orderField) {
+            orderField.value = "{{ order_value }}";  // Set the value from extra_context
         }
     });
   </script>
