@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
-from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
+from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerArcImageService, LayerVector, LayerXYZ
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
@@ -215,6 +215,12 @@ class LayerArcRESTSerializer(LayerSerializer):
 
 LayerArcRESTSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
 
+class LayerArcImageServiceSerializer(LayerArcRESTSerializer):
+    class Meta(LayerSerializer.Meta):
+        model = LayerArcImageService
+
+LayerArcImageServiceSerializer.add_layer_field_methods(LayerSerializer.Meta.fields)
+
 class LayerArcFeatureServiceSerializer(LayerSerializer):
     order = serializers.SerializerMethodField()
     wms_slug = serializers.CharField(default=None, read_only=True)
@@ -307,6 +313,7 @@ def get_serializer_by_layer_type(layer_type):
         'WMS': LayerWMSSerializer,
         'ArcRest': LayerArcRESTSerializer,
         'ArcFeatureServer': LayerArcFeatureServiceSerializer,
+        'ArcImageServer': LayerArcImageService,
         'Vector': LayerVectorSerializer,
         'XYZ': LayerXYZSerializer,
         # Add more mappings as necessary
@@ -350,6 +357,8 @@ def get_serialized_layer(instance):
         serializer = LayerArcRESTSerializer(instance)
     elif isinstance(instance, LayerArcFeatureService):
         serializer = LayerArcFeatureServiceSerializer(instance)
+    elif isinstance(instance, LayerArcImageService):
+        serializer = LayerArcImageServiceSerializer(instance)
     elif isinstance(instance, LayerVector):
         serializer = LayerVectorSerializer(instance)
     elif isinstance(instance, LayerXYZ):
@@ -398,6 +407,8 @@ class ChildOrderSerializer(serializers.ModelSerializer):
             serializer = LayerArcRESTSerializer(related_object)
         elif isinstance(related_object, LayerArcFeatureService):
             serializer = LayerArcFeatureServiceSerializer(related_object)
+        elif isinstance(related_object, LayerArcImageService):
+            serializer = LayerArcImageServiceSerializer(related_object)
         elif isinstance(related_object, LayerVector):
             serializer = LayerVectorSerializer(related_object)
         elif isinstance(related_object, LayerXYZ):
@@ -678,6 +689,13 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
                 "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
                 "query_by_point":specific_layer_instance.query_by_point,
             })
+        elif isinstance(specific_layer_instance, LayerArcImageService):
+            layer_specific_fields.update({
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "query_by_point":specific_layer_instance.query_by_point,
+            })
         elif isinstance(specific_layer_instance, LayerArcFeatureService):
             layer_specific_fields.update({
                 "arcgis_layers":specific_layer_instance.arcgis_layers,
@@ -791,6 +809,13 @@ class SubLayerSerializer(serializers.ModelSerializer):
                 "query_by_point": specific_layer_instance.query_by_point,
             })
         elif isinstance(specific_layer_instance, LayerArcREST):
+            layer_specific_fields.update({
+                "arcgis_layers":specific_layer_instance.arcgis_layers,
+                "password_protected":specific_layer_instance.password_protected,
+                "disable_arcgis_attributes":specific_layer_instance.disable_arcgis_attributes,
+                "query_by_point":specific_layer_instance.query_by_point,
+            })
+        elif isinstance(specific_layer_instance, LayerArcImageService):
             layer_specific_fields.update({
                 "arcgis_layers":specific_layer_instance.arcgis_layers,
                 "password_protected":specific_layer_instance.password_protected,

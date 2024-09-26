@@ -30,13 +30,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     assign_field_values_from_source_technology = function() {
-        if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer") {
+        if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer" || $('#id_layer_type').val() == "ArcImageServer") {
             var url = $('#id_url').val();
-            var export_index = url.toLowerCase().indexOf('/export');
+            var export_index = url.toLowerCase().indexOf('/export'); // Also works for '/exportimage' for image servers
             if ( export_index >= 0) {
               url = url.substring(0, export_index);
             }
-            if (url.toLowerCase().indexOf('/mapserver') >= 0 || url.toLowerCase().indexOf('/featureserver') >= 0) {
+            if (url.toLowerCase().indexOf('/mapserver') >= 0 || url.toLowerCase().indexOf('/featureserver' || url.toLowerCase().indexOf('/imageserver') >= 0) {
               $.ajax({
                 url: url + "/layers?f=json",
                 success: function(data) {

@@ -929,6 +929,13 @@ class LayerArcFeatureService(ArcServer, VectorType):
             self.layer.save()
         super(LayerArcFeatureService, self).save(*args, **kwargs)
 
+class LayerArcImageService(LayerArcREST):
+    def save(self, *args, **kwargs):
+        if not self.id:  # Check if this is a new instance
+            self.layer.layer_type = 'ArcImageServer'
+            self.layer.save()
+        super(LayerArcImageService, self).save(*args, **kwargs)
+
 class LayerXYZ(RasterType):
     def save(self, *args, **kwargs):
         if not self.id:  # Check if this is a new instance

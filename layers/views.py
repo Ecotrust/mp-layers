@@ -19,6 +19,7 @@ layer_type_to_model = {
     'WMS': LayerWMS,
     'ArcRest': LayerArcREST,
     'ArcFeatureServer': LayerArcFeatureService,
+    'ArcImageServer': LayerArcImageService,
     'Vector': LayerVector,
     "slider": Layer
 }
@@ -28,6 +29,7 @@ layer_type_to_serializer = {
     'WMS': LayerWMSSerializer,
     'ArcRest': LayerArcRESTSerializer,
     'ArcFeatureServer': LayerArcFeatureServiceSerializer,
+    'ArcImageServer': LayerArcImageServiceSerializer,
     'Vector': LayerVectorSerializer,
     "slider": SliderLayerSerializer
 }
@@ -50,6 +52,12 @@ def dictLayerCache(layer, site_id=None):
                         layer_arcrest = LayerArcREST.objects.get(layer = layer)
                         layers_dict = LayerArcRESTSerializer(layer_arcrest).data
                     except LayerArcREST.DoesNotExist:
+                        pass
+                elif layer.layer_type == "ArcImageServer":
+                    try:
+                        layer_arcimage = LayerArcImageService.objects.get(layer = layer)
+                        layers_dict = LayerArcImageServiceSerializer(layer_arcimage).data
+                    except LayerArcImageService.DoesNotExist:
                         pass
                 elif layer.layer_type == "ArcFeatureServer":
                     try:
@@ -610,6 +618,9 @@ def migration_layer_details(request, uuid=None):
                     elif layer.layer_type == "ArcRest":
                         arcrestlayer = LayerArcREST.objects.get(layer=layer)
                         serialized_data = LayerArcRESTSerializer(arcrestlayer).data
+                    elif layer.layer_type == "ArcImageServer":
+                        arcimagelayer = LayerArcImageService.objects.get(layer=layer)
+                        serialized_data =LayerArcImageServiceSerializer(arcimagelayer).data
                     elif layer.layer_type == "ArcFeatureServer":
                         arclayer = LayerArcFeatureService.objects.get(layer=layer)
                         serialized_data = LayerArcFeatureServiceSerializer(arclayer).data
@@ -649,6 +660,9 @@ def migration_layer_details(request, uuid=None):
             elif layer.layer_type == "ArcRest":
                 arcrestlayer = LayerArcREST.objects.get(layer=layer)
                 serialized_data = LayerArcRESTSerializer(arcrestlayer).data
+            elif layer.layer_type == "ArcImageServer":
+                arcimagelayer = LayerArcImageService.objects.get(layer=layer)
+                serialized_data = LayerArcImageServiceSerializer(arcimagelayer).data
             elif layer.layer_type == "ArcFeatureServer":
                 arclayer = LayerArcFeatureService.objects.get(layer=layer)
                 serialized_data = LayerArcFeatureServiceSerializer(arclayer).data

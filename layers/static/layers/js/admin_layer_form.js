@@ -38,6 +38,11 @@ show_layertype_form = function(layertype) {
         hide_section(wms_section);
         hide_section(style_section);
         break;
+      case 'ArcImageServer':
+        show_section(arcgis_section);
+        hide_section(wms_section);
+        hide_section(style_section);
+        break;
       case 'ArcFeatureServer':
         show_section(arcgis_section);
         hide_section(wms_section);
@@ -505,13 +510,13 @@ enforce_organization_show = function() {
 }
 
 assign_field_values_from_source_technology = function() {
-  if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer") {
+  if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer" || $('#id_layer_type').val() == "ArcImageServer") {
       var url = $('#id_url').val();
-      var export_index = url.toLowerCase().indexOf('/export');
+      var export_index = url.toLowerCase().indexOf('/export'); // also works for '/exportimage' for image servers!
       if ( export_index >= 0) {
         url = url.substring(0, export_index);
       }
-      if (url.toLowerCase().indexOf('/mapserver') >= 0 || url.toLowerCase().indexOf('/featureserver') >= 0) {
+      if (url.toLowerCase().indexOf('/mapserver') >= 0 || url.toLowerCase().indexOf('/featureserver') >= 0 || url.toLowerCase().indexOf('/imageserver') >= 0) {
         $.ajax({
           url: url + "/layers?f=json",
           success: function(data) {

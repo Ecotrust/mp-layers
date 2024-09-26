@@ -485,6 +485,9 @@ class ArcRESTInline(BaseLayerInline):
         }),
     )
 
+class ArcImageServiceInline(ArcRESTInline):
+    model = LayerArcImageService
+
 vectorStyleOverrides = ('Vector Display & Style', {
             'classes': ('collapse',),
             'fields': (
@@ -688,7 +691,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             )
         }),
     )
-    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
+    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, ArcImageServiceInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline,]
     
     add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
@@ -789,6 +792,8 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             InlineModel = [MultilayerDimension, MultilayerAssociation]
         elif layer_type == "ArcFeatureServer":
             InlineModel = LayerArcFeatureService
+        elif layer_type == "ArcImageServer":
+            InlineModel = ArcImageServiceInline
 
         # If an inline model is determined, proceed to save it
         if InlineModel is not None:
@@ -836,6 +841,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
             'XYZ': [XYZInline],
             'Vector': [VectorInline],
             'ArcFeatureServer': [ArcRESTFeatureServerInline],
+            'ArcImageServer': [ArcImageServiceInline],
             'slider': [NestedMultilayerDimensionInline, NestedMultilayerAssociationInline],
         }
         return mapping.get(layer_type)
@@ -844,6 +850,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         mapping = {
             'ArcRest': LayerArcREST,
             'ArcFeatureServer': LayerArcFeatureService,
+            'ArcImageServer': ArcImageServiceInline,
             'WMS': LayerWMS,
             'XYZ': LayerXYZ,
             'Vector': LayerVector,

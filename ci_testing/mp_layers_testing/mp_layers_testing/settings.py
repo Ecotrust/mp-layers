@@ -134,6 +134,7 @@ LAYER_TYPE_CHOICES =(
     ('WMS', 'WMS'),
     ('ArcRest', 'ArcRest'),
     ('ArcFeatureServer', 'ArcFeatureServer'),
+    ('ArcImageServer', 'ArcImageServer'),
     ('radio', 'radio'),
     ('checkbox', 'checkbox'),
     ('Vector', 'Vector'),
