@@ -396,6 +396,7 @@ class Theme(models.Model, SiteFlags):
         for child in children:
             if child.content_type.model == 'theme' and child.content_object.is_visible:
                 theme = child.content_object
+                children = [x.content_object.shortDict() for x in sorted(list(theme.children.all()), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
                 subthemes.append({
                     'id': theme.id,
                     'type': 'theme',
@@ -404,7 +405,7 @@ class Theme(models.Model, SiteFlags):
                     'slug_name': theme.slug_name,
                     'bookmark_link': theme.bookmark_link,
                     'is_sublayer': True,
-                    'children': [x.content_object.shortDict() for x in sorted(list(theme.children.all()), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
+                    'children': children
                 })
             if child.content_type.model == 'layer' and child.content_object.is_visible:
                 layer = child.content_object
@@ -874,7 +875,7 @@ class Layer(models.Model, SiteFlags):
         return self.name
     
     def shortDict(self, site_id=None):
-        children = [],
+        children = []
         layers_dict = {
             'id': self.id,
             'type': 'layer',
