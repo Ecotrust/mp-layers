@@ -366,6 +366,7 @@ class Layer(models.Model, SiteFlags):
         ('WMS', 'WMS'),
         ('ArcRest', 'ArcRest'),
         ('ArcFeatureServer', 'ArcFeatureServer'),
+        ('ArcImageServer', 'ArcImageServer'),
         ('Vector', 'Vector'),
         ('VectorTile', 'VectorTile'),
         ('slider', 'slider'),
