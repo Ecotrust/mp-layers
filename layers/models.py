@@ -195,6 +195,10 @@ class Theme(models.Model, SiteFlags):
 
     @property
     def data_url(self):
+
+        if not self.parent:
+            data_catalog_url = "/data-catalog/{}/".format(self.name)
+            return data_catalog_url
      
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
         if settings.DATA_CATALOG_ENABLED and self.is_visible:
@@ -243,7 +247,7 @@ class Theme(models.Model, SiteFlags):
         if self.parent and self.parent.bookmark and len(self.parent.bookmark) > 0:
             return self.parent.bookmark.replace('<layer_id>', str(self.id))
         
-        if self.parent.name in ['vtr', 'mdat', 'cas', 'marine-life-library']:
+        if not self.parent == None and self.parent.name in ['vtr', 'mdat', 'cas', 'marine-life-library']:
             # RDH: Most Marine Life layers seem to have bogus bookmarks. If the first line of this def
             #   isn't true, then we likely need to give users something that will work. This should do it.
             root_str = '/visualize/#x=-73.24&y=38.93&z=7&logo=true&controls=true&basemap=Ocean'
@@ -256,8 +260,11 @@ class Theme(models.Model, SiteFlags):
 
             return "{}{}{}{}".format(root_str, layer_str, themes_str, panel_str)
 
-        # RDH 2024-05-06:  All bookmark_link requests are v1 'Layer' requests. If they get here, they wanted a parent layer
-        return self.top_parent.url()
+        if self.parent:
+            # RDH 2024-05-06:  All bookmark_link requests are v1 'Layer' requests. If they get here, they wanted a parent layer
+            return self.top_parent.url()
+        else:
+            return self.data_url
     
     @property
     def kml(self):
@@ -354,7 +361,79 @@ class Theme(models.Model, SiteFlags):
         else:
             return self.overview
 
+    @property
+    def is_sublayer(self):
+        if self.parent:
+            return True
+        return False
+
+    @property
+    def layer_count(self):
+        return self.badge
     
+    @property
+    def badge(self):
+        return self.name[0]
+
+    @property
+    def catalog_html(self):
+        from django.template.loader import render_to_string
+        try:
+            return render_to_string(
+                "data_catalog/includes/cacheless_layer_info.html",
+                {
+                    'layer': self,
+                    # 'sub_layers': self.sublayers.exclude(layer_type="placeholder")
+                }
+            )
+        except Exception as e:
+            print(e)
+        
+    def shortDict(self, site_id=None):
+        children = sorted(list(self.children.all()), key=lambda x: (x.order, x.content_object.name))
+        subthemes = []
+        layers = []
+        for child in children:
+            if child.content_type.model == 'theme' and child.content_object.is_visible:
+                theme = child.content_object
+                children = [x.content_object.shortDict() for x in sorted(list(theme.children.all()), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
+                subthemes.append({
+                    'id': theme.id,
+                    'type': 'theme',
+                    'parent': {'name': self.display_name},
+                    'name': theme.display_name,
+                    'slug_name': theme.slug_name,
+                    'bookmark_link': theme.bookmark_link,
+                    'is_sublayer': True,
+                    'children': children
+                })
+            if child.content_type.model == 'layer' and child.content_object.is_visible:
+                layer = child.content_object
+                layers.append({
+                    'id': layer.id,
+                    'type': 'layer',
+                    'parent': {'name': self.display_name},
+                    'name': layer.name,
+                    'slug_name': layer.slug_name,
+                    'bookmark_link': layer.bookmark_link,
+                    'is_sublayer': True,
+                    'children': []
+                })
+        
+        children_list = subthemes + layers
+
+        layers_dict = {
+            'id': self.id,
+            'parent': None,
+            'name': self.display_name,
+            'type': 'theme',
+            'slug_name': self.slug_name,
+            'bookmark_link': self.bookmark_link,
+            'is_sublayer': self.is_sublayer,
+            'children': children_list,
+        }
+        return layers_dict
+
     class Meta:
         ordering = ['order']
         app_label = 'layers'
@@ -794,9 +873,21 @@ class Layer(models.Model, SiteFlags):
 
     def __str__(self):
         return self.name
-
-   
     
+    def shortDict(self, site_id=None):
+        children = []
+        layers_dict = {
+            'id': self.id,
+            'type': 'layer',
+            'parent': None,
+            'name': self.name,
+            'slug_name': self.slug_name,
+            'bookmark_link': self.bookmark_link,
+            'is_sublayer': self.is_sublayer,
+            'children': children,
+        }
+        return layers_dict
+
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
     # (Each companionship relates to one Layer)
@@ -830,8 +921,6 @@ class ChildOrder(models.Model):
 
     class Meta:
         ordering = ['order']
-
-
 
 class LayerType(models.Model):
     layer = models.ForeignKey(Layer, on_delete=models.CASCADE, unique=True)
@@ -968,8 +1057,6 @@ class LayerWMS(RasterType):
             self.layer.layer_type = 'WMS'
             self.layer.save()
         super(LayerWMS, self).save(*args, **kwargs)
-
-
 
 class MultilayerDimension(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
