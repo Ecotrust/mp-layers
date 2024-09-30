@@ -2,14 +2,21 @@ import React, {useEffect, useState} from "react";
 import axios from 'axios';
 import Layer from "./Layer"
 import SearchBox from "./Searchbox";
+import LinkBar from "./LinkBar";
 
 const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
+  const [showLinkBar, setShowLinkBar] = useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [childrenThemes, setChildrenThemes] = React.useState([]);
   const [filteredChildrenThemes, setFilteredChildrenThemes] = useState([]); 
   const [layersActiveStatus, setLayersActiveStatus] = React.useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [populatedByServices, setPopulatedByServices] = useState(false);
+
+  const handleLinkBarToggle = (e) => {
+    e.stopPropagation();
+    setShowLinkBar((prevState) => !prevState); 
+  };
 
   useEffect(() => {
     const initialize = async () => {
@@ -90,7 +97,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   
   useEffect(() => {
     // Initially filter by default_keyword when no search query is present
-    if (!searchQuery && theme.is_dynamic && !populatedByServices) {
+    if (!searchQuery && theme.is_dynamic && !populatedByServices && theme.default_keyword) {
       const filteredByDefault = childrenThemes.filter(layer =>
         layer.name.toLowerCase().includes(theme.default_keyword.toLowerCase())
       );
@@ -301,15 +308,36 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     // Adjust the percentage for the desired effect
   };
   const indentationWidth = 20;
+  const infoIconColor = showLinkBar 
+  ? "black" 
+  : expanded 
+    ? "white" 
+    : "green";
   const themeBorderColor = borderColor || getGreenShade(level);
   return (
     <div>
     <div className={level < 1 ? "column-item picker" : "column-item"} onClick={() => handleClick(parentTheme)} style={{
           backgroundColor: expanded ? getGreenShade(level) : "",
         }}>
-      {theme.name}
+      <span>{theme.name}</span>
+      <i
+        className="fa fa-info-circle"
+        onClick={handleLinkBarToggle}
+        style={{ color: infoIconColor, fontSize: 18 }}
+      ></i>
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
     </div>
+    {showLinkBar && (
+        <div>
+          <LinkBar theme={theme} 
+          isVisible={showLinkBar}
+          kml={theme.kml} 
+          data_download={theme.data_download}
+          metadata={theme.metadata}
+          source={theme.source}
+          description={theme.description}/> 
+        </div>
+      )}
     {expanded && (
       <div>
         {/* Wrap SearchBox in a div with the same padding as children */}
@@ -320,7 +348,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
             position: 'relative'
           }}>
             <SearchBox 
-              placeholder={theme.placeholder_text} 
+              placeholder={theme.placeholder_text || "Search..."} 
               value={searchQuery} 
               onChange={handleSearchChange} 
             />

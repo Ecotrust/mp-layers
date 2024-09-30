@@ -747,7 +747,12 @@ def get_children(request, parent_id):
                     "url": child_theme.dynamic_url,
                     "placeholder_text": child_theme.placeholder_text,
                     "default_keyword": child_theme.default_keyword,
-                    "child_order": child_order.order  # Order from ChildOrder
+                    "child_order": child_order.order,  # Order from ChildOrder
+                    "metadata": child_theme.metadata,
+                    "source": child_theme.source,
+                    "data_download": child_theme.data_download,
+                    "kml": child_theme.kml,
+                    "description": child_theme.description
                 }
             elif child_order.content_type == layer_content_type:
                 # If the child object is a Layer (and not of 'placeholder' type)

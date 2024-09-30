@@ -715,7 +715,7 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
         
         return qs
     
-    def update_child_order(self, obj, themes, order):
+    def update_child_order(self, obj, order):
         content_type = ContentType.objects.get_for_model(obj)
     
         # Update the order for all ChildOrder instances where the content_object is the current layer
@@ -761,10 +761,9 @@ class LayerAdmin(nested_admin.NestedModelAdmin):
                 self.save_add(request, obj, form)
             
             # Handling ChildOrder after the layer is saved
-            themes = form.cleaned_data.get('themes', [])
             order = form.cleaned_data.get('order', 0)
  
-            self.update_child_order(obj, themes, order)
+            self.update_child_order(obj, order)
 
             # Handling Companionship after the layer is saved
             companion_layers = set(form.cleaned_data.get('companion_layers', []))
