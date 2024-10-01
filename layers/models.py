@@ -143,6 +143,8 @@ class Theme(models.Model, SiteFlags):
     @property
     def top_parent(self):
         parent = self.parent
+        if parent == None:
+            return self
         while parent.parent != None:
             parent = parent.parent
 
@@ -585,7 +587,7 @@ class Layer(models.Model, SiteFlags):
             if parent_theme and parent_theme.is_visible:
                 # Format the parent theme's name to be URL-friendly
                 # This can be custom tailored if you store slugs differently
-                parent_theme_slug = parent_theme.name.replace(" ", "-")
+                parent_theme_slug = parent_theme.top_parent.name.replace(" ", "-")
                 
                 # Ensure there's a slug_name to use for constructing the URL
                 if self.slug_name:
@@ -758,6 +760,13 @@ class Layer(models.Model, SiteFlags):
             parents.append(parent)
 
         return parents
+    
+    @property
+    def top_parent(self):
+        if self.parent == None:
+            return None
+        else:
+            return self.parent.top_parent
 
     
     @property
