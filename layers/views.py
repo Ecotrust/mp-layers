@@ -742,6 +742,10 @@ def get_children(request, parent_id):
             if child_order.content_type == theme_content_type:
                 # If the child object is a Theme
                 child_theme = Theme.objects.get(id=child_order.object_id)
+                description = child_theme.description or ""
+                if child_theme.data_url:
+                    read_more_link = f' <a href="{child_theme.data_url}" target="_blank">Read More</a>'
+                    description += read_more_link
                 child_data = {
                     'id': child_theme.id,
                     'name': child_theme.display_name,
@@ -756,12 +760,16 @@ def get_children(request, parent_id):
                     "source": child_theme.source,
                     "data_download": child_theme.data_download,
                     "kml": child_theme.kml,
-                    "description": child_theme.description
+                    "description": description
                 }
             elif child_order.content_type == layer_content_type:
                 # If the child object is a Layer (and not of 'placeholder' type)
                 child_layer = Layer.objects.get(id=child_order.object_id)
                 if child_layer.layer_type != 'placeholder':
+                    description = child_layer.description or ""
+                    if child_layer.data_url:
+                        read_more_link = f' <a href="{child_layer.data_url}" target="_blank">Read More</a>'
+                        description += read_more_link
                     child_data = {
                         'id': child_layer.id,
                         'name': child_layer.name,
@@ -770,7 +778,7 @@ def get_children(request, parent_id):
                         'source': child_layer.source,
                         'data_download': child_layer.data_download,
                         'kml': child_layer.kml,
-                        'description': child_layer.description,
+                        'description': description,
                         "minzoom": child_layer.minZoom,
                         "maxzoom": child_layer.maxZoom,
                         "child_order": child_order.order  # Order from ChildOrder

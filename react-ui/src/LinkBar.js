@@ -46,7 +46,7 @@ const LinkBar = ({
       {renderLink(data_download, "data", "Download ESRI Formatted Dataset")}
       {renderLink(metadata, "metadata", "View Metadata")}
       {renderLink(source, "source", "Link to Dataset Source Provider")}
-      {<div className="description-box">{description}</div>}
+      {<div className="description-box" dangerouslySetInnerHTML={{ __html: description }}></div>}
     </div>
   );
 };
