@@ -67,8 +67,14 @@ body {
   transform: rotate(90deg); /* Adjust as needed to point down */
 }
 
-.far.fa-circle, .fas.fa-check-square, .far.fa-square, .fa-check-circle, .fa-info-circle {
+.far.fa-circle, .fas.fa-check-square, .far.fa-square, .fa-check-circle {
   font-size: 12px; /* Ensure normal size for icons */
+  color: #00a564;
+  margin: 10px; /* Space between icons and text */
+}
+
+.fa-info-circle {
+  font-size: 14px; /* Ensure normal size for icons */
   color: #00a564;
   margin: 10px; /* Space between icons and text */
 }

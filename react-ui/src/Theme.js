@@ -317,14 +317,16 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   return (
     <div>
     <div className={level < 1 ? "column-item picker" : "column-item"} onClick={() => handleClick(parentTheme)} style={{
-          backgroundColor: expanded ? getGreenShade(level) : "",
+          minHeight: '55px', backgroundColor: expanded ? getGreenShade(level) : "",
         }}>
       <span>{theme.name}</span>
-      <i
-        className="fa fa-info-circle"
-        onClick={handleLinkBarToggle}
-        style={{ color: infoIconColor, fontSize: 18 }}
-      ></i>
+      {(theme.kml || theme.description || theme.data || theme.metadata) && (
+        <i
+          className="fa fa-info-circle"
+          onClick={handleLinkBarToggle}
+          style={{ color: infoIconColor, fontSize: 20 }}
+        ></i>
+      )}
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
     </div>
     {showLinkBar && (
@@ -344,7 +346,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         {theme.is_dynamic && !populatedByServices && (
           <div style={{
             paddingLeft: `${indentationWidth}px`,
-            backgroundColor: getGreenShade(level),
+            // backgroundColor: getGreenShade(level),
             position: 'relative'
           }}>
             <SearchBox 
@@ -374,7 +376,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                   left: 0,
                   width: `${indentationWidth}px`,
                   height: '100%',
-                  backgroundColor: getGreenShade(level)
+                  // backgroundColor: getGreenShade(level)
                 }}></div>
                 <div style={{ paddingLeft: `${indentationWidth}px` }}>
                   {child.type === "theme" ? (
@@ -393,7 +395,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                     left: 0,
                     width: `${indentationWidth}px`,
                     height: '100%',
-                    backgroundColor: getGreenShade(level)
+                    // backgroundColor: getGreenShade(level)
                   }}></div>
                   <div style={{ paddingLeft: `${indentationWidth}px` }}>
                     {child.type === "theme" ? (
