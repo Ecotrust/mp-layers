@@ -319,14 +319,21 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     <div className={level < 1 ? "column-item picker" : "column-item"} onClick={() => handleClick(parentTheme)} style={{
           minHeight: '55px', backgroundColor: expanded ? getGreenShade(level) : "",
         }}>
+        {(level >= 1) && (
+          (theme.kml || theme.description || theme.data || theme.metadata) ? (
+            <div className="symbol-container">
+              <i
+                className="fa fa-info-circle"
+                onClick={handleLinkBarToggle}
+                style={{ color: infoIconColor }}
+              ></i>
+            </div>
+          ) : (
+            <i style={{ width: '40px', display: 'inline-block' }}></i> // Placeholder
+          )
+        )}
       <span>{theme.name}</span>
-      {(theme.kml || theme.description || theme.data || theme.metadata) && (
-        <i
-          className="fa fa-info-circle"
-          onClick={handleLinkBarToggle}
-          style={{ color: infoIconColor, fontSize: 20 }}
-        ></i>
-      )}
+      
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
     </div>
     {showLinkBar && (

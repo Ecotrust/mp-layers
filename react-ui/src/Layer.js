@@ -156,7 +156,7 @@ const Layer = ({
   return (
     <div className="children-item" onClick={layerClickHandler} style={layerStyle}>
       <div className="main-content">
-      <div className="icon-container">
+      <div className="symbol-container">
       <i
         className="fa fa-info-circle"
         onClick={toggleLinkBar}
@@ -167,7 +167,7 @@ const Layer = ({
     <div className="text-container">
       {layer.name}
     </div>
-    <div className="icon-container">
+    <div className="symbol-container">
       <i className={iconClass()}></i>
     </div>
     </div>
