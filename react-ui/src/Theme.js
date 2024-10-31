@@ -316,9 +316,10 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   const themeBorderColor = borderColor || getGreenShade(level);
   return (
     <div>
-    <div className={level < 1 ? "column-item picker" : "column-item"} onClick={() => handleClick(parentTheme)} style={{
-          minHeight: '55px', backgroundColor: expanded ? getGreenShade(level) : "",
+    <div className={`${level < 1 ? "column-item picker" : "column-item"} hierarchy-item indent-level-${level}`} onClick={() => handleClick(parentTheme)} style={{
+          minHeight: '55px', backgroundColor: expanded ? getGreenShade(level) : "", width: '100%'
         }}>
+          {level > 0 && <div className="hierarchy-line"></div>}
         {(level >= 1) && (
           (theme.kml || theme.description || theme.data || theme.metadata) ? (
             <div className="symbol-container">
@@ -332,7 +333,13 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
             <i style={{ width: '40px', display: 'inline-block' }}></i> // Placeholder
           )
         )}
-      <span>{theme.name}</span>
+      <span>
+        {level > 0 ? (
+          <span className="hierarchy-connector">{theme.name}</span>
+        ) : (
+          theme.name
+        )}
+      </span>
       
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
     </div>
@@ -351,7 +358,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
       <div>
         {/* Wrap SearchBox in a div with the same padding as children */}
         {theme.is_dynamic && !populatedByServices && (
-          <div style={{
+          <div className="hierarchy-line" style={{
             paddingLeft: `${indentationWidth}px`,
             // backgroundColor: getGreenShade(level),
             position: 'relative'
@@ -377,40 +384,42 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
           <ul className="children-list">
             {/* Display filtered childrenThemes if the theme is dynamic and a search query exists */}
             {(theme.is_dynamic) ? filteredChildrenThemes.map(child => (
-              <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
-                <div style={{
+              <div key={child.id} className={`indent`} style={{ position: 'relative', backgroundColor: '#fff' }}>
+                {/* <div style={{
                   position: 'absolute',
                   left: 0,
                   width: `${indentationWidth}px`,
                   height: '100%',
                   // backgroundColor: getGreenShade(level)
                 }}></div>
-                <div style={{ paddingLeft: `${indentationWidth}px` }}>
+                <div style={{ paddingLeft: `${indentationWidth}px` }}> */}
+                {level > 0 && <div className="hierarchy-line"></div>}
                   {child.type === "theme" ? (
                     <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
                   ) : (
                     <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
                   )}
-                </div>
+                {/* </div> */}
               </div>
             )) : (
               // Display normal childrenThemes if no search query or if theme is not dynamic
               childrenThemes.map(child => (
-                <div key={child.id} style={{ position: 'relative', backgroundColor: '#fff' }}>
-                  <div style={{
+                <div key={child.id} className={`indent`}  style={{ position: 'relative', backgroundColor: '#fff' }}>
+                  {/* <div style={{
                     position: 'absolute',
                     left: 0,
                     width: `${indentationWidth}px`,
                     height: '100%',
                     // backgroundColor: getGreenShade(level)
                   }}></div>
-                  <div style={{ paddingLeft: `${indentationWidth}px` }}>
+                  <div style={{ paddingLeft: `${indentationWidth}px` }}> */}
+                  {level > 0 && <div className="hierarchy-line"></div>}
                     {child.type === "theme" ? (
                       <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
                     ) : (
                       <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
                     )}
-                  </div>
+                  {/* </div> */}
                 </div>
               ))
             )}

@@ -154,7 +154,8 @@ const Layer = ({
   };
   const infoIconColor = showLinkBar ? "black" : "green";
   return (
-    <div className="children-item" onClick={layerClickHandler} style={layerStyle}>
+    <div className="children-item hierarchy-item indent" onClick={layerClickHandler} style={layerStyle}>
+      <div className="hierarchy-line"></div>
       <div className="main-content">
       <div className="symbol-container">
       <i
@@ -164,7 +165,7 @@ const Layer = ({
       ></i>
     </div>
     
-    <div className="text-container">
+    <div className="text-container hierarchy-connector">
       {layer.name}
     </div>
     <div className="symbol-container">

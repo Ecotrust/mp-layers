@@ -111,12 +111,13 @@ ul {
 }
 
 .search-input {
-  width: 100%; /* Makes the input take the full width of the container */
+  width: 95%; /* Makes the input take the full width of the container */
   box-sizing: border-box; /* Ensures padding and border are included in the width */
   padding: 10px; /* Adjust padding as needed */
   border: 1px solid #ccc; /* Border to match the surrounding styles */
   border-radius: 4px; /* Optional: to round the corners */
   font-size: 16px; /* Adjust the font size */
+  margin-left: 10px;
 }
 
 .column-item:hover {
@@ -176,3 +177,33 @@ ul {
   white-space: normal;
   word-break: normal;
 }
+
+.hierarchy-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 20px; /* Base padding for indentation */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hierarchy-line {
+  position: absolute;
+  border-left: 2px solid #ccc; /* Vertical line color */
+  top: 0;
+  bottom: 0;
+  left: -10px; /* Adjust based on desired spacing */
+}
+
+.hierarchy-connector::before {
+  content: "";
+  position: absolute;
+  left: -10px; /* Aligns the horizontal connector line to the left of the theme text */
+  top: 50%;
+  width: 10px; /* Length of horizontal line */
+  border-top: 2px solid #ccc;
+}
+
+.indent { padding-left: 20px; }
+
+
