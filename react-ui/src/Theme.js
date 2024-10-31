@@ -316,7 +316,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   const themeBorderColor = borderColor || getGreenShade(level);
   return (
     <div>
-    <div className={`${level < 1 ? "column-item picker" : "column-item"} hierarchy-item indent-level-${level}`} onClick={() => handleClick(parentTheme)} style={{
+    <div className={`${level < 1 ? "column-item picker" : "column-item"} hierarchy-item indent`} onClick={() => handleClick(parentTheme)} style={{
           minHeight: '55px', backgroundColor: expanded ? getGreenShade(level) : "", width: '100%'
         }}>
           {level > 0 && <div className="hierarchy-line"></div>}
@@ -344,7 +344,8 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
       <i className={expanded ? "fas fa-chevron-right expanded" : "fas fa-chevron-right"} style={{ marginLeft: 'auto' }}></i>
     </div>
     {showLinkBar && (
-        <div>
+        <div className="hierarchy-item">
+          <div className="hierarchy-line"></div>
           <LinkBar theme={theme} 
           isVisible={showLinkBar}
           kml={theme.kml} 

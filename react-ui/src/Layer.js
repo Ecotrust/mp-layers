@@ -96,9 +96,11 @@ const Layer = ({
     setShowLinkBar(!showLinkBar);
 
   };
+  const wrap = "column";
   const layerStyle = {
     // borderLeft: `7px solid ${borderColor}`,
-    // ... other styles you might have
+    display: "flex",
+    flexDirection: wrap,
   };
   // Handler for the main layer item click (excluding the info icon)
   const layerClickHandler = (event) => {
