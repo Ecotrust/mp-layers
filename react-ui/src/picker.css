@@ -194,7 +194,15 @@ ul {
   border-left: 2px solid #ccc; /* Vertical line color */
   top: 0;
   bottom: 0;
-  left: -10px; /* Adjust based on desired spacing */
+  left: -10px; 
+}
+
+.hierarchy-linkbar-line {
+  position: absolute;
+  border-left: 2px solid #ccc; /* Vertical line color */
+  top: 0;
+  bottom: 0;
+  left: 10px;
 }
 
 .hierarchy-connector::before {

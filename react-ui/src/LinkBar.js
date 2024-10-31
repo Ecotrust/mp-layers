@@ -8,6 +8,7 @@ const LinkBar = ({
   kml,
   data_download,
   metadata,
+  expanded,
   source,
   description,
 }) => {
@@ -39,9 +40,11 @@ const LinkBar = ({
         padding: "10px",
         textAlign: "center",
         display: isVisible ? "block" : "none",
+        width: "100%"
       }}
       onClick={handleLinkClick}
     >
+      {expanded && <div className="hierarchy-linkbar-line"></div>}
       {renderLink(kml, "kml", "Download for Google Maps")}
       {renderLink(data_download, "data", "Download ESRI Formatted Dataset")}
       {renderLink(metadata, "metadata", "View Metadata")}

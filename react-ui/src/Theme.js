@@ -349,6 +349,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
           <LinkBar theme={theme} 
           isVisible={showLinkBar}
           kml={theme.kml} 
+          expanded={expanded}
           data_download={theme.data_download}
           metadata={theme.metadata}
           source={theme.source}
