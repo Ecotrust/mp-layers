@@ -3,9 +3,12 @@ from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+
+from import_export.admin import ImportExportMixin
 import nested_admin
 import os
 from .models import *
+
 # Register your models here.
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -162,7 +165,7 @@ class ThemeForm(forms.ModelForm):
         return cleaned_data
 
 
-class ThemeAdmin(admin.ModelAdmin):
+class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
@@ -555,7 +558,7 @@ class VectorInline(BaseLayerInline):
         vectorStyleOverrides,
     )
 
-class LayerAdmin(nested_admin.NestedModelAdmin):
+class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_parent_theme(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
