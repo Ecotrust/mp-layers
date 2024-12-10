@@ -215,67 +215,72 @@ def get_layer_search_data(request):
 
     return JsonResponse(search_dict)
 
+
+# As per requirements: The third level will be comprised of EVERY layer that could be accessed by the v2 hierarchy, squashing it so each parent 'theme' not represented in the first two levels becomes part of the layer's name
 def get_layers_for_theme(request, themeID):
     theme = Theme.objects.get(pk=themeID)
-    theme_content_type = ContentType.objects.get_for_model(Theme)
-    layer_content_type = ContentType.objects.get_for_model(Layer)
 
-    if (
-        Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and 
-        not request.site == Site.objects.get(domain=request.META['HTTP_HOST']) 
-    ):
-        request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
-
-    child_orders = ChildOrder.objects.filter(
-            parent_theme=theme,
+    def collect_layers(theme_obj, parent_name=None, exclude_top_level=False):
+        """
+        Recursively collect only layers, prepending the immediate parent's name to their names.
+        Ensures the top-level theme name is not repeated in sublayers.
+        """
+        flat_layers = []
+        child_orders = ChildOrder.objects.filter(parent_theme=theme_obj).order_by("order")
+        sorted_child_orders = sorted(
+            child_orders,
+            key=lambda co: getattr(co.content_object, 'name', '').lower()
         )
-    
-    # site_valid_order_ids = []
-    # for order in child_orders:
-    #     if request.site in order.content_object.site.all():
-    #         site_valid_order_ids.append(order.id)
-    # child_orders = child_orders.filter(id__in=site_valid_order_ids).order_by("order")
-    # print(child_orders)
+        for child_order in sorted_child_orders:
+            child = child_order.content_object
+            if isinstance(child, Theme):
+                # Exclude the top-level theme's name from being repeatedly appended
+                theme_name = (
+                    f"{parent_name} >> {child.name}"
+                    if parent_name and not exclude_top_level
+                    else child.display_name
+                )
+                # Recursively collect child layers/themes
+                flat_layers.extend(collect_layers(child, parent_name=theme_name, exclude_top_level=False))
+            elif isinstance(child, Layer):
+                # Prepend only the immediate parent's name to the layer's name
+                layer_name = f"{parent_name} >> {child.name}" if parent_name else child.name
+                flat_layers.append({
+                    "id": child.id,
+                    "name": layer_name,
+                    "slug_name": getattr(child, "slug_name", ""),
+                })
+        return flat_layers
+
+    # Prepare the top-level response
+    top_level_response = []
+    child_orders = ChildOrder.objects.filter(parent_theme=theme).order_by("order")
     sorted_child_orders = sorted(
-        list(child_orders), 
-        # Sort 1st by type (theme, then layer), Next by order, and finally by name
-        key=lambda x:({'theme': 0, 'layer':1}[x.content_type.name], x.order, x.content_object.name)
+        child_orders,
+        key=lambda co: getattr(co.content_object, 'name', '').lower()
     )
-    
-    layer_list = []
     for child_order in sorted_child_orders:
         child = child_order.content_object
-        if child_order.content_type == theme_content_type:
-            has_sublayers = ChildOrder.objects.filter(parent_theme=child).exists()
-            sublayers_data = []
-            if has_sublayers:
-                sub_child_orders = ChildOrder.objects.filter(parent_theme=child)
-                for sub_child_order in sub_child_orders:
-                    sub_layer = sub_child_order.content_object
-                    sublayers_data.append({
-                        "name": sub_layer.name,
-                        "id": sub_layer.id,
-                        "slug_name": sub_layer.slug_name,
-                    })
-            layer_list.append({
-                'id': child.id,
-                'name': child.name,
-                'type': child.theme_type,
-                'has_sublayers': has_sublayers,
-                'subLayers': sublayers_data,
+        if isinstance(child, Theme):
+            # Top-level themes are containers, with sublayers being flat
+            top_level_response.append({
+                "id": child.id,
+                "name": child.display_name,
+                "type": getattr(child, "theme_type", ""),
+                "has_sublayers": True,
+                "subLayers": collect_layers(child, parent_name=child.display_name, exclude_top_level=True),
             })
-        elif child_order.content_type == layer_content_type and not child_order.content_object.layer_type == 'placeholder':
-            layer_list.append({
-                'id': child.id,
-                'name': child.name,
-                'type': child.layer_type,
-                'has_sublayers': False,
-                'subLayers': [],
+        elif isinstance(child, Layer):
+            # Add layers directly under the top-level theme
+            top_level_response.append({
+                "id": child.id,
+                "name": child.name,
+                "type": child.layer_type,
+                "slug_name": getattr(child, "slug_name", ""),
             })
-        else:
-            #placeholder layer
-            pass
-    return JsonResponse({'layers': layer_list})
+
+    return JsonResponse({'layers': top_level_response})
+
 
 def get_layer_details(request, layerID):
     serialized_data = {}
@@ -748,7 +753,7 @@ def get_children(request, parent_id):
                     description += read_more_link
                 child_data = {
                     'id': child_theme.id,
-                    'name': child_theme.display_name,
+                    "name": child_theme.display_name,
                     'type': "theme",
                     "theme_type": child_theme.theme_type, 
                     "is_dynamic": child_theme.is_dynamic,
@@ -807,8 +812,9 @@ def top_level_themes(request):
     for theme in top_level_themes:
         data = {
             'id': theme.id,
-            'name': theme.display_name,
-            'type': "theme"
+            "name": theme.display_name,
+            'type': "theme",
+            "is_visible": True
         }
         themes.append(data)
     return JsonResponse({'top_level_themes': themes})
