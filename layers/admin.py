@@ -622,7 +622,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
         ('LAYER ORGANIZATION', {
             # 'classes': ('collapse', 'open',),
             'fields': (
-                ('order'),
+                ('order',),
                 ('has_companion','companion_layers'),
                 # RDH 2019-10-25: We don't use this, and it doesn't seem helpful
                 # ('is_disabled','disabled_message')
@@ -648,7 +648,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
                 ('metadata','source'),
                 ('bookmark', 'kml'),
                 ('data_download','learn_more'),
-                ('map_tiles'),
+                ('map_tiles',),
             )
         }),
         ('SHARING', {
@@ -776,27 +776,32 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
 
     def save_add(self, request, obj, form):
         layer_type = form.cleaned_data.get('layer_type')
-        InlineModel = None
+        InlineModels = []
 
         # Determine the inline model based on layer_type
         if layer_type == 'ArcRest':
-            InlineModel = LayerArcREST
+            InlineModels = [LayerArcREST,]
         elif layer_type == 'WMS':
-            InlineModel = LayerWMS
+            InlineModels = [LayerWMS,]
         elif layer_type == 'XYZ':
-            InlineModel = LayerXYZ
+            InlineModels = [LayerXYZ,]
         elif layer_type == 'Vector':
-            InlineModel = LayerVector
+            InlineModels = [LayerVector,]
         elif layer_type == "slider":
-            InlineModel = [MultilayerDimension, MultilayerAssociation]
+            InlineModels = [MultilayerDimension, MultilayerAssociation,]
         elif layer_type == "ArcFeatureServer":
-            InlineModel = LayerArcFeatureService
+            InlineModels = [LayerArcFeatureService,]
 
         # If an inline model is determined, proceed to save it
-        if InlineModel is not None:
-            InlineFormSet = inlineformset_factory(Layer, InlineModel, fields='__all__')
+        for nestedModel in InlineModels:
+            if nestedModel == MultilayerDimension:
+                InlineFormSet = NestedMultilayerDimensionInlineFormset
+            elif nestedModel == MultilayerAssociation:
+                InlineFormSet = NestedMultilayerAssociationInlineFormset
+            else:
+                InlineFormSet = inlineformset_factory(Layer, nestedModel, fields='__all__')
             formset = InlineFormSet(request.POST, request.FILES, instance=obj)
-            if formset.is_valid() and InlineModel.objects.filter(layer=obj).count() == 1:
+            if formset.is_valid() and nestedModel.objects.filter(layer=obj).count() == 1:
                 formset.save()
 
     def handle_layer_type_change(self, request, obj, original_layer_type, new_layer_type):
