@@ -248,6 +248,7 @@ def get_layers_for_theme(request, themeID):
                 flat_layers.append({
                     "id": child.id,
                     "name": layer_name,
+                    "layerName": child.name,
                     "slug_name": getattr(child, "slug_name", ""),
                 })
         return flat_layers
