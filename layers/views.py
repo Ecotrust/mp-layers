@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
+from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection
 from django.http import HttpResponse, JsonResponse
@@ -231,6 +232,7 @@ def get_layers_for_theme(request, themeID):
             child_orders,
             key=lambda co: getattr(co.content_object, 'name', '').lower()
         )
+        
         for child_order in sorted_child_orders:
             child = child_order.content_object
             if isinstance(child, Theme):
@@ -260,7 +262,12 @@ def get_layers_for_theme(request, themeID):
         child_orders,
         key=lambda co: getattr(co.content_object, 'name', '').lower()
     )
+    filtered_child_orders = []
+    current_site = get_current_site(request)
     for child_order in sorted_child_orders:
+        if current_site in child_order.content_object.site.all():
+            filtered_child_orders.append(child_order)
+    for child_order in filtered_child_orders:
         child = child_order.content_object
         if isinstance(child, Theme):
             # Top-level themes are containers, with sublayers being flat
