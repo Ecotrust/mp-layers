@@ -277,6 +277,8 @@ def get_layers_for_theme(request, themeID):
                 "id": child.id,
                 "name": child.name,
                 "type": child.layer_type,
+                "has_sublayers": False,
+                "subLayers": [],
                 "slug_name": getattr(child, "slug_name", ""),
             })
 
