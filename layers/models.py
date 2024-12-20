@@ -799,7 +799,10 @@ class Layer(models.Model, SiteFlags):
     
     @property
     def is_sublayer(self):
+        if self.parent == None:
+            return False
         return self.parent.parent != None
+
     
     @property
     def themes(self):
