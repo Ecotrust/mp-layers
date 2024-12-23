@@ -32,13 +32,17 @@ layer_type_to_serializer = {
     'Vector': LayerVectorSerializer,
     "slider": SliderLayerSerializer
 }
-def dictLayerCache(layer, site_id=None):
+def dictLayerCache(layer, site_id):
     from django.core.cache import cache
     layers_dict = None
     if site_id in [x.id for x in layer.site.all()]:
         if site_id:
             layers_dict = cache.get('layers_layer_%d_%d' % (layer.id, site_id))
-        if not layers_dict:
+        if layers_dict:
+            print("FOUND: layers_layer_{}_{}".format(layer.id, site_id))
+        else:
+            print("Creating...: layers_layer_{}_{}".format(layer.id, site_id))
+            # if not layers_dict:
             if isinstance(layer, Layer):
                 if layer.layer_type == "WMS": 
                     try:
@@ -70,6 +74,8 @@ def dictLayerCache(layer, site_id=None):
                         layers_dict = LayerXYZSerializer(layer_xyz).data
                     except LayerXYZ.DoesNotExist:
                         pass
+                elif layer.layer_type == "slider":
+                    layers_dict = SliderLayerSerializer(layer)
                 else: 
                     layers_dict = LayerSerializer(layer).data
             elif isinstance(layer, Theme):
@@ -80,6 +86,7 @@ def dictLayerCache(layer, site_id=None):
             else:
                 for site in Site.objects.all():
                     cache.set('layers_layer_%d_%d' % (layer.id, site.id), layers_dict, 60*60*24*7)
+            print("Created: layers_layer_{}_{}".format(layer.id, site_id))
     return layers_dict
 
 def dictThemeCache(theme, site_id=None):
@@ -88,7 +95,10 @@ def dictThemeCache(theme, site_id=None):
     if site_id in [x.id for x in theme.site.all()]:
         if site_id:
             themes_dict = cache.get('layers_theme_%d_%d' % (theme.id, site_id))
-        if not themes_dict:
+        if themes_dict:
+            print("FOUND: layers_theme_{}_{}".format(theme.id, site_id))
+        else:
+            print("Creating...: layers_theme_{}_{}".format(theme.id, site_id))
             themes_dict = ThemeSerializer(theme).data
             if site_id:
                 # Cache for 1 week, will be reset if layer data changes
@@ -96,6 +106,7 @@ def dictThemeCache(theme, site_id=None):
             else:
                 for site in Site.objects.all():
                     cache.set('layers_theme_%d_%d' % (theme.id, site.id), themes_dict, 60*60*24*7)
+            print("Created: layers_theme_{}_{}".format(theme.id, site_id))
     
     return themes_dict
 # Create your views here.
@@ -109,12 +120,12 @@ def get_json(request):
     #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
     #     current_site_pk = request.site.id
     # if request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-    if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-        current_site_pk = 1
-    elif request.META['HTTP_HOST'] in ['localhost:8002',]:
-        current_site_pk = 2
-    else:
-        current_site_pk = shortcuts.get_current_site(request).pk
+    # if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    #     current_site_pk = 1
+    # elif request.META['HTTP_HOST'] in ['localhost:8002',]:
+    #     current_site_pk = 2
+    # else:
+    current_site = shortcuts.get_current_site(request)
 
     # if (
     #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
@@ -127,30 +138,53 @@ def get_json(request):
     # else:
     #     current_site_pk = shortcuts.get_current_site(request).pk
 
-    data = cache.get('layers_json_site_%d' % current_site_pk)
+    # data = cache.get('layers_json_site_%d' % current_site.pk)
     # if not data or not data["themes"]:
-    child_orders = ChildOrder.objects.all()
-    processed_items = []
-
+    child_orders = ChildOrder.objects.all().order_by('order')
+    # filtered_child_orders = []
+    # for child_order in child_orders:
+    #     if current_site in child_order.content_object.site.all():
+    #         filtered_child_orders.append(child_order)
+    processed_layers = []
+    processed_themes = []
     for child_order in child_orders:
         content_object = child_order.content_object
-        if content_object is None:
+        if content_object is None or current_site not in content_object.site.all():
         # Log this condition, handle it, or skip this iteration
             continue
         if isinstance(content_object, Layer):
             if content_object.parent and content_object.parent.parent:
                 continue  # Skip layers with a grandparent
-        cache_entry = dictLayerCache(content_object, current_site_pk)
-        processed_items.append(cache_entry)
+            try:
+                cache_entry = dictLayerCache(content_object, current_site.pk)
+                processed_layers.append(cache_entry)
+            except Exception as e:
+                print("Attempted to serialize Layer ID {}: {} ({})".format(content_object.pk, content_object.name, content_object.layer_type))
+                print(e)
+                continue
+        elif isinstance(content_object, Theme):
+            try:
+                cache_entry = dictThemeCache(content_object, current_site.pk)
+                processed_themes.append(cache_entry)
+            except Exception as e:
+                print("Attempted to serialize Theme ID {}: {}".format(content_object.pk, content_object.name))
+                print(e)
+                continue
+        
     data = {
         "state": { "activeLayers": [] },
-        "layers": processed_items,
-        "themes": [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+        "layers": processed_layers,
+        # "themes": [dictThemeCache(theme, current_site.pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+        "themes": processed_themes,
         "success": True
     }
     # Cache for 1 week, will be reset if layer data changes
-    cache.set('layers_json_site_%d' % current_site_pk, data, 60*60*24*7)
-    return JsonResponse(data)
+    # cache.set('layers_json_site_%d' % current_site.pk, data, 60*60*24*7)
+    try:
+        return JsonResponse(data)
+    except Exception as e:
+        print(e)
+        return JsonResponse(data)
 
 def get_themes(request):
     themeContentType = ContentType.objects.get_for_model(Theme)

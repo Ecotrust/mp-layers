@@ -3,6 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
+import json
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
@@ -23,6 +24,8 @@ layer_arcgis_fields = ["arcgis_layers", "password_protected", "disable_arcgis_at
 
 raster_type_fields = ["query_by_point"]
 
+slider_type_fields = ["companion_layers", "subLayers"]
+
 library_fields = []
 
 def get_companion_layers(obj):
@@ -36,8 +39,10 @@ def get_companion_layers(obj):
     companionships = Companionship.objects.filter(layer=layer_instance)
     companion_layers = []
     for companionship in companionships:
-        companion_layers.extend(companionship.companions.all())
-    return companion_layers
+        # companion_layers.extend(companionship.companions.all())
+        companion_layers.extend([x.pk for x in companionship.companions.all()])
+    
+    return list(set(companion_layers))
 
 def get_serialized_sublayers(obj):
     # Return an empty list immediately if obj is not a Theme
@@ -122,10 +127,18 @@ class DynamicLayerFieldsMixin:
             elif field in ['search_query', 'queryable']:
                 def getter(self, instance):
                     return getattr(instance.layer, 'search_query', False)
+            elif field == 'uuid':
+                def getter(self, instance):
+                    return str(getattr(instance.layer, 'uuid', ''))
             else:
                 # For all other fields, use the default handling
                 def getter(self, instance):
-                    return getattr(instance.layer, field, None)
+                    raw_val = getattr(instance.layer, field, None)
+                    try:
+                        json.dumps(raw_val)
+                        return raw_val
+                    except (TypeError, OverflowError):
+                        return str(raw_val)
             return getter
 
         for field in fields:
@@ -148,9 +161,23 @@ class LayerSerializer(DynamicLayerFieldsMixin, serializers.ModelSerializer):
 
     def get_companion_layers(self, obj):
         companion_layers = get_companion_layers(obj)
-        return CompanionLayerSerializer(companion_layers, many=True, context={'companion_parent':obj}).data
+        # return CompanionLayerSerializer(companion_layers, many=True, context={'companion_parent':obj}).data
+        # companion_layers = []
+        # if hasattr(obj, 'companion_to'):
+        #     for companion in obj.companion_to.all():
+        #         companion_layers.append(companion.pk)
+        # if hasattr(obj, 'companionships'):
+        #     for companion in obj.companionships.all():
+        #         companion_layers.append(companion.pk)
+        # companion_layers = list(set([x.pk for x in companion_layers]))
+        return companion_layers
     def get_subLayers(self, obj):
-        subLayers = get_serialized_sublayers(obj)
+        # subLayers = get_serialized_sublayers(obj)
+        subLayers = []
+        if hasattr(obj, 'children'):
+            for child in obj.children:
+                if child.content_type == Layer:
+                    subLayers.append(child.content_object.pk)
         return subLayers
     def get_type(self, obj):
         return obj.layer_type
@@ -433,7 +460,8 @@ class ThemeSerializer(serializers.ModelSerializer):
     learn_link = serializers.SerializerMethodField()
     queryable = serializers.SerializerMethodField()
     # this is called layers only to match v1 but this includes subthemes and layers
-    layers = ChildOrderSerializer(many=True, read_only=True, source='children')
+    # layers = ChildOrderSerializer(many=True, read_only=True, source='children')
+    layers = serializers.SerializerMethodField()
 
     class Meta:
         model = Theme
@@ -476,6 +504,13 @@ class ThemeSerializer(serializers.ModelSerializer):
     
     def get_queryable(self, obj):
         return False
+    
+    def get_layers(self, obj):
+        layers = []
+        for child in obj.children.all().order_by('order'):
+            if child.content_type == Layer:
+                layers.append(child.content_object.pk)
+        return layers
     
 
 class ShortThemeSerializer(serializers.ModelSerializer):
@@ -841,7 +876,7 @@ class SubLayerSerializer(serializers.ModelSerializer):
         return obj.layer_type
     
 class SliderLayerSerializer(serializers.ModelSerializer):
-    order = serializers.SerializerMethodField()
+    # order = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
     type = serializers.CharField(default="slider", read_only=True)
     tiles = serializers.SerializerMethodField()
@@ -875,12 +910,20 @@ class SliderLayerSerializer(serializers.ModelSerializer):
     subLayers = serializers.ListField(default=[], read_only=True)
     class Meta(LayerSerializer.Meta):
         model = Layer
-        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers"] + ["subLayers", "order"]
-    def get_order(self, obj):
-        return get_layer_order(obj)
+        # fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + ["companion_layers",] + ["subLayers", "order",]
+        fields = LayerSerializer.Meta.fields + layer_arcgis_fields + layer_wms_fields + raster_type_fields + library_fields + vector_layer_fields + slider_type_fields
+    # def get_order(self, obj):
+    #     return get_layer_order(obj)
     def get_parent(self, obj):
         return None
     def get_tiles(self,obj):
         tiles_name = obj.slug_name
+    def get_companion_layers(self, obj):
+        companion_layers = get_companion_layers(obj)
+        # return CompanionLayerSerializer(companion_layers, many=True, context={'companion_parent':obj}).data
+        return companion_layers
+    def get_subLayers(self, obj):
+        subLayers = get_serialized_sublayers(obj)
+        return subLayers
 
         return tiles_name
