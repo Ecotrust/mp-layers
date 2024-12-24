@@ -196,6 +196,7 @@ def get_themes(request):
     return JsonResponse(data)
 
 def get_layer_search_data(request):
+    current_site = Site.objects.get_current(request)
     theme_content_type = ContentType.objects.get_for_model(Theme)
     layer_content_type = ContentType.objects.get_for_model(Layer)
     search_dict = {}
@@ -208,45 +209,46 @@ def get_layer_search_data(request):
         # Iterate through each child order to access the Layer instances
         for child_order in child_orders:
             child = child_order.content_object 
-            if child_order.content_type == theme_content_type:
-                has_sublayers = ChildOrder.objects.filter(parent_theme=child).exists()
-                # Get all the child orders for this parent theme
-                sublayers_data = []
-                if has_sublayers:
-                    sub_child_orders = ChildOrder.objects.filter(parent_theme=child)
-                    for sub_child_order in sub_child_orders:
-                        sub_layer = sub_child_order.content_object
-                        sublayers_data.append({
-                            "name": sub_layer.name,
-                            "id": sub_layer.id
-                        })
-                search_dict[child.name] = {
-                    'layer': {
-                            'id': child.id,
-                            'name': child.name,
-                            'has_sublayers': has_sublayers,
-                            'sublayers': sublayers_data
-                        },
-                        'theme': {
-                            'id': theme.id,
-                            'name': theme.display_name,
-                            'description': theme.description
-                        }
-                }
-            else:
-                search_dict[child.name] = {
-                    'layer': {
-                            'id': child.id,
-                            'name': child.name,
-                            'has_sublayers': False,
-                            'sublayers': []
-                        },
-                        'theme': {
-                            'id': theme.id,
-                            'name': theme.display_name,
-                            'description': theme.description
-                        }
-                }
+            if current_site in child.site.all():
+                if child_order.content_type == theme_content_type:
+                    has_sublayers = ChildOrder.objects.filter(parent_theme=child).exists()
+                    # Get all the child orders for this parent theme
+                    sublayers_data = []
+                    if has_sublayers:
+                        sub_child_orders = ChildOrder.objects.filter(parent_theme=child)
+                        for sub_child_order in sub_child_orders:
+                            sub_layer = sub_child_order.content_object
+                            sublayers_data.append({
+                                "name": sub_layer.name,
+                                "id": sub_layer.id
+                            })
+                    search_dict[child.name] = {
+                        'layer': {
+                                'id': child.id,
+                                'name': child.name,
+                                'has_sublayers': has_sublayers,
+                                'sublayers': sublayers_data
+                            },
+                            'theme': {
+                                'id': theme.id,
+                                'name': theme.display_name,
+                                'description': theme.description
+                            }
+                    }
+                else:
+                    search_dict[child.name] = {
+                        'layer': {
+                                'id': child.id,
+                                'name': child.name,
+                                'has_sublayers': False,
+                                'sublayers': []
+                            },
+                            'theme': {
+                                'id': theme.id,
+                                'name': theme.display_name,
+                                'description': theme.description
+                            }
+                    }
 
     return JsonResponse(search_dict)
 
@@ -839,8 +841,9 @@ def get_children(request, parent_id):
         except ObjectDoesNotExist:
             continue
 
-    # Sort by type, order, and name
-    children_sorted = sorted(children, key=lambda x: ({'theme': 0, 'layer': 1}[x['type']], x['child_order'], x['name']))
+    # Sort by child_order, name, and then type
+    children_sorted = sorted(children, key=lambda x: (x['child_order'], x['name'], {'theme': 0, 'layer': 1}[x['type']]))
+
 
     # Remove 'order' key from the final output if you don't want it in the response
     final_children = [{key: value for key, value in child.items() if key != 'child_order'} for child in children_sorted]
