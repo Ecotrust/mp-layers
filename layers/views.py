@@ -75,7 +75,7 @@ def dictLayerCache(layer, site_id):
                     except LayerXYZ.DoesNotExist:
                         pass
                 elif layer.layer_type == "slider":
-                    layers_dict = SliderLayerSerializer(layer)
+                    layers_dict = SliderLayerSerializer(layer).data
                 else: 
                     layers_dict = LayerSerializer(layer).data
             elif isinstance(layer, Theme):
@@ -138,53 +138,49 @@ def get_json(request):
     # else:
     #     current_site_pk = shortcuts.get_current_site(request).pk
 
-    # data = cache.get('layers_json_site_%d' % current_site.pk)
-    # if not data or not data["themes"]:
-    child_orders = ChildOrder.objects.all().order_by('order')
-    # filtered_child_orders = []
-    # for child_order in child_orders:
-    #     if current_site in child_order.content_object.site.all():
-    #         filtered_child_orders.append(child_order)
-    processed_layers = []
-    processed_themes = []
-    for child_order in child_orders:
-        content_object = child_order.content_object
-        if content_object is None or current_site not in content_object.site.all():
-        # Log this condition, handle it, or skip this iteration
-            continue
-        if isinstance(content_object, Layer):
-            if content_object.parent and content_object.parent.parent:
-                continue  # Skip layers with a grandparent
-            try:
-                cache_entry = dictLayerCache(content_object, current_site.pk)
-                processed_layers.append(cache_entry)
-            except Exception as e:
-                print("Attempted to serialize Layer ID {}: {} ({})".format(content_object.pk, content_object.name, content_object.layer_type))
-                print(e)
+    data = cache.get('layers_json_site_%d' % current_site.pk)
+    if not data or not data["themes"] or not data["layers"]:
+        child_orders = ChildOrder.objects.all().order_by('order')
+        # filtered_child_orders = []
+        # for child_order in child_orders:
+        #     if current_site in child_order.content_object.site.all():
+        #         filtered_child_orders.append(child_order)
+        processed_layers = []
+        processed_themes = []
+        for child_order in child_orders:
+            content_object = child_order.content_object
+            if content_object is None or current_site not in content_object.site.all():
+            # Log this condition, handle it, or skip this iteration
                 continue
-        elif isinstance(content_object, Theme):
-            try:
-                cache_entry = dictThemeCache(content_object, current_site.pk)
-                processed_themes.append(cache_entry)
-            except Exception as e:
-                print("Attempted to serialize Theme ID {}: {}".format(content_object.pk, content_object.name))
-                print(e)
-                continue
-        
-    data = {
-        "state": { "activeLayers": [] },
-        "layers": processed_layers,
-        # "themes": [dictThemeCache(theme, current_site.pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
-        "themes": processed_themes,
-        "success": True
-    }
+            if isinstance(content_object, Layer):
+                if content_object.parent and content_object.parent.parent:
+                    continue  # Skip layers with a grandparent
+                try:
+                    cache_entry = dictLayerCache(content_object, current_site.pk)
+                    processed_layers.append(cache_entry)
+                except Exception as e:
+                    print("Attempted to serialize Layer ID {}: {} ({})".format(content_object.pk, content_object.name, content_object.layer_type))
+                    print(e)
+                    continue
+            elif isinstance(content_object, Theme):
+                try:
+                    cache_entry = dictThemeCache(content_object, current_site.pk)
+                    processed_themes.append(cache_entry)
+                except Exception as e:
+                    print("Attempted to serialize Theme ID {}: {}".format(content_object.pk, content_object.name))
+                    print(e)
+                    continue
+            
+        data = {
+            "state": { "activeLayers": [] },
+            "layers": processed_layers,
+            # "themes": [dictThemeCache(theme, current_site.pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+            "themes": processed_themes,
+            "success": True
+        }
     # Cache for 1 week, will be reset if layer data changes
-    # cache.set('layers_json_site_%d' % current_site.pk, data, 60*60*24*7)
-    try:
-        return JsonResponse(data)
-    except Exception as e:
-        print(e)
-        return JsonResponse(data)
+    cache.set('layers_json_site_%d' % current_site.pk, data, 60*60*24*7)
+    return JsonResponse(data)
 
 def get_themes(request):
     themeContentType = ContentType.objects.get_for_model(Theme)
