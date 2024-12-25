@@ -174,7 +174,6 @@ ul {
 
 .text-container {
   flex: 1;
-  margin-left: 10px;
   white-space: normal;
   word-break: normal;
 }
