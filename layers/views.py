@@ -100,57 +100,59 @@ def dictThemeCache(theme, site_id=None):
     return themes_dict
 # Create your views here.
 def get_json(request):
-    from django.core.cache import cache
-    from django.contrib.sites import shortcuts
-    # if (
-    #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
-    #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
-    # ):
-    #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
-    #     current_site_pk = request.site.id
-    # if request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-    if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-        current_site_pk = 1
-    elif request.META['HTTP_HOST'] in ['localhost:8002',]:
-        current_site_pk = 2
-    else:
-        current_site_pk = shortcuts.get_current_site(request).pk
-
-    # if (
-    #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
-    #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
-    # ):
-    #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
-    #     current_site_pk = request.site.id
-    # elif request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    from data_manager.views import get_json as old_get_json
+    return old_get_json(request)
+    # from django.core.cache import cache
+    # from django.contrib.sites import shortcuts
+    # # if (
+    # #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
+    # #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
+    # # ):
+    # #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
+    # #     current_site_pk = request.site.id
+    # # if request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    # if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
     #     current_site_pk = 1
+    # elif request.META['HTTP_HOST'] in ['localhost:8002',]:
+    #     current_site_pk = 2
     # else:
     #     current_site_pk = shortcuts.get_current_site(request).pk
 
-    data = cache.get('layers_json_site_%d' % current_site_pk)
-    # if not data or not data["themes"]:
-    child_orders = ChildOrder.objects.all()
-    processed_items = []
+    # # if (
+    # #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
+    # #     not request.site == Site.objects.get(domain=request.META['HTTP_HOST'])
+    # # ):
+    # #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
+    # #     current_site_pk = request.site.id
+    # # elif request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    # #     current_site_pk = 1
+    # # else:
+    # #     current_site_pk = shortcuts.get_current_site(request).pk
 
-    for child_order in child_orders:
-        content_object = child_order.content_object
-        if content_object is None:
-        # Log this condition, handle it, or skip this iteration
-            continue
-        if isinstance(content_object, Layer):
-            if content_object.parent and content_object.parent.parent:
-                continue  # Skip layers with a grandparent
-        cache_entry = dictLayerCache(content_object, current_site_pk)
-        processed_items.append(cache_entry)
-    data = {
-        "state": { "activeLayers": [] },
-        "layers": processed_items,
-        "themes": [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
-        "success": True
-    }
-    # Cache for 1 week, will be reset if layer data changes
-    cache.set('layers_json_site_%d' % current_site_pk, data, 60*60*24*7)
-    return JsonResponse(data)
+    # data = cache.get('layers_json_site_%d' % current_site_pk)
+    # # if not data or not data["themes"]:
+    # child_orders = ChildOrder.objects.all()
+    # processed_items = []
+
+    # for child_order in child_orders:
+    #     content_object = child_order.content_object
+    #     if content_object is None:
+    #     # Log this condition, handle it, or skip this iteration
+    #         continue
+    #     if isinstance(content_object, Layer):
+    #         if content_object.parent and content_object.parent.parent:
+    #             continue  # Skip layers with a grandparent
+    #     cache_entry = dictLayerCache(content_object, current_site_pk)
+    #     processed_items.append(cache_entry)
+    # data = {
+    #     "state": { "activeLayers": [] },
+    #     "layers": processed_items,
+    #     "themes": [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+    #     "success": True
+    # }
+    # # Cache for 1 week, will be reset if layer data changes
+    # cache.set('layers_json_site_%d' % current_site_pk, data, 60*60*24*7)
+    # return JsonResponse(data)
 
 def get_themes(request):
     themeContentType = ContentType.objects.get_for_model(Theme)
