@@ -134,6 +134,11 @@ class DynamicLayerFieldsMixin:
             setattr(cls, method_name, getter)
             cls._declared_fields[field] = serializers.SerializerMethodField(method_name=method_name)
 
+class QuickLayerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Layer
+        fields = ["subLayers", "companion_layers",] + ["parent", "catalog_html", "queryable",] + shared_layer_fields
+
 class LayerSerializer(DynamicLayerFieldsMixin, serializers.ModelSerializer):
     subLayers = serializers.SerializerMethodField()
     companion_layers = serializers.SerializerMethodField()
@@ -144,7 +149,7 @@ class LayerSerializer(DynamicLayerFieldsMixin, serializers.ModelSerializer):
     
     class Meta:
         model = Layer
-        fields = ["parent", "catalog_html", "queryable",] + shared_layer_fields
+        fields = ["subLayers", "companion_layers",] + ["parent", "catalog_html", "queryable",] + shared_layer_fields
 
     def get_companion_layers(self, obj):
         companion_layers = get_companion_layers(obj)
@@ -426,6 +431,17 @@ class ChildOrderSerializer(serializers.ModelSerializer):
         model = ChildOrder
         fields = []
 
+class ShortSublayerSerializer(serializers.ModelSerializer):
+
+    def to_representation(self, instance):
+        related_object = instance.content_object
+        if isinstance(related_object, Layer):
+            return related_object.pk
+
+    class Meta:
+        model = ChildOrder
+        fields = []
+
 
 # use this serializer for only the top level themes
 # create a new serializer for subthemes, so that it matches the layer format
@@ -479,9 +495,21 @@ class ThemeSerializer(serializers.ModelSerializer):
     
 
 class ShortThemeSerializer(serializers.ModelSerializer):
+    learn_link = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    # layers = ShortSublayerSerializer(many=True, read_only=True, source='children')
+    layers = serializers.SerializerMethodField()
+
     class Meta:
             model = Theme
-            fields = ["id", "name", "display_name", "is_visible",]
+            fields = ["id", "name", "display_name", "learn_link", "is_visible", "layers", "description"]
+
+    def get_learn_link(self, obj):
+        return obj.learn_link
+    def get_description(self, obj):
+        return obj.description
+    def get_layers(self, obj):
+        return []
 
 class SubThemeSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
@@ -616,7 +644,7 @@ class CompanionLayerSerializer(serializers.ModelSerializer):
         return get_layer_order(obj)
     def get_parent(self, obj):
         if hasattr(self, 'context') and  'companion_parent' in self.context.keys():
-            return self.context['companion_parent'].layer.id
+            return self.context['companion_parent'].id
         # This query looks for Companionship instances where the current layer is among the companions
         companionship = Companionship.objects.filter(companions=obj).first()
 

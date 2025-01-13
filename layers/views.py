@@ -89,7 +89,7 @@ def dictThemeCache(theme, site_id=None):
         if site_id:
             themes_dict = cache.get('layers_theme_%d_%d' % (theme.id, site_id))
         if not themes_dict:
-            themes_dict = ThemeSerializer(theme).data
+            themes_dict = ShortThemeSerializer(theme).data
             if site_id:
                 # Cache for 1 week, will be reset if layer data changes
                 cache.set('layers_theme_%d_%d' % (theme.id, site_id), themes_dict, 60*60*24*7)
@@ -109,12 +109,12 @@ def get_json(request):
     #     request.site = Site.objects.get(domain=request.META['HTTP_HOST'])
     #     current_site_pk = request.site.id
     # if request.META['HTTP_HOST'] in ['localhost:8000', 'localhost:8001', 'localhost:8002','portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-    if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
-        current_site_pk = 1
-    elif request.META['HTTP_HOST'] in ['localhost:8002',]:
-        current_site_pk = 2
-    else:
-        current_site_pk = shortcuts.get_current_site(request).pk
+    # if request.META['HTTP_HOST'] in ['localhost:8000', 'portal.midatlanticocean.org', 'midatlantic.webfactional.com']:
+    #     current_site_pk = 1
+    # elif request.META['HTTP_HOST'] in ['localhost:8002',]:
+    #     current_site_pk = 2
+    # else:
+    current_site_pk = shortcuts.get_current_site(request).pk
 
     # if (
     #     Site.objects.filter(domain=request.META['HTTP_HOST']).count() == 1 and
@@ -132,6 +132,14 @@ def get_json(request):
     child_orders = ChildOrder.objects.all()
     processed_items = []
 
+    data = {
+        "state": { "activeLayers": [] },
+        "layers": json.loads(get_layers(request).content)['layers'],
+        "themes": json.loads(get_themes(request).content)['themes'],
+        "success": True
+    }
+    return JsonResponse(data)
+
     for child_order in child_orders:
         content_object = child_order.content_object
         if content_object is None:
@@ -142,12 +150,14 @@ def get_json(request):
                 continue  # Skip layers with a grandparent
         cache_entry = dictLayerCache(content_object, current_site_pk)
         processed_items.append(cache_entry)
-    data = {
-        "state": { "activeLayers": [] },
-        "layers": processed_items,
-        "themes": [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
-        "success": True
-    }
+    data['layers'] = processed_items
+    data['themes'] = [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')]
+    # data = {
+    #     "state": { "activeLayers": [] },
+    #     "layers": processed_items,
+    #     "themes": [dictThemeCache(theme, current_site_pk) for theme in Theme.all_objects.filter(theme_type = "").order_by('order')],
+    #     "success": True
+    # }
     # Cache for 1 week, will be reset if layer data changes
     cache.set('layers_json_site_%d' % current_site_pk, data, 60*60*24*7)
     return JsonResponse(data)
@@ -160,6 +170,14 @@ def get_themes(request):
         "themes": [ShortThemeSerializer(theme).data for theme in Theme.objects.exclude(pk__in=subtheme_ids).order_by('order', 'name')],
     }
     return JsonResponse(data)
+
+def get_layers(request):
+    layerContentType = ContentType.objects.get_for_model(Layer)
+    layerOrders = ChildOrder.objects.filter(content_type=layerContentType)
+    layerIds = [x.object_id for x in layerOrders]
+    data = {
+        "layers": [LayerSerializer(layer).data for layer in Layer.objects.all()]
+    }
 
 def get_layer_search_data(request):
     current_site = Site.objects.get_current(request)
