@@ -907,7 +907,7 @@ class SliderLayerSerializer(serializers.ModelSerializer):
     def get_order(self, obj):
         return get_layer_order(obj)
     def get_parent(self, obj):
-        return None
+        return obj.pk
     def get_tiles(self,obj):
         tiles_name = obj.slug_name
 

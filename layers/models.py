@@ -1,11 +1,12 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.sites.managers import CurrentSiteManager
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.template.defaultfilters import slugify
 from django.urls import reverse
-from django.conf import settings
 from colorfield.fields import ColorField
 import uuid
 
@@ -899,6 +900,56 @@ class Layer(models.Model, SiteFlags):
             'children': children,
         }
         return layers_dict
+    
+    def to_v1_dict(self, site_id=settings.SITE_ID):
+        CACHE_KEY = 'v1_layers_Layer_{}_{}'.format(self.pk, site_id)
+        layer_dict = cache.get(CACHE_KEY)
+        if layer_dict:
+            return layer_dict
+        self.specific_instance
+        # in Python 3.10+ we could use a 'match' statement here...
+        # if layer.layer_type == "WMS": 
+        #     try:
+        #         layer_wms = LayerWMS.objects.get(layer=layer)
+        #         layers_dict = LayerWMSSerializer(layer_wms).data
+        #     except LayerWMS.DoesNotExist:
+        #         pass
+        # elif layer.layer_type == "ArcRest":
+        #     try: 
+        #         layer_arcrest = LayerArcREST.objects.get(layer = layer)
+        #         layers_dict = LayerArcRESTSerializer(layer_arcrest).data
+        #     except LayerArcREST.DoesNotExist:
+        #         pass
+        # elif layer.layer_type == "ArcFeatureServer":
+        #     try:
+        #         layer_arcfeature = LayerArcFeatureService.objects.get(layer = layer)
+        #         layers_dict = LayerArcFeatureServiceSerializer(layer_arcfeature).data
+        #     except LayerArcFeatureService.DoesNotExist:
+        #         pass
+        # elif layer.layer_type == "Vector":
+        #     try:
+        #         layer_vector = LayerVector.objects.get(layer = layer)
+        #         layers_dict = LayerVectorSerializer(layer_vector).data
+        #     except LayerVector.DoesNotExist:
+        #         pass
+        # elif layer.layer_type == "XYZ":
+        #     try:
+        #         layer_xyz = LayerXYZ.objects.get(layer = layer)
+        #         layers_dict = LayerXYZSerializer(layer_xyz).data
+        #     except LayerXYZ.DoesNotExist:
+        #         pass
+        # else: 
+        #     layers_dict = LayerSerializer(layer).data
+
+        # ('XYZ', 'XYZ'),
+        # ('WMS', 'WMS'),
+        # ('ArcRest', 'ArcRest'),
+        # ('ArcFeatureServer', 'ArcFeatureServer'),
+        # ('Vector', 'Vector'),
+        # ('VectorTile', 'VectorTile'),
+        # ('slider', 'slider'),
+        # layer_dict = 
+        return {}
 
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
@@ -1003,7 +1054,7 @@ class VectorType(LayerType):
         abstract = True
 
 class RasterType(LayerType):
-    query_by_point = models.BooleanField(default=False, help_text='Do not buffer selection clicks (not recommended for point or line data)')
+    query_by_point = models.BooleanField(default=False, help_text='Dospecific_instance not buffer selection clicks (not recommended for point or line data)')
 
     class Meta:
         abstract = True
