@@ -1,6 +1,7 @@
+from django import forms
 from django.contrib import admin
 from django.conf import settings
-from django import forms
+from django.core.exceptions import ObjectDoesNotExist
 from django.forms.models import inlineformset_factory
 from django.db import transaction
 
@@ -340,7 +341,12 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             if existing_order:
                 child_order_value = existing_order.order
             else:
-                child_order_value = 10
+                try:
+                    child_theme = Theme.objects.get(pk=theme_id)
+                    child_order_value = child_theme.order
+                except ObjectDoesNotExist:
+                    child_order_value = 10
+                    pass
             
             # Create or update the ChildOrder
             ChildOrder.objects.update_or_create(
