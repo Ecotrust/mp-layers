@@ -1,7 +1,10 @@
-from django import forms
+from dal import autocomplete
 from django.contrib import admin
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.admin.widgets import AutocompleteSelect
+from django.contrib.contenttypes.admin import GenericTabularInline
+from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
 
@@ -166,10 +169,33 @@ class ThemeForm(forms.ModelForm):
         return cleaned_data
 
 
+class ChildInlineForm(autocomplete.FutureModelForm):
+    
+    # content_object = autocomplete.GenericForeignKeyModelField(
+    content_object = autocomplete.Select2GenericForeignKeyModelField(
+        # model_choice=[(Theme,), (Layer,)],
+        model_choice=[(Theme, 'theme'), (Layer, 'layer')],
+        widget=autocomplete.QuerySetSequenceSelect2,
+        # view=autocomplete.Select2QuerySetSequenceView,
+    )
+
+    class Meta:
+        model = ChildOrder
+        fields =  ['content_type', 'content_object', 'order']
+
+
+# class ChildInline(GenericTabularInline):
+class ChildInline(admin.TabularInline):
+    model= ChildOrder
+    extra = 2
+    ordering = ['order',]
+    form = ChildInlineForm
+
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
+    inlines = [ChildInline]
     
     fieldsets = (
         ('BASIC INFO', {
@@ -379,8 +405,16 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             # Check if there's an existing ChildOrder for this layer (content object)
             existing_order = ChildOrder.objects.filter(object_id=layer_id).order_by('order').first()
 
-            # Use the existing order if found, otherwise default to 10
-            child_order_value = existing_order.order if existing_order else 10
+            # Use the existing order if found, otherwise default to layer's order
+            if existing_order:
+                child_order_value = existing_order.order  
+            else:
+                try:
+                    child_layer = Layer.objects.get(pk=layer_id)
+                    child_order_value = child_layer.order
+                except ObjectDoesNotExist:
+                    child_order_value =10
+                    pass
             
             # Create or update the ChildOrder
             ChildOrder.objects.update_or_create(
@@ -471,7 +505,6 @@ class LayerForm(forms.ModelForm):
             self.fields['has_companion'].initial = has_companions
         else:
             self.fields['order'].initial = 10
-
 
 class BaseLayerInline(nested_admin.NestedStackedInline):
     extra = 1

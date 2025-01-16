@@ -391,6 +391,11 @@ class Theme(models.Model, SiteFlags):
         except Exception as e:
             print(e)
         
+    @property
+    def orders(self):
+        content_type = ContentType.objects.get_for_model(self.__class__)
+        return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
+
     def shortDict(self, site_id=None):
         children = sorted(list(self.children.all()), key=lambda x: (x.order, x.content_object.name))
         subthemes = []
@@ -435,6 +440,9 @@ class Theme(models.Model, SiteFlags):
             'children': children_list,
         }
         return layers_dict
+
+    def __str__(self):
+        return "{} [{}]".format(self.name, self.pk)
 
     class Meta:
         ordering = ['order']
@@ -910,10 +918,15 @@ class Companionship(models.Model):
     companions = models.ManyToManyField(Layer, related_name='companion_to')
 
 class ChildOrder(models.Model):
+    CHILD_CONTENT_TYPE_CHOICES = (
+        models.Q(app_label='layers', model=Theme.__name__.lower()) |
+        models.Q(app_label='layers', model=Layer.__name__.lower())
+    )
+
     parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')
     
     # The generic relation to point to either Theme or Layer
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content_type = models.ForeignKey(ContentType, limit_choices_to=CHILD_CONTENT_TYPE_CHOICES, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
     
