@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction, IntegrityError, connection
 from django.contrib.sites.managers import CurrentSiteManager
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
@@ -21,6 +21,15 @@ def get_domain(port=8010):
         domain = '..'
     #print(domain)
     return domain
+
+# Since we migrate raw SQL data into the DB from data_manager, the sequences are not updated. 
+#   This catches any time there is a mismatch and tries to update it.
+def update_model_sequence(model, unique_key, manager):
+    max_theme_pk = manager.all().order_by('pk').last().pk
+    sequence_name = 'layers_{}_{}_seq'.format(model.__name__.lower(), unique_key)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT setval('{}', {}, true);".format(sequence_name, max_theme_pk))
+
 
 class SiteFlags(object):#(models.Model):
     """Add-on class for displaying sites in the list_display
@@ -444,9 +453,24 @@ class Theme(models.Model, SiteFlags):
     def __str__(self):
         return "{} [{}]".format(self.name, self.pk)
 
+    def save(self, *args, **kwargs):
+        try:
+            with transaction.atomic():
+                super(Theme, self).save(*args, **kwargs)
+        except IntegrityError as e:
+            if 'duplicate key value violates unique constraint' in str(e):
+                model = type(self)
+                unique_key = str(e).split('Key (')[-1].split(')=(')[0]
+                update_model_sequence(model, unique_key, manager=model.all_objects)
+                with transaction.atomic():
+                    super(Theme, self).save(*args, **kwargs)
+            else:
+                raise IntegrityError(e)
+
     class Meta:
         ordering = ['order']
         app_label = 'layers'
+
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
 class Layer(models.Model, SiteFlags):
@@ -907,6 +931,20 @@ class Layer(models.Model, SiteFlags):
             'children': children,
         }
         return layers_dict
+    
+    def save(self, *args, **kwargs):
+        try:
+            with transaction.atomic():
+                super(Layer, self).save(*args, **kwargs)
+        except IntegrityError as e:
+            if 'duplicate key value violates unique constraint' in str(e):
+                model = type(self)
+                unique_key = str(e).split('Key (')[-1].split(')=(')[0]
+                update_model_sequence(model, unique_key, manager=model.all_objects)
+                with transaction.atomic():
+                    super(Layer, self).save(*args, **kwargs)
+            else:
+                raise IntegrityError(e)
 
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
@@ -943,6 +981,20 @@ class ChildOrder(models.Model):
     #     parent_site_ids = [x.pk for x in self.parent_theme.site.all()]
     #     content_site_ids = [x.pk for x in self.content_object.site.all()]
     #     return Site.objects.filter(pk__in=parent_site_ids).filter(pk__in=content_site_ids)
+
+    def save(self, *args, **kwargs):
+        try:
+            with transaction.atomic():
+                super(ChildOrder, self).save(*args, **kwargs)
+        except IntegrityError as e:
+            if 'duplicate key value violates unique constraint' in str(e):
+                model = type(self)
+                unique_key = str(e).split('Key (')[-1].split(')=(')[0]
+                update_model_sequence(model, unique_key, manager=model.objects)
+                with transaction.atomic():
+                    super(ChildOrder, self).save(*args, **kwargs)
+            else:
+                raise IntegrityError(e)
 
     class Meta:
         ordering = ['order']
