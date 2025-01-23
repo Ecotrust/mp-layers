@@ -20,7 +20,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 class ThemeChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
-        return obj.name
+        return str(obj)
 
 NestedMultilayerAssociationInlineFormset = inlineformset_factory(
     parent_model=Layer,
@@ -82,12 +82,12 @@ class NestedMultilayerAssociationInline(nested_admin.NestedTabularInline):
 class CompanionLayerChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
-        return obj.name
+        return str(obj)
     
 class ChildrenLayerChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         # Return the name of the Theme object to be used as the label for the choice
-        return obj.name
+        return str(obj)
 
 class ThemeForm(forms.ModelForm):
     children_themes = ThemeChoiceField(queryset=Theme.all_objects.none(), required=False, widget = admin.widgets.FilteredSelectMultiple('children themes', False))

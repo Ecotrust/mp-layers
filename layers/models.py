@@ -451,7 +451,7 @@ class Theme(models.Model, SiteFlags):
         return layers_dict
 
     def __str__(self):
-        return "{} [{}]".format(self.name, self.pk)
+        return "{} [T-{}]".format(self.name, self.pk)
 
     def save(self, *args, **kwargs):
         try:
@@ -916,7 +916,7 @@ class Layer(models.Model, SiteFlags):
         return None
 
     def __str__(self):
-        return self.name
+        return "{} [L-{}]".format(self.name, self.pk)
     
     def shortDict(self, site_id=None):
         children = []
@@ -995,6 +995,13 @@ class ChildOrder(models.Model):
                     super(ChildOrder, self).save(*args, **kwargs)
             else:
                 raise IntegrityError(e)
+
+    # def __str__(self):
+    #     try:
+    #         "{} [{}]".format(self.content_object.name, self.content_object.pk)
+    #     except Exception as e:
+    #         print(e)
+    #         return 'name_failure'
 
     class Meta:
         ordering = ['order']
