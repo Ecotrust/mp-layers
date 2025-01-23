@@ -90,6 +90,9 @@ class ChildrenLayerChoiceField(forms.ModelMultipleChoiceField):
         return obj.name
 
 class ThemeForm(forms.ModelForm):
+    children_themes = ThemeChoiceField(queryset=Theme.all_objects.none(), required=False, widget = admin.widgets.FilteredSelectMultiple('children themes', False))
+    children_layers = ChildrenLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('children layers', False))
+    order = forms.IntegerField(label="Order", required=True)
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 
@@ -99,6 +102,55 @@ class ThemeForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        if self.instance.pk:
+            # Get ContentType for Theme
+            content_type = ContentType.objects.get_for_model(Theme)
+            child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=self.instance.pk)
+            child_order = child_orders.first()
+            if child_order:
+                self.fields['order'].initial = child_order.order
+            else:
+                self.fields['order'].initial = self.instance.order
+            # Get ancestors and children for initial values in the form
+            ancestor_ids = self.get_all_ancestor_ids([self.instance.pk])
+            ancestor_ids.add(self.instance.pk)  # Exclude current instance from queryset
+            # Update the queryset for children_themes, excluding ancestors
+            self.fields['children_themes'].queryset = Theme.all_objects.exclude(pk__in=ancestor_ids)
+            # Set initial themes and layers
+            self.set_initial_children(content_type)
+        else:
+            # For new instances, include all themes
+            self.fields['children_themes'].queryset = Theme.all_objects
+            self.fields['order'].initial = 10  # Default order for new instances
+    def set_initial_children(self, content_type):
+        """Set initial values for children themes and layers."""
+        # Fetch child orders for themes and layers
+        child_orders_for_theme = ChildOrder.objects.filter(content_type=content_type, parent_theme=self.instance)
+        initial_themes = child_orders_for_theme.values_list('object_id', flat=True)
+        
+        content_type_for_layer = ContentType.objects.get_for_model(Layer)
+        child_orders_for_layers = ChildOrder.objects.filter(content_type=content_type_for_layer, parent_theme=self.instance)
+        initial_layers = child_orders_for_layers.values_list('object_id', flat=True)
+        # Set initial values for children themes and layers
+        self.fields['children_themes'].initial = list(initial_themes)
+        self.fields['children_layers'].initial = list(initial_layers)
+    def get_all_ancestor_ids(self, theme_ids, ancestor_ids=None):
+        """Recursively fetch ancestor IDs to prevent circular dependencies."""
+        if ancestor_ids is None:
+            ancestor_ids = set()
+        # Get ContentType for Theme
+        content_type_for_theme = ContentType.objects.get_for_model(Theme)
+        parent_ids = set()
+        for theme_id in theme_ids:
+            child_orders = ChildOrder.objects.filter(object_id=theme_id, content_type=content_type_for_theme)
+            parent_ids.update([x.parent_theme.pk for x in child_orders])
+        # If parent IDs found, recurse to get ancestors
+        if parent_ids:
+            ancestor_ids.update(parent_ids)
+            self.get_all_ancestor_ids(parent_ids, ancestor_ids)
+        return ancestor_ids
+
 
     def clean(self):
         cleaned_data = super().clean()
@@ -128,7 +180,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
-    inlines = [ChildInline]
+    # inlines = [ChildInline]
     
     fieldsets = (
         ('BASIC INFO', {
@@ -161,6 +213,15 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 "dynamic_url",
                 "default_keyword",
                 "placeholder_text",
+            )
+        }),
+        ('CHILD THEME ORGANIZATION', {
+            # 'classes': ('collapse', 'open',),
+            'fields': (
+                'children_themes',
+                'children_layers',
+                "theme_type",
+                # "order_records"
             )
         }),
         ("CATALOG DISPLAY", {
