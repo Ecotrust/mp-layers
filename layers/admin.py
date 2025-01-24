@@ -180,7 +180,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
-    # inlines = [ChildInline]
+    inlines = [ChildInline]
     
     fieldsets = (
         ('BASIC INFO', {
@@ -215,15 +215,15 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 "placeholder_text",
             )
         }),
-        ('CHILD THEME ORGANIZATION', {
-            # 'classes': ('collapse', 'open',),
-            'fields': (
-                'children_themes',
-                'children_layers',
-                "theme_type",
-                # "order_records"
-            )
-        }),
+        # ('CHILD THEME ORGANIZATION', {
+        #     # 'classes': ('collapse', 'open',),
+        #     'fields': (
+        #         'children_themes',
+        #         'children_layers',
+        #         "theme_type",
+        #         # "order_records"
+        #     )
+        # }),
         ("CATALOG DISPLAY", {
             'classes': ('collapse',),
             "fields": (
