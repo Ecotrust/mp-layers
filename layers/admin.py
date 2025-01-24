@@ -215,15 +215,6 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 "placeholder_text",
             )
         }),
-        # ('CHILD THEME ORGANIZATION', {
-        #     # 'classes': ('collapse', 'open',),
-        #     'fields': (
-        #         'children_themes',
-        #         'children_layers',
-        #         "theme_type",
-        #         # "order_records"
-        #     )
-        # }),
         ("CATALOG DISPLAY", {
             'classes': ('collapse',),
             "fields": (
@@ -330,120 +321,6 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
 
     def reverse_add_url(self, model_name):
         return reverse(f'admin:layers_{model_name}_add')
-
-    def create_or_update_child_order_for_themes(self, obj, themes, order):
-        content_type = ContentType.objects.get_for_model(obj)
-        
-        # Existing themes linked to the object
-        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, parent_theme=obj)
-        existing_theme_ids = set(existing_child_orders.values_list('object_id', flat=True))
-
-        # New themes from the form
-        new_theme_ids = set(theme.id for theme in themes)
-
-        # Themes to add and remove
-        themes_to_add = new_theme_ids - existing_theme_ids
-        themes_to_remove = existing_theme_ids - new_theme_ids
-
-        # Remove old themes
-        ChildOrder.objects.filter(parent_theme=obj, content_type=content_type, object_id__in=themes_to_remove).delete()
-
-        # Add new themes
-        for theme_id in themes_to_add:
-            # Check if there's an existing ChildOrder for this theme (content object)
-            existing_order = ChildOrder.objects.filter(content_type=content_type, object_id=theme_id).order_by('order').first()
-
-            if existing_order:
-                child_order_value = existing_order.order
-            else:
-                try:
-                    child_theme = Theme.objects.get(pk=theme_id)
-                    child_order_value = child_theme.order
-                except ObjectDoesNotExist:
-                    child_order_value = 10
-                    pass
-            
-            # Create or update the ChildOrder
-            ChildOrder.objects.update_or_create(
-                parent_theme_id=obj.pk,
-                content_type=content_type,
-                object_id=theme_id,
-                defaults={'order': child_order_value}
-            )
-
-
-    def create_or_update_child_order_for_layers(self, obj, layers, order):
-        content_type = ContentType.objects.get_for_model(Layer)
-    
-        # Existing themes linked to the object
-        existing_child_orders = ChildOrder.objects.filter(content_type=content_type, parent_theme=obj)
-        existing_layer_ids = set(existing_child_orders.values_list('object_id', flat=True))
-
-        # New themes from the form
-        new_layer_ids = set(layer.id for layer in layers)
-
-        # Themes to add and remove
-        layers_to_add = new_layer_ids - existing_layer_ids
-        layers_to_remove = existing_layer_ids - new_layer_ids
-
-        # Remove old themes
-        ChildOrder.objects.filter(parent_theme=obj, content_type=content_type, object_id__in=layers_to_remove).delete()
-
-        # Add new layers
-        for layer_id in layers_to_add:
-            # Check if there's an existing ChildOrder for this layer (content object)
-            existing_order = ChildOrder.objects.filter(object_id=layer_id).order_by('order').first()
-
-            # Use the existing order if found, otherwise default to layer's order
-            if existing_order:
-                child_order_value = existing_order.order  
-            else:
-                # RDH: Layer does not have an order field -- it pretends by pulling an order value from a child if it has one.
-                # try:
-                #     child_layer = Layer.objects.get(pk=layer_id)
-                #     child_order_value = child_layer.order
-                # except ObjectDoesNotExist:
-                child_order_value =10
-                #     pass
-            
-            # Create or update the ChildOrder
-            ChildOrder.objects.update_or_create(
-                parent_theme_id=obj.pk,
-                content_type=content_type,
-                object_id=layer_id,
-                defaults={'order': child_order_value}
-            )
-
-    def save_model(self, request, obj, form, change):
-
-        with transaction.atomic():
-           # Save the Theme object first
-            super().save_model(request, obj, form, change)
-
-            # Get the updated order from the form
-            new_order = form.cleaned_data.get('order')
-
-            # Update child themes and layers and their order
-            themes = form.cleaned_data.get('children_themes', [])
-            layers = form.cleaned_data.get('children_layers', [])
-
-            # Update ChildOrder records for themes and layers
-            self.create_or_update_child_order_for_themes(obj, themes, new_order)
-            self.create_or_update_child_order_for_layers(obj, layers, new_order)
-
-            # If no ChildOrder exists, update the Theme model's own order field
-            content_type = ContentType.objects.get_for_model(Theme)
-            child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk)
-
-            if child_orders.exists():
-                # Update all ChildOrder records
-                for child_order in child_orders:
-                    child_order.order = new_order
-                    child_order.save()
-            else:
-                # If no ChildOrder exists, update the Theme model's order field
-                obj.order = new_order
-                obj.save()
 
 class LayerForm(forms.ModelForm):
 
