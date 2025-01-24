@@ -398,12 +398,13 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             if existing_order:
                 child_order_value = existing_order.order  
             else:
-                try:
-                    child_layer = Layer.objects.get(pk=layer_id)
-                    child_order_value = child_layer.order
-                except ObjectDoesNotExist:
-                    child_order_value =10
-                    pass
+                # RDH: Layer does not have an order field -- it pretends by pulling an order value from a child if it has one.
+                # try:
+                #     child_layer = Layer.objects.get(pk=layer_id)
+                #     child_order_value = child_layer.order
+                # except ObjectDoesNotExist:
+                child_order_value =10
+                #     pass
             
             # Create or update the ChildOrder
             ChildOrder.objects.update_or_create(
