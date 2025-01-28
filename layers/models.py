@@ -430,7 +430,7 @@ class Theme(models.Model, SiteFlags):
                     'type': 'layer',
                     'parent': {'name': self.display_name},
                     'name': layer.name,
-                    'slug_name': layer.slug_name,
+                    'slug_name': layer.slug_name if (layer.slug_name and not layer.slug_name == None) else slugify(layer.name),
                     'bookmark_link': layer.bookmark_link,
                     'is_sublayer': True,
                     'children': []
