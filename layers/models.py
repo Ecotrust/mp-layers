@@ -605,7 +605,7 @@ class Layer(models.Model, SiteFlags):
 
     @property
     def data_url(self):
-     
+
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
         if settings.DATA_CATALOG_ENABLED:
             parent_theme = False
@@ -622,10 +622,13 @@ class Layer(models.Model, SiteFlags):
                 parent_theme_slug = parent_theme.top_parent.name.replace(" ", "-")
                 
                 # Ensure there's a slug_name to use for constructing the URL
-                if self.slug_name:
+                if self.slug_name and not self.slug_name == None:
+                    slug_name = self.slug_name
+                else:
+                    slug_name = slugify(self.name)
                     # Construct the URL
-                    
-                    data_catalog_url = "/data-catalog/{}/#layer-info-{}".format(parent_theme_slug, self.slug_name)
+                if slug_name:
+                    data_catalog_url = "/data-catalog/{}/#layer-info-{}".format(parent_theme_slug, slug_name)
                     return data_catalog_url
 
         return None
