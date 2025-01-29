@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", function() {
     function updateInlines() {
         const layerType = document.querySelector("#id_layer_type").value; // Adjust the selector as needed
-        const inlines = document.querySelectorAll(".inline-group");
+        const nested_inlines = document.querySelectorAll(".djn-group-root");
         
-        inlines.forEach(function(inline) {
+        nested_inlines.forEach(function(inline) {
           inline.style.display = 'none';
 
           // If the inline ID matches the layerType or specific conditions for 'slider'

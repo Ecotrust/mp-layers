@@ -964,7 +964,7 @@ class ChildOrder(models.Model):
         models.Q(app_label='layers', model=Layer.__name__.lower())
     )
 
-    parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='children')
+    parent_theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='parent_theme')
     
     # The generic relation to point to either Theme or Layer
     content_type = models.ForeignKey(ContentType, limit_choices_to=CHILD_CONTENT_TYPE_CHOICES, on_delete=models.CASCADE, verbose_name='Child Type')

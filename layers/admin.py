@@ -1,5 +1,6 @@
 from dal import autocomplete
 from django.contrib import admin
+from django.contrib.contenttypes.admin import GenericTabularInline
 from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
@@ -116,11 +117,28 @@ class ChildInline(admin.TabularInline):
     verbose_name = 'Child'
     verbose_name_plural = 'Children'
 
+class ParentThemeInlineForm(forms.ModelForm):
+    parent_theme = forms.ModelChoiceField(
+        queryset=Theme.all_objects.all(),
+        widget=autocomplete.ModelSelect2()
+    )
+
+    class Meta:
+        model = ChildOrder
+        fields =  ['parent_theme', 'order']
+
+class ThemeParentInline(GenericTabularInline):
+    model=ChildOrder
+    extra = 1
+    form = ParentThemeInlineForm
+    verbose_name = 'Parent'
+    verbose_name_plural = 'Parents'
+
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
-    inlines = [ChildInline]
+    inlines = [ThemeParentInline, ChildInline]
     
     fieldsets = (
         ('BASIC INFO', {
@@ -404,6 +422,13 @@ class VectorInline(BaseLayerInline):
         vectorStyleOverrides,
     )
 
+class LayerParentInline(GenericTabularInline, nested_admin.NestedTabularInline):
+    model=ChildOrder
+    extra = 1
+    form = ParentThemeInlineForm
+    verbose_name = 'Parent'
+    verbose_name_plural = 'Parents'
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_parent_theme(self, obj):
         # Fetch the ContentType for the Layer model
@@ -466,7 +491,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             'fields': basic_fields
         }),
         ('LAYER ORGANIZATION', {
-            # 'classes': ('collapse', 'open',),
+            'classes': ('collapse', ),
             'fields': (
                 ('order',),
                 ('has_companion','companion_layers'),
@@ -537,8 +562,10 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             )
         }),
     )
-    inlines = [ArcRESTInline, WMSInline, XYZInline, VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
-        NestedMultilayerAssociationInline,]
+    inlines = [ArcRESTInline, WMSInline, XYZInline, 
+        VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
+        NestedMultilayerAssociationInline, LayerParentInline
+    ]
     
     add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
     change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
