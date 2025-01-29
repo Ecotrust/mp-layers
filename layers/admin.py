@@ -405,15 +405,15 @@ class WMSInline(BaseLayerInline):
         }),
     )
 
-class XYZInline(BaseLayerInline):
-    model = LayerXYZ
+# class XYZInline(BaseLayerInline):
+#     model = LayerXYZ
 
-    # query_by_point is not relevant to XYZ layers
-    fieldsets = (
-        ('', {
-            'fields': (),
-        }),
-    )
+#     # query_by_point is not relevant to XYZ layers
+#     fieldsets = (
+#         ('', {
+#             'fields': (),
+#         }),
+#     )
 
 class VectorInline(BaseLayerInline):
     model = LayerVector
@@ -562,7 +562,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             )
         }),
     )
-    inlines = [ArcRESTInline, WMSInline, XYZInline, 
+    inlines = [ArcRESTInline, WMSInline, #XYZInline, 
         VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline, LayerParentInline
     ]
@@ -713,7 +713,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
         mapping = {
             'ArcRest': [ArcRESTInline],
             'WMS': [WMSInline],
-            'XYZ': [XYZInline],
+            # 'XYZ': [XYZInline],
             'Vector': [VectorInline],
             'ArcFeatureServer': [ArcRESTFeatureServerInline],
             'slider': [NestedMultilayerDimensionInline, NestedMultilayerAssociationInline],
