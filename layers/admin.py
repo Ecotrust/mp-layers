@@ -134,6 +134,11 @@ class ThemeParentInline(GenericTabularInline):
     verbose_name = 'Parent'
     verbose_name_plural = 'Parents'
 
+    def get_formset(self, request, obj, **kwargs):
+        formset = super(ThemeParentInline,self).get_formset(request, obj, **kwargs)
+        formset.form.base_fields['parent_theme'].queryset = Theme.all_objects.exclude(pk=obj.pk)
+        return formset
+
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
