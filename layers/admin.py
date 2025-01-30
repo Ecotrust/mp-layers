@@ -136,7 +136,10 @@ class ThemeParentInline(GenericTabularInline):
 
     def get_formset(self, request, obj, **kwargs):
         formset = super(ThemeParentInline,self).get_formset(request, obj, **kwargs)
-        formset.form.base_fields['parent_theme'].queryset = Theme.all_objects.exclude(pk=obj.pk)
+        try:
+            formset.form.base_fields['parent_theme'].queryset = Theme.all_objects.exclude(pk=obj.pk)
+        except Exception as e:
+            pass
         return formset
 
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
