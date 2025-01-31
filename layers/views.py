@@ -3,6 +3,7 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection
 from django.http import HttpResponse, JsonResponse
@@ -33,7 +34,7 @@ layer_type_to_serializer = {
     "slider": SliderLayerSerializer
 }
 def dictLayerCache(layer, site_id=None):
-    from django.core.cache import cache
+    
     layers_dict = None
     if site_id in [x.id for x in layer.site.all()]:
         if site_id:
@@ -83,7 +84,6 @@ def dictLayerCache(layer, site_id=None):
     return layers_dict
 
 def dictThemeCache(theme, site_id=None):
-    from django.core.cache import cache
     themes_dict = None
     if site_id in [x.id for x in theme.site.all()]:
         if site_id:
@@ -760,46 +760,46 @@ def get_children(request, parent_id):
             child_data = {}
             if child_order.content_type == theme_content_type:
                 # If the child object is a Theme
-                child_theme = Theme.objects.get(id=child_order.object_id)
-                description = child_theme.description or ""
-                if child_theme.data_url:
-                    read_more_link = f' <a href="{child_theme.data_url}" target="_blank">Read More</a>'
+                child_object = child_order.content_object
+                description = child_object.description or ""
+                if child_object.data_url:
+                    read_more_link = f' <a href="{child_object.data_url}" target="_blank">Read More</a>'
                     description += read_more_link
                 child_data = {
-                    'id': child_theme.id,
-                    "name": child_theme.display_name,
+                    'id': child_object.id,
+                    "name": child_object.display_name,
                     'type': "theme",
-                    "theme_type": child_theme.theme_type, 
-                    "is_dynamic": child_theme.is_dynamic,
-                    "url": child_theme.dynamic_url,
-                    "placeholder_text": child_theme.placeholder_text,
-                    "default_keyword": child_theme.default_keyword,
+                    "theme_type": child_object.theme_type, 
+                    "is_dynamic": child_object.is_dynamic,
+                    "url": child_object.dynamic_url,
+                    "placeholder_text": child_object.placeholder_text,
+                    "default_keyword": child_object.default_keyword,
                     "child_order": child_order.order,  # Order from ChildOrder
-                    "metadata": child_theme.metadata,
-                    "source": child_theme.source,
-                    "data_download": child_theme.data_download,
-                    "kml": child_theme.kml,
+                    "metadata": child_object.metadata,
+                    "source": child_object.source,
+                    "data_download": child_object.data_download,
+                    "kml": child_object.kml,
                     "description": description
                 }
             elif child_order.content_type == layer_content_type:
                 # If the child object is a Layer (and not of 'placeholder' type)
-                child_layer = Layer.objects.get(id=child_order.object_id)
-                if child_layer.layer_type != 'placeholder':
-                    description = child_layer.description or ""
-                    if child_layer.data_url:
-                        read_more_link = f' <a href="{child_layer.data_url}" target="_blank">Read More</a>'
+                child_object = child_order.content_object
+                if child_object.layer_type != 'placeholder':
+                    description = child_object.description or ""
+                    if child_object.data_url:
+                        read_more_link = f' <a href="{child_object.data_url}" target="_blank">Read More</a>'
                         description += read_more_link
                     child_data = {
-                        'id': child_layer.id,
-                        'name': child_layer.name,
+                        'id': child_object.id,
+                        'name': child_object.name,
                         'type': "layer",
-                        'metadata': child_layer.metadata,
-                        'source': child_layer.source,
-                        'data_download': child_layer.data_download,
-                        'kml': child_layer.kml,
+                        'metadata': child_object.metadata,
+                        'source': child_object.source,
+                        'data_download': child_object.data_download,
+                        'kml': child_object.kml,
                         'description': description,
-                        "minzoom": child_layer.minZoom,
-                        "maxzoom": child_layer.maxZoom,
+                        "minzoom": child_object.minZoom,
+                        "maxzoom": child_object.maxZoom,
                         "child_order": child_order.order  # Order from ChildOrder
                     }
             
@@ -807,6 +807,9 @@ def get_children(request, parent_id):
                 children.append(child_data)
 
         except ObjectDoesNotExist:
+            continue
+        except AttributeError as e:
+            print(e)
             continue
 
     # Sort by child_order, name, and then type
