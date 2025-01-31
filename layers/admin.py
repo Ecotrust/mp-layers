@@ -78,18 +78,12 @@ class CompanionLayerChoiceField(forms.ModelMultipleChoiceField):
         return str(obj)
     
 class ThemeForm(forms.ModelForm):
-    order = forms.IntegerField(label="Order", required=True)
     class Meta:
         model = Theme
         exclude = ("slug_name", "uuid") 
         labels = {
             'dynamic_url': 'URL',  # This will change the label in the form
         }
-
-    def clean(self):
-        cleaned_data = super().clean()
-        order = cleaned_data.get('order')
-        return cleaned_data
 
 class ChildInlineForm(autocomplete.FutureModelForm):
     def __init__(self, *args, **kwargs):
@@ -143,7 +137,7 @@ class ThemeParentInline(GenericTabularInline):
         return formset
 
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
-    list_display = ('display_name', 'name', 'get_order', 'is_top_theme', 'primary_site', 'preview_site')
+    list_display = ('display_name', 'name', 'order', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
     inlines = [ThemeParentInline, ChildInline]
@@ -222,20 +216,6 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             qs = qs.order_by(*ordering)
         return qs
 
-    def get_order(self, obj):
-        # Get the content type for the Theme
-        content_type = ContentType.objects.get_for_model(Theme)
-        
-        # Try to fetch the corresponding ChildOrder record
-        child_order = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk).first()
-        
-        # Debug print statements to track what's happening
-        if child_order:
-            return child_order.order
-        else:
-            return obj.order
-    get_order.short_description = 'Order'
-
     def formfield_for_manytomany(self, db_field, request=None, **kwargs):
         if db_field.name == 'site':
             kwargs['widget'] = forms.CheckboxSelectMultiple()
@@ -254,18 +234,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             obj = self.get_object(request, object_id)
             
             if obj:
-                # Get ContentType for the Theme model
-                content_type = ContentType.objects.get_for_model(Theme)
-
-                # Fetch ChildOrder for the current theme
-                child_order = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk).first()
-
-                # Set the order value based on ChildOrder or fallback to obj.order
-                order_value = child_order.order if child_order else obj.order
-
-                # Add order value to the extra_context to be used in the form
                 extra_context = extra_context or {}
-                extra_context['order_value'] = order_value  # Pass the order value to the template
                 extra_context['CATALOG_TECHNOLOGY'] = getattr(settings, 'CATALOG_TECHNOLOGY', 'default')
                 extra_context['CATALOG_PROXY'] = getattr(settings, 'CATALOG_PROXY', '')
 

@@ -57,10 +57,10 @@ class Theme(models.Model, SiteFlags):
     default_keyword = models.CharField(null=True, blank=True, max_length=100)
     placeholder_text = models.CharField(null=True, blank=True, max_length=100)
     display_name = models.CharField(max_length=100)
-    is_top_theme = models.BooleanField(default=False)
+    is_top_theme = models.BooleanField(default=False, verbose_name="Is Top Level Theme", help_text="Check this box to show this level at the top tier of the layer picker")
     theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
-    order = models.PositiveIntegerField(null=True, blank=True, default=10) 
+    order = models.PositiveIntegerField(default=10, verbose_name='Default Order', help_text="Only used for 'Top Level Themes'") 
 
     ######################################################
     #           DATES                                    #
