@@ -148,9 +148,10 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 'name',
                 'display_name',
                 'site',
-                "order",
+                'theme_type',
                 "is_visible",
                 "is_top_theme",
+                "order",
 
             )
         }),

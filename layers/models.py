@@ -48,17 +48,19 @@ class AllObjectsManager(models.Manager):
 
 class Theme(models.Model, SiteFlags):
     THEME_TYPE_CHOICES = (
-    ('radio', 'radio'),
-    ('checkbox', 'checkbox'),
+    ('radio', 'radio: select 1 layer at a time'),
+    ('checkbox', 'checkbox: support simultaneous layers'),
     )
     site = models.ManyToManyField(Site,  related_name='%(class)s_site')
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=255, verbose_name="System Name",
+                            help_text='e.g.: "Grandparent|Parent|Name". Spaces are allowed.')
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     default_keyword = models.CharField(null=True, blank=True, max_length=100)
     placeholder_text = models.CharField(null=True, blank=True, max_length=100)
     display_name = models.CharField(max_length=100)
     is_top_theme = models.BooleanField(default=False, verbose_name="Is Top Level Theme", help_text="Check this box to show this level at the top tier of the layer picker")
-    theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, help_text='use placeholder to temporarily remove layer from TOC')
+    theme_type = models.CharField(max_length=50, choices=THEME_TYPE_CHOICES, blank=True, default='checkbox', 
+                                  help_text='This only impacts how many LAYERS can be activated at once. This does not impact child-themes or their layers')
     # Modify Theme model to include order field but don't want subthemes to necessarily have an order, make order field optional
     order = models.PositiveIntegerField(default=10, verbose_name='Default Order', help_text="Only used for 'Top Level Themes'") 
 
