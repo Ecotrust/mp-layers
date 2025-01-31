@@ -143,7 +143,7 @@ class ThemeParentInline(GenericTabularInline):
         return formset
 
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
-    list_display = ('display_name', 'name', 'get_order', 'primary_site', 'preview_site')
+    list_display = ('display_name', 'name', 'get_order', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
     inlines = [ThemeParentInline, ChildInline]
@@ -156,6 +156,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 'site',
                 "order",
                 "is_visible",
+                "is_top_theme",
 
             )
         }),
