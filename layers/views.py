@@ -753,7 +753,7 @@ def get_children(request, parent_id):
     # Get the child orders (ChildOrder records) for the parent theme, ordered by 'order'
     child_orders = ChildOrder.objects.filter(parent_theme_id=parent_id).order_by('order')
     children = []
-    
+
     # Loop through each ChildOrder to fetch child objects (Themes or Layers)
     for child_order in child_orders:
         try:
@@ -827,9 +827,9 @@ def top_level_themes(request):
     for theme in top_level_themes:
         data = {
             'id': theme.id,
-            "name": theme.display_name,
-            'type': "theme",
-            "is_visible": True
+            "name": theme.name,
+            "display_name": theme.display_name,
+            "is_visible": theme.is_visible,
         }
         themes.append(data)
     return JsonResponse({'top_level_themes': themes})

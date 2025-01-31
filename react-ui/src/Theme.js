@@ -337,7 +337,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         {level > 0 ? (
           <span className="hierarchy-connector">{theme.name}</span>
         ) : (
-          theme.name
+          theme.display_name
         )}
       </span>
       
