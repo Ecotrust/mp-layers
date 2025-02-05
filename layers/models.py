@@ -409,13 +409,14 @@ class Theme(models.Model, SiteFlags):
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
     def shortDict(self, site_id=None):
-        children = sorted(list(self.children.all()), key=lambda x: (x.order, x.content_object.name))
+        childOrders = ChildOrder.objects.filter(parent_theme=self)
+        children = sorted(list(childOrders), key=lambda x: (x.order, x.content_object.name))
         subthemes = []
         layers = []
         for child in children:
             if child.content_type.model == 'theme' and child.content_object.is_visible:
                 theme = child.content_object
-                children = [x.content_object.shortDict() for x in sorted(list(theme.children.all()), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
+                children = [x.content_object.shortDict() for x in sorted(list(childOrders), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
                 subthemes.append({
                     'id': theme.id,
                     'type': 'theme',
