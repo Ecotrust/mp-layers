@@ -474,6 +474,9 @@ class Theme(models.Model, SiteFlags):
     class Meta:
         ordering = ['order']
         app_label = 'layers'
+        indexes = [
+            models.Index(fields=['id',]),
+        ]
 
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
@@ -953,6 +956,11 @@ class Layer(models.Model, SiteFlags):
             else:
                 raise IntegrityError(e)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['id',]),
+        ]
+
 class Companionship(models.Model):
     # ForeignKey creates a one-to-many relationship
     # (Each companionship relates to one Layer)
@@ -1012,6 +1020,11 @@ class ChildOrder(models.Model):
 
     class Meta:
         ordering = ['order']
+        indexes = [
+            models.Index(fields=['id',]),
+            models.Index(fields=['parent_theme',]),
+            models.Index(fields=['content_type',]),
+        ]
 
 class LayerType(models.Model):
     layer = models.ForeignKey(Layer, on_delete=models.CASCADE, unique=True)
