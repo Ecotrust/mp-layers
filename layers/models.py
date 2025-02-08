@@ -953,7 +953,9 @@ class Layer(models.Model, SiteFlags):
     
     def save(self, *args, **kwargs):
         content_type = ContentType.objects.get_for_model(self.__class__)
-        dirty_cache_keys = []
+        dirty_cache_keys = [
+            'layers_layer_serialized_details_{}'.format(self.pk),
+        ]
         # clean keys tied to /children/ api
         for site in Site.objects.all():
             for child in ChildOrder.objects.filter(object_id=self.pk, content_type=content_type):

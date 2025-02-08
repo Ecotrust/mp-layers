@@ -333,32 +333,36 @@ def get_layers_for_theme(request, themeID):
 
 
 def get_layer_details(request, layerID):
-    serialized_data = {}
-    try:
-        # First, get the generic layer instance
-        layer = Layer.all_objects.get(pk=layerID)
-        specific_layer_model = None
-        # Use the layer_type attribute to get the specific model class
-        if layer.layer_type != "slider":
-            specific_layer_model = layer_type_to_model.get(layer.layer_type)
-        # Now, use the specific model class to get the specific layer instance
-        if specific_layer_model and specific_layer_model != Layer:
-            specific_layer = specific_layer_model.objects.get(layer=layer)
-        else: 
-            specific_layer = layer
-        specific_layer_serializer_class = layer_type_to_serializer.get(layer.layer_type)
-        # Instantiate the serializer with the specific layer instance
-        if specific_layer_serializer_class:
-            specific_layer_serializer = specific_layer_serializer_class(specific_layer)
-            # Now you can use the serializer to get the serialized data
-            serialized_data = specific_layer_serializer.data
-        else:
-            serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
-        return JsonResponse(serialized_data)
-    except ObjectDoesNotExist as e:
-        subtheme = Theme.all_objects.get(pk=layerID)
-        serialized_data = SubThemeSerializer(subtheme).data
-        return JsonResponse(serialized_data)
+    serialized_data = cache.get('layers_layer_serialized_details_{}'.format(layerID))
+    if not serialized_data:
+        serialized_data = {}
+        try:
+            # First, get the generic layer instance
+            layer = Layer.all_objects.get(pk=layerID)
+            specific_layer_model = None
+            # Use the layer_type attribute to get the specific model class
+            if layer.layer_type != "slider":
+                specific_layer_model = layer_type_to_model.get(layer.layer_type)
+            # Now, use the specific model class to get the specific layer instance
+            if specific_layer_model and specific_layer_model != Layer:
+                specific_layer = specific_layer_model.objects.get(layer=layer)
+            else: 
+                specific_layer = layer
+            specific_layer_serializer_class = layer_type_to_serializer.get(layer.layer_type)
+            # Instantiate the serializer with the specific layer instance
+            if specific_layer_serializer_class:
+                specific_layer_serializer = specific_layer_serializer_class(specific_layer)
+                # Now you can use the serializer to get the serialized data
+                serialized_data = specific_layer_serializer.data
+            else:
+                serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
+            cache.set('layers_layer_serialized_details_{}'.format(layerID), serialized_data, 60*60*24*7)
+        except ObjectDoesNotExist as e:
+            # TODO: Change layer picker logic to use /children/ API call if item is a Theme!
+            subtheme = Theme.all_objects.get(pk=layerID)
+            serialized_data = SubThemeSerializer(subtheme).data
+        
+    return JsonResponse(serialized_data)
 
 def wms_get_capabilities(url):
     from datetime import datetime
