@@ -3,6 +3,7 @@ from django.contrib.sites.managers import CurrentSiteManager
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 from django.conf import settings
@@ -458,6 +459,14 @@ class Theme(models.Model, SiteFlags):
         return "{} [T-{}]".format(self.name, self.pk)
 
     def save(self, *args, **kwargs):
+        content_type = ContentType.objects.get_for_model(self.__class__)
+        dirty_cache_keys = []
+        # clean keys tied to /children/ api
+        for site in Site.objects.all():
+            for child in ChildOrder.objects.filter(object_id=self.pk, content_type=content_type):
+                dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site.pk))
+        for key in dirty_cache_keys:
+            cache.delete(key)
         try:
             with transaction.atomic():
                 super(Theme, self).save(*args, **kwargs)
@@ -943,6 +952,14 @@ class Layer(models.Model, SiteFlags):
         return layers_dict
     
     def save(self, *args, **kwargs):
+        content_type = ContentType.objects.get_for_model(self.__class__)
+        dirty_cache_keys = []
+        # clean keys tied to /children/ api
+        for site in Site.objects.all():
+            for child in ChildOrder.objects.filter(object_id=self.pk, content_type=content_type):
+                dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site.pk))
+        for key in dirty_cache_keys:
+            cache.delete(key)
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
@@ -998,6 +1015,12 @@ class ChildOrder(models.Model):
     #     return Site.objects.filter(pk__in=parent_site_ids).filter(pk__in=content_site_ids)
 
     def save(self, *args, **kwargs):
+        dirty_cache_keys = []
+        # clean keys tied to /children/ api
+        for site in Site.objects.all():
+            dirty_cache_keys.append('layers_childorder_{}_{}'.format(self.pk, site.pk))
+        for key in dirty_cache_keys:
+            cache.delete(key)
         try:
             with transaction.atomic():
                 super(ChildOrder, self).save(*args, **kwargs)

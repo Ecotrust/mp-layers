@@ -794,52 +794,55 @@ def get_children(request, parent_id):
     # Loop through each ChildOrder to fetch child objects (Themes or Layers)
     for child_order in child_orders:
         try:
-            child_data = {}
-            if current_site in child_order.content_object.site.all():
-                if child_order.content_type == theme_content_type:
-                    # If the child object is a Theme
-                    child_object = child_order.content_object
-                    description = child_object.description or ""
-                    if child_object.data_url:
-                        read_more_link = f' <a href="{child_object.data_url}" target="_blank">Read More</a>'
-                        description += read_more_link
-                    child_data = {
-                        'id': child_object.id,
-                        "name": child_object.display_name,
-                        'type': "theme",
-                        "theme_type": child_object.theme_type, 
-                        "is_dynamic": child_object.is_dynamic,
-                        "url": child_object.dynamic_url,
-                        "placeholder_text": child_object.placeholder_text,
-                        "default_keyword": child_object.default_keyword,
-                        "child_order": child_order.order,  # Order from ChildOrder
-                        "metadata": child_object.metadata,
-                        "source": child_object.source,
-                        "data_download": child_object.data_download,
-                        "kml": child_object.kml,
-                        "description": description
-                    }
-                elif child_order.content_type == layer_content_type:
-                    # If the child object is a Layer (and not of 'placeholder' type)
-                    child_object = child_order.content_object
-                    if child_object.layer_type != 'placeholder':
+            child_data = cache.get('layers_childorder_{}_{}'.format(child_order.pk, current_site.pk))
+            if not child_data:
+                child_data = {}
+                if current_site in child_order.content_object.site.all():
+                    if child_order.content_type == theme_content_type:
+                        # If the child object is a Theme
+                        child_object = child_order.content_object
                         description = child_object.description or ""
                         if child_object.data_url:
                             read_more_link = f' <a href="{child_object.data_url}" target="_blank">Read More</a>'
                             description += read_more_link
                         child_data = {
                             'id': child_object.id,
-                            'name': child_object.name,
-                            'type': "layer",
-                            'metadata': child_object.metadata,
-                            'source': child_object.source,
-                            'data_download': child_object.data_download,
-                            'kml': child_object.kml,
-                            'description': description,
-                            "minzoom": child_object.minZoom,
-                            "maxzoom": child_object.maxZoom,
-                            "child_order": child_order.order  # Order from ChildOrder
+                            "name": child_object.display_name,
+                            'type': "theme",
+                            "theme_type": child_object.theme_type, 
+                            "is_dynamic": child_object.is_dynamic,
+                            "url": child_object.dynamic_url,
+                            "placeholder_text": child_object.placeholder_text,
+                            "default_keyword": child_object.default_keyword,
+                            "child_order": child_order.order,  # Order from ChildOrder
+                            "metadata": child_object.metadata,
+                            "source": child_object.source,
+                            "data_download": child_object.data_download,
+                            "kml": child_object.kml,
+                            "description": description
                         }
+                    elif child_order.content_type == layer_content_type:
+                        # If the child object is a Layer (and not of 'placeholder' type)
+                        child_object = child_order.content_object
+                        if child_object.layer_type != 'placeholder':
+                            description = child_object.description or ""
+                            if child_object.data_url:
+                                read_more_link = f' <a href="{child_object.data_url}" target="_blank">Read More</a>'
+                                description += read_more_link
+                            child_data = {
+                                'id': child_object.id,
+                                'name': child_object.name,
+                                'type': "layer",
+                                'metadata': child_object.metadata,
+                                'source': child_object.source,
+                                'data_download': child_object.data_download,
+                                'kml': child_object.kml,
+                                'description': description,
+                                "minzoom": child_object.minZoom,
+                                "maxzoom": child_object.maxZoom,
+                                "child_order": child_order.order  # Order from ChildOrder
+                            }
+                cache.set('layers_childorder_{}_{}'.format(child_order.pk, current_site.pk), child_data, 60*60*24*7)
                 
             if child_data and not child_data == {}:
                 children.append(child_data)
