@@ -431,15 +431,24 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
-    def shortDict(self, site_id=None):
+    def shortDict(self, site=None):
         childOrders = ChildOrder.objects.filter(parent_theme=self)
+        if not site == None:
+            site_children_pks = []
+            for child in childOrders:
+                if site in child.content_object.site.all():
+                    site_children_pks.append(child.pk)
+            childOrders = childOrders.filter(pk__in=site_children_pks)
         children = sorted(list(childOrders), key=lambda x: (x.order, x.content_object.name))
         subthemes = []
         layers = []
         for child in children:
             if child.content_type.model == 'theme' and child.content_object.is_visible:
                 theme = child.content_object
-                children = [x.content_object.shortDict() for x in sorted(list(childOrders), key=lambda x: ({'layer':0, 'theme':1}[x.content_type.model], x.order, x.content_object.name))]
+                if theme.is_dynamic:
+                    children = []
+                else:
+                    children = [x.content_object.shortDict(site=site) for x in sorted(list(child.content_object.children), key=lambda x: (x.order, x.content_object.name))]
                 subthemes.append({
                     'id': theme.id,
                     'type': 'theme',
@@ -959,7 +968,7 @@ class Layer(models.Model, SiteFlags):
     def __str__(self):
         return "{} [L-{}]".format(self.name, self.pk)
     
-    def shortDict(self, site_id=None):
+    def shortDict(self, site=None):
         children = []
         layers_dict = {
             'id': self.id,
