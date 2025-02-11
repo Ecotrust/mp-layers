@@ -395,7 +395,13 @@ class Theme(models.Model, SiteFlags):
             if child.content_type == layerType:
                 children_count += 1
             elif child.content_type == themeType:
-                children_count += child.content_object.layer_count
+                child_layer_count = child.content_object.layer_count
+                # dynamic themes will appear to have 0 children, since they have no
+                # layer records. Instead, let's count each dynamic subtheme.
+                if child_layer_count == 0 and child.content_object.is_dynamic:
+                    children_count += 1
+                else:
+                    children_count += child_layer_count
         return children_count
     
     @property
