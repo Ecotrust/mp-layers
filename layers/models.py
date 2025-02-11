@@ -383,12 +383,28 @@ class Theme(models.Model, SiteFlags):
         return False
 
     @property
+    def children(self):
+        return ChildOrder.objects.filter(parent_theme=self)
+
+    @property
     def layer_count(self):
-        return self.badge
+        layerType = ContentType.objects.get_for_model(Layer)
+        themeType = ContentType.objects.get_for_model(Theme)
+        children_count = 0
+        for child in self.children:
+            if child.content_type == layerType:
+                children_count += 1
+            elif child.content_type == themeType:
+                children_count += child.content_object.layer_count
+        return children_count
     
     @property
     def badge(self):
-        return self.name[0]
+        return self.layer_count
+    
+    @property
+    def badge_text(self):
+        return 'Records'
 
     @property
     def catalog_html(self):
