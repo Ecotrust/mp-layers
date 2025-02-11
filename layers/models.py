@@ -169,36 +169,20 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
 
         # Find the ChildOrder instance that refers to this theme
-        child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
+        parent_orders = ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
         # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
         #   and themes, we can query 'objects' by the possible ids of matching themes
-        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_theme_ids = [x.parent_theme.pk for x in parent_orders]
         parent_themes = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
 
         # Initialize an empty list to hold ancestor theme ids
         ancestor_theme_ids = []
+        for parent in parent_themes:
+            ancestor_theme_ids.append(parent.pk)
+            ancestor_theme_ids.extend(parent.ancestor_ids)
 
-        # Helper function to get ancestors recursively
-        def get_ancestor_ids(theme):
-            content_type = ContentType.objects.get_for_model(theme.__class__)
-            child_orders = ChildOrder.objects.filter(object_id=theme.id, content_type=content_type)
-            parent_ids = [x.parent_theme.pk for x in child_orders]
-            if parent_ids:
-                ancestor_theme_ids.extend(parent_ids)
-                parents = Theme.objects.filter(pk__in=parent_ids).order_by('order', 'name', 'id')
-                for parent in parents:
-                    get_ancestor_ids(parent)
-
-        # For each parent, get its ancestor theme ids
-        for parent_theme in parent_themes:
-            get_ancestor_ids(parent_theme)
-
-        # Return ancestor theme ids
+        ancestor_theme_ids = list(set(ancestor_theme_ids))
         return ancestor_theme_ids
-        # TO DO: create ancestor theme ids array
-        # FOR EACH PARENT, GET PARENT ANCESTOR THEME IDS
-        # APPEND TO ANCESTOR THEME IDS ARRAY
-        # RETURN ANCESTOR THEME IDS
 
     @property
     def ancestors(self):
@@ -431,59 +415,44 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
-    def shortDict(self, site=None):
-        childOrders = ChildOrder.objects.filter(parent_theme=self)
-        if not site == None:
-            site_children_pks = []
+    def shortDict(self, site=None, order=None):
+        if site == None:
+            site_id = ''
+        else:
+            site_id = site.pk
+        cache_label = 'layers_theme_shortdict_{}_{}'.format(self.pk, site_id)
+        layers_dict = cache.get(cache_label)
+        if not layers_dict:
+            childOrders = ChildOrder.objects.filter(parent_theme=self)
+            if not site == None:
+                site_children_pks = []
+                for child in childOrders:
+                    if site in child.content_object.site.all():
+                        site_children_pks.append(child.pk)
+                childOrders = childOrders.filter(pk__in=site_children_pks)
+            subthemes = []
+            layers = []
             for child in childOrders:
-                if site in child.content_object.site.all():
-                    site_children_pks.append(child.pk)
-            childOrders = childOrders.filter(pk__in=site_children_pks)
-        children = sorted(list(childOrders), key=lambda x: (x.order, x.content_object.name))
-        subthemes = []
-        layers = []
-        for child in children:
-            if child.content_type.model == 'theme' and child.content_object.is_visible:
-                theme = child.content_object
-                if theme.is_dynamic:
-                    children = []
-                else:
-                    children = [x.content_object.shortDict(site=site) for x in sorted(list(child.content_object.children), key=lambda x: (x.order, x.content_object.name))]
-                subthemes.append({
-                    'id': theme.id,
-                    'type': 'theme',
-                    'parent': {'name': self.display_name},
-                    'name': theme.display_name,
-                    'slug_name': theme.slug_name,
-                    'bookmark_link': theme.bookmark_link,
-                    'is_sublayer': True,
-                    'children': children
-                })
-            if child.content_type.model == 'layer' and child.content_object.is_visible:
-                layer = child.content_object
-                layers.append({
-                    'id': layer.id,
-                    'type': 'layer',
-                    'parent': {'name': self.display_name},
-                    'name': layer.name,
-                    'slug_name': layer.slug_name if (layer.slug_name and not layer.slug_name == None) else slugify(layer.name),
-                    'bookmark_link': layer.bookmark_link,
-                    'is_sublayer': True,
-                    'children': []
-                })
-        
-        children_list = subthemes + layers
+                if child.content_type.model == 'theme' and child.content_object.is_visible:
+                    subthemes.append(child.content_object.shortDict(site=site, order=child.order))
+                if child.content_type.model == 'layer' and child.content_object.is_visible:
+                    layers.append(child.content_object.shortDict(site=site, order=child.order, parent=self))
+            
+            children_list = subthemes + layers
+            sorted_children_list = sorted(children_list, key=lambda x: (x['order'], x['name']))
 
-        layers_dict = {
-            'id': self.id,
-            'parent': None,
-            'name': self.display_name,
-            'type': 'theme',
-            'slug_name': self.slug_name,
-            'bookmark_link': self.bookmark_link,
-            'is_sublayer': self.is_sublayer,
-            'children': children_list,
-        }
+            layers_dict = {
+                'id': self.id,
+                'parent': None,
+                'order': order if not order == None else 0,
+                'name': self.display_name,
+                'type': 'theme',
+                'slug_name': self.slug_name,
+                'bookmark_link': self.bookmark_link,
+                'is_sublayer': self.is_sublayer,
+                'children': sorted_children_list,
+            }
+            cache.set(cache_label, layers_dict, 60*60*24*7)
         return layers_dict
 
     def __str__(self):
@@ -493,9 +462,13 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         dirty_cache_keys = []
         # clean keys tied to /children/ api
-        for site in Site.objects.all():
-            for child in ChildOrder.objects.filter(object_id=self.pk, content_type=content_type):
-                dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site.pk))
+        children = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
+        ancestor_ids = self.ancestor_ids
+        for site_id in [x.pk for x in Site.objects.all()] + ['']:
+            for child in children:
+                dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site_id))
+            for ancestor_id in ancestor_ids:
+                dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
         for key in dirty_cache_keys:
             cache.delete(key)
         try:
@@ -852,7 +825,7 @@ class Layer(models.Model, SiteFlags):
 
     
     @property
-    def parent(self):
+    def parents(self):
         
         # Get the ContentType for the Layer model
         layer_content_type = ContentType.objects.get_for_model(self.__class__)
@@ -867,6 +840,12 @@ class Layer(models.Model, SiteFlags):
         #   and themes, we can query 'objects' by the possible ids of matching themes
         parent_theme_ids = [x.parent_theme.pk for x in child_orders]
         parent_themes = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
+            
+        return parent_themes
+    
+    @property
+    def parent(self):
+        parent_themes = self.parents
         for pt in parent_themes:
             # A layer can be a sublayer in one theme and a top-level layer in another.
             # This identifies the highest level parent theme
@@ -874,10 +853,18 @@ class Layer(models.Model, SiteFlags):
             # It's not terribly important otherwise
             if pt.parent == None:
                 return pt
-            
         if parent_themes.count() > 0:
             return parent_themes.first()
         return None
+
+    @property
+    def ancestor_ids(self):
+        lineage_ids = []
+        parents = self.parents
+        for parent in parents:
+            lineage_ids += [parent.pk,]
+            lineage_ids += parent.ancestor_ids
+        return list(set(lineage_ids))
     
     @property
     def is_sublayer(self):
@@ -968,12 +955,28 @@ class Layer(models.Model, SiteFlags):
     def __str__(self):
         return "{} [L-{}]".format(self.name, self.pk)
     
-    def shortDict(self, site=None):
+    def shortDict(self, site=None, order=None, parent=None):
         children = []
+        if parent == None:
+            parent = self.parent
+        if parent == None:
+            parent_dict = {}
+            if order == None:
+                order = 0
+        else:
+            parent_dict = {'name': parent.display_name}
+            if order == None:
+                layer_type = ContentType.objects.get_by_model(self.__class__)
+                try:
+                    order = ChildOrder.objects.get(parent_theme=parent, object_id=self.pk, content_type=layer_type).order
+                except Exception as e:
+                    order = 0
+                    pass
         layers_dict = {
             'id': self.id,
             'type': 'layer',
-            'parent': None,
+            'parent': parent_dict,
+            'order': order, 
             'name': self.name,
             'slug_name': self.slug_name,
             'bookmark_link': self.bookmark_link,
@@ -987,10 +990,16 @@ class Layer(models.Model, SiteFlags):
         dirty_cache_keys = [
             'layers_layer_serialized_details_{}'.format(self.pk),
         ]
-        # clean keys tied to /children/ api
-        for site in Site.objects.all():
-            for child in ChildOrder.objects.filter(object_id=self.pk, content_type=content_type):
-                dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site.pk))
+        parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
+        ancestor_ids = self.ancestor_ids
+        for site_id in [x.pk for x in Site.objects.all()] + ['',]:
+            for parent in parent_orders:
+                # clean keys tied to /children/ api
+                dirty_cache_keys.append('layers_childorder_{}_{}'.format(parent.pk, site_id))
+            for ancestor_id in ancestor_ids:
+                # clean keys tied to shortDict and the Data Catalog
+                dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
+
         for key in dirty_cache_keys:
             cache.delete(key)
         try:
