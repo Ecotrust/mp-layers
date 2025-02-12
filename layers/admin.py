@@ -138,7 +138,7 @@ class ExistingChildInline(admin.TabularInline):
     verbose_name = 'Child'
     verbose_name_plural = 'Current Children'
     extra = 0
-    readonly_fields = ['content_object',]
+    readonly_fields = ['content_type', 'content_object',]
     classes = ['collapse',]
 
     def has_add_permission(self, request, obj=None):
