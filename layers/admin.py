@@ -442,16 +442,26 @@ class LayerParentInline(GenericTabularInline, nested_admin.NestedTabularInline):
     verbose_name_plural = 'Parents'
 
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
-    def get_parent_theme(self, obj):
+    def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
         
-        # Try to fetch the corresponding ChildOrder for this Layer
-        child_order = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk).first()
+        # Try to fetch the corresponding ChildOrders (parent relationships) for this Layer
+        child_orders = ChildOrder.objects.filter(content_type=content_type, object_id=obj.pk)
+        parent_themes = [x.parent_theme.name for x in child_orders if x.parent_theme]
+        parent_count = len(parent_themes)
+        themes_text = "; ".join(parent_themes)
+        if parent_count < 1:
+            themes_text = "(None)"
+        elif parent_count == 1:
+            themes_text += " (1 theme)"
+        else:
+            themes_text += " ({} themes)".format(parent_count)
         
-        # Return the name of the parent theme if exists
-        return child_order.parent_theme.name if child_order and child_order.parent_theme else 'None'
-    get_parent_theme.short_description = 'Theme'  # Sets column name
+        # Return the names of the parent themes if they exist
+        return themes_text
+    
+    get_parent_themes.short_description = 'Themes'  # Sets column name
 
     def get_order(self, obj):
         # Fetch the ContentType for the Layer model
@@ -472,7 +482,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
 
         return db_field.formfield(**kwargs)
 
-    list_display = ('name', 'layer_type', "get_parent_theme", "get_order", 'date_modified', 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
+    list_display = ('name', "get_parent_themes", 'layer_type', 'date_modified', 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
     search_fields = ['name', 'layer_type', 'date_modified', 'url', 'data_source']
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
