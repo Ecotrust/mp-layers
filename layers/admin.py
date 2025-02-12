@@ -108,8 +108,41 @@ class ChildInline(admin.TabularInline):
     extra = 2
     ordering = ['order',]
     form = ChildInlineForm
+    verbose_name = 'New Child'
+    verbose_name_plural = 'New Children'
+
+    # Loading a Theme form with more than 6 children leads to A LOT of queries. Instead, we
+    # can block editing existing child records and then we don't have to populate the
+    # huge queryset over-and-over again: only for the new fields. The catch is 'existing'
+    # records go into 1 read-only(ish) inline, while new records (w/o read-only) get their own
+    # inline.
+
+    # Thanks to olessia and kickstarter on S.O. for this elegant solution!
+    #       https://stackoverflow.com/a/28149575/706797
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    # For Django Version > 2.1 there is a "view permission" that needs to be disabled too (https://docs.djangoproject.com/en/2.2/releases/2.1/#what-s-new-in-django-2-1)
+    def has_view_permission(self, request, obj=None):
+        return False
+    
+class ExistingChildInlineForm(forms.ModelForm):
+
+    class Meta:
+        model = ChildOrder
+        fields = ['order',]
+
+class ExistingChildInline(admin.TabularInline):
+    model = ChildOrder
+    form = ExistingChildInlineForm
     verbose_name = 'Child'
-    verbose_name_plural = 'Children'
+    verbose_name_plural = 'Current Children'
+    extra = 0
+    readonly_fields = ['content_object',]
+    classes = ['collapse',]
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 class ParentThemeInlineForm(forms.ModelForm):
     parent_theme = forms.ModelChoiceField(
@@ -140,7 +173,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'order', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
-    inlines = [ThemeParentInline, ChildInline]
+    inlines = [ThemeParentInline, ExistingChildInline, ChildInline]
     
     fieldsets = (
         ('BASIC INFO', {
