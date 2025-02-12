@@ -472,7 +472,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
 
         return db_field.formfield(**kwargs)
 
-    list_display = ('name', 'layer_type', 'date_modified', "get_parent_theme", "get_order", 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
+    list_display = ('name', 'layer_type', "get_parent_theme", "get_order", 'date_modified', 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
     search_fields = ['name', 'layer_type', 'date_modified', 'url', 'data_source']
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
