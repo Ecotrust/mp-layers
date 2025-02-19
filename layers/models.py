@@ -628,10 +628,6 @@ class Layer(models.Model, SiteFlags):
     #          Data Catalog Stuff                        #
     ######################################################
     @property
-    def slug_name(self):
-        return slugify(self.name)
-
-    @property
     def data_url(self):
 
         # Return None if DATA_CATALOG_ENABLED is False, or if no parent or slug_name is found
