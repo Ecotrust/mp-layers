@@ -888,7 +888,7 @@ class Layer(models.Model, SiteFlags):
 
         # Find the ChildOrder instance that refers to this layer
         child_orders = ChildOrder.objects.filter(object_id=self.id, content_type=layer_content_type)
-        return Theme.objects.filter(pk__in=[co.parent_theme.id for co in child_orders]).order_by('order', 'name', 'id')
+        return Theme.all_objects.filter(pk__in=[co.parent_theme.id for co in child_orders]).order_by('order', 'name', 'id')
 
     @property
     def bookmark_link(self):
