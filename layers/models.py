@@ -966,7 +966,7 @@ class Layer(models.Model, SiteFlags):
         else:
             parent_dict = {'name': parent.display_name}
             if order == None:
-                layer_type = ContentType.objects.get_by_model(self.__class__)
+                layer_type = ContentType.objects.get_for_model(self.__class__)
                 try:
                     order = ChildOrder.objects.get(parent_theme=parent, object_id=self.pk, content_type=layer_type).order
                 except Exception as e:
