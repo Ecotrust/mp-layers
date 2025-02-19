@@ -839,7 +839,7 @@ class Layer(models.Model, SiteFlags):
         # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
         #   and themes, we can query 'objects' by the possible ids of matching themes
         parent_theme_ids = [x.parent_theme.pk for x in child_orders]
-        parent_themes = Theme.objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
+        parent_themes = Theme.all_objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
             
         return parent_themes
     
