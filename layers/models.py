@@ -623,6 +623,14 @@ class Layer(models.Model, SiteFlags):
                 return True
         return False
 
+
+    ######################################################
+    #          Data Catalog Stuff                        #
+    ######################################################
+    @property
+    def slug_name(self):
+        return slugify(self.name)
+
     @property
     def data_url(self):
 
