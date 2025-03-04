@@ -1,11 +1,15 @@
 from dal import autocomplete
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+from django.utils.decorators import method_decorator
+from django.views.decorators.http import require_POST
 from import_export.admin import ImportExportMixin
+from import_export import resources, fields, widgets
 import nested_admin
 import os
 from queryset_sequence import QuerySetSequence
@@ -441,7 +445,147 @@ class LayerParentInline(GenericTabularInline, nested_admin.NestedTabularInline):
     verbose_name = 'Parent'
     verbose_name_plural = 'Parents'
 
+# class LayerImportExportMixin(ImportExportMixin):
+
+#     @method_decorator(require_POST)
+#     def process_import(self, request, *args, **kwargs):
+#         import ipdb; ipdb.set_trace()
+#         # identify fields for layer
+#         # create layer
+#         # identify layer type
+#         # create 'specificLayer'
+#         # save?
+#         return super(LayerImportExportMixin, self).process_import(request, *args, **kwargs)
+
+class LayerResource(resources.ModelResource):
+
+    order = fields.Field(
+        column_name='order',
+        attribute='order',
+        widget=widgets.IntegerWidget()
+    )
+    parent_themes = fields.Field(
+        column_name='parent_themes',
+        attribute='parent_themes',
+        widget=widgets.ManyToManyWidget(Theme, field='id', separator='|')
+    )
+    
+    def export_resource(self, obj):
+        # RDH 2025-03-03: I tried overriding at 'self.export_field', but this required multiple queries per row for the same data.
+        # The result was making a 9 second request into a 35 second request just to get 'order' and 'parent_theme' for ChildOrders
+        # Doing this once per object, brought that down to 19 seconds.
+        resource_values_list = []
+        exception_list = ['order','parent_themes']
+        parent_orders = [{'order':x.order, 'parent_pk':str(x.parent_theme.pk)} for x in obj.parent_orders]
+        for field in self.get_export_fields():
+            if not field.column_name in exception_list:
+                resource_values_list.append(self.export_field(field, obj))
+            else:
+                #########################
+                # Child Orders
+                #########################
+                if field.column_name == 'order':
+                    order = ''
+                    for parent in parent_orders:
+                        if not parent['order'] in ['',None]:
+                            order = parent['order']
+                            break
+                    resource_values_list.append(order)
+                elif field.column_name == 'parent_themes':
+                    parent_pks = []
+                    for parent in parent_orders:
+                        parent_pks.append(parent['parent_pk'])
+                    resource_values_list.append('|'.join(parent_pks))
+
+        return resource_values_list
+            
+
+    # def before_import_row(self, row, **kwargs):
+    #     # import ipdb; ipdb.set_trace()
+    #     # print(foo)
+    #     super(LayerResource, self).before_import_row(row, **kwargs)
+
+    # def after_import_row(self, row, row_result, row_number, **kwargs):
+    #     #TODO: Create 'specific layer' record
+
+    #     # Create Child
+    #     default_order = row['order'] if not row['order'] in ['', None] else 10
+    #     parent_themes = row['parent_themes']
+    #     content_type = ContentType.objects.get_for_model(Layer)
+    #     for theme_id in parent_themes.split('|'):
+    #         try:
+    #             theme_obj = Theme.all_objects.get(pk=theme_id)
+    #             order_obj = ChildOrder.objects.get_or_create(order=default_order, parent_theme=theme_obj, object_id=row_result.pk, content_type=content_type)
+    #             default_order = row['order'] if not row['order'] in ['', None] else False
+    #             if default_order:
+    #                 order_obj.order = default_order
+
+    #         except Exception as e:
+    #             print(e)
+    #             import ipdb; ipdb.set_trace()
+    #             print(e)
+    #             pass
+    #     super(LayerResource, self).after_import_row(row, row_result, row_number, **kwargs)
+
+    class Meta:
+        model = Layer
+
+        '''
+        Old list:
+        id,uuid,site,name,order,slug_name,layer_type,url,shareable_url,proxy_url,arcgis_layers,query_by_point,disable_arcgis_attributes,wms_help,wms_slug,wms_version,wms_format,wms_srs,wms_styles,wms_timing,wms_time_item,wms_additional,wms_info,wms_info_format,is_sublayer,sublayers,themes,search_query,has_companion,connect_companion_layers_to,is_disabled,disabled_message,legend,legend_title,legend_subtitle,show_legend,utfurl,filterable,geoportal_id,description,data_overview,data_source,data_notes,data_publish_date,catalog_name,catalog_id,bookmark,kml,data_download,learn_more,metadata,source,map_tiles,thumbnail,label_field,attribute_fields,compress_display,attribute_event,mouseover_field,lookup_field,lookup_table,is_annotated,custom_style,vector_outline_color,vector_outline_opacity,vector_outline_width,vector_color,vector_fill,vector_graphic,vector_graphic_scale,point_radius,opacity,espis_enabled,espis_search,espis_region,date_created,date_modified,minZoom,maxZoom,password_protected
+
+        New list:
+        id,name,uuid,layer_type,url,site,opacity,is_disabled,disabled_message,is_visible,search_query,geoportal_id,catalog_name,catalog_id,proxy_url,shareable_url,utfurl,show_legend,legend,legend_title,legend_subtitle,description,overview,data_source,data_notes,data_publish_date,metadata,source,bookmark,kml,data_download,learn_more,map_tiles,label_field,attribute_event,attribute_fields,annotated,compress_display,mouseover_field,espis_enabled,espis_search,espis_region,date_created,date_modified,minZoom,maxZoom
+
+        Munge:
+        # Atribute Reporting [Vector/Tile/ArcREST/Feature/WMS]
+        label_field,attribute_event,attribute_fields,mouseover_field,
+
+        # Uncertain Use
+        shareable_url
+
+        # Organization info [ChildOrder]
+        order, parent_themes(NEW), has_companion,connect_companion_layers_to,
+
+        # VECTOR DISPLAY/Style [ArcFeature/Vector]
+        lookup_field,lookup_table,custom_style,vector_outline_color,vector_outline_opacity,vector_outline_width,vector_color,vector_fill,vector_graphic,vector_graphic_scale,point_radius,
+
+        # ArcGIS [ArcREST, ArcFeatureServer]
+        arcgis_layers, query_by_point,disable_arcgis_attributes,password_protected
+
+        # WMS [WMS]
+        wms_help,wms_slug,wms_version,wms_format,wms_srs,wms_styles,wms_timing,wms_time_item,wms_additional,wms_info,wms_info_format
+
+        # Uncertain
+        is_disabled,disabled_message,filterable,compress_display,
+
+        # Auto (leave out)
+
+        # Dropped (leave out)
+        slug_name,is_sublayer,sublayers,search_query,utfurl,thumbnail,annotated,espis_enabled,espis_search,espis_region,is_visible
+        '''
+        # Primary Fields
+        fields = ['id', 'name', 'layer_type', 'url',]
+        # Secondary Fields
+        fields += ['uuid', 'site','proxy_url','opacity','date_created','date_modified','minZoom','maxZoom',]
+        # Legend
+        fields += ['show_legend','legend','legend_title','legend_subtitle',]
+        # Catalog
+        fields += [
+            'geoportal_id','catalog_name','catalog_id',
+            'description','overview','data_source','data_notes',
+            'data_publish_date','metadata','source','bookmark',
+            'kml','data_download','learn_more','map_tiles',
+        ]
+
+        # ChildOrder
+        fields += ['order', 'parent_themes',]
+
+        export_order = fields
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
+
+
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
@@ -487,6 +631,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
     form = LayerForm
+    resource_classes = [LayerResource]
     class Media:
         js = ['layer_admin.js',]
         css = {

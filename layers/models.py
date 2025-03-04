@@ -829,8 +829,7 @@ class Layer(models.Model, SiteFlags):
 
     
     @property
-    def parents(self):
-        
+    def parent_orders(self):
         # Get the ContentType for the Layer model
         layer_content_type = ContentType.objects.get_for_model(self.__class__)
 
@@ -840,9 +839,13 @@ class Layer(models.Model, SiteFlags):
         ).order_by(
             'parent_theme__order', 'order', 'parent_theme__name', 'parent_theme__id'
         )
+        return child_orders
+
+    @property
+    def parents(self):
         # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
         #   and themes, we can query 'objects' by the possible ids of matching themes
-        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_theme_ids = [x.parent_theme.pk for x in self.parent_orders]
         parent_themes = Theme.all_objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
             
         return parent_themes
