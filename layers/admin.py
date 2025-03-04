@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dal import autocomplete
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
@@ -445,17 +446,16 @@ class LayerParentInline(GenericTabularInline, nested_admin.NestedTabularInline):
     verbose_name = 'Parent'
     verbose_name_plural = 'Parents'
 
-# class LayerImportExportMixin(ImportExportMixin):
+class ChildOrderResource(resources.ModelResource):
+    # parent_themes = fields.Field(
+    #     column_name='parent_themes',
+    #     attribute='parent_themes',
+    #     widget=widgets.ManyToManyWidget(Theme, field='id', separator='|')
+    # )
 
-#     @method_decorator(require_POST)
-#     def process_import(self, request, *args, **kwargs):
-#         import ipdb; ipdb.set_trace()
-#         # identify fields for layer
-#         # create layer
-#         # identify layer type
-#         # create 'specificLayer'
-#         # save?
-#         return super(LayerImportExportMixin, self).process_import(request, *args, **kwargs)
+    class Meta:
+        model = ChildOrder
+        fields = ('id', 'parent_theme', 'content_type', 'object_id', 'order' )
 
 class LayerResource(resources.ModelResource):
 
@@ -499,33 +499,43 @@ class LayerResource(resources.ModelResource):
 
         return resource_values_list
             
+    def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
+        child_order_keys = ['order', 'parent_themes']
+        arc_keys = []
+        vector_keys = []
+        wms_keys = []
+        xyz_keys = []
+        raster_keys = []
+        pop_keys = child_order_keys + arc_keys + vector_keys + wms_keys + xyz_keys + raster_keys
+        pop_dict = {}
+        for key in pop_keys:
+            if key in row.keys():
+                pop_dict[key] = row.pop(key)
 
-    # def before_import_row(self, row, **kwargs):
-    #     # import ipdb; ipdb.set_trace()
-    #     # print(foo)
-    #     super(LayerResource, self).before_import_row(row, **kwargs)
+        # TODO: When we upgrade to django 4.2 and upgrade django_import_export to 4.2.x, we will need to review this deprecation
+        #       Namely that 'raise_errors' is going away.
+        result = super(LayerResource, self).import_row(row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs)
 
-    # def after_import_row(self, row, row_result, row_number, **kwargs):
-    #     #TODO: Create 'specific layer' record
 
-    #     # Create Child
-    #     default_order = row['order'] if not row['order'] in ['', None] else 10
-    #     parent_themes = row['parent_themes']
-    #     content_type = ContentType.objects.get_for_model(Layer)
-    #     for theme_id in parent_themes.split('|'):
-    #         try:
-    #             theme_obj = Theme.all_objects.get(pk=theme_id)
-    #             order_obj = ChildOrder.objects.get_or_create(order=default_order, parent_theme=theme_obj, object_id=row_result.pk, content_type=content_type)
-    #             default_order = row['order'] if not row['order'] in ['', None] else False
-    #             if default_order:
-    #                 order_obj.order = default_order
+        #############################
+        # Child Order
+        #############################
+        layer_type = ContentType.objects.get_for_model(Layer)
+        co_resource = ChildOrderResource()
+        for parent_theme in pop_dict['parent_themes'].split('|'):
+            existing_co_pk = None
+            try:
+                existing_co_pk = ChildOrder.objects.get(parent_theme=parent_theme, content_type=layer_type, object_id=row['id']).pk
+            except Exception as e:
+                # existing record does not match
+                pass
+            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', parent_theme),  ('content_type', layer_type.pk), ('object_id', row['id']), ('order', pop_dict['order'])])
+            co_loader = co_resource._meta.instance_loader_class(co_resource, co_row)
+            co_result = co_resource.import_row(co_row, co_loader, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+            for error in co_result.errors:
+                result.errors.append(error)
 
-    #         except Exception as e:
-    #             print(e)
-    #             import ipdb; ipdb.set_trace()
-    #             print(e)
-    #             pass
-    #     super(LayerResource, self).after_import_row(row, row_result, row_number, **kwargs)
+        return result
 
     class Meta:
         model = Layer
@@ -584,8 +594,6 @@ class LayerResource(resources.ModelResource):
         export_order = fields
 
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
-
-
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
