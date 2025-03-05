@@ -516,7 +516,7 @@ class LayerResource(resources.ModelResource):
         # The result was making a 9 second request into a 35 second request just to get 'order' and 'parent_theme' for ChildOrders
         # Doing this once per object, brought that down to 19 seconds.
         resource_values_list = []
-        exception_list = self._meta.specific_keys
+        exception_list = self._meta.order_keys + self._meta.specific_keys
         parent_orders = [{'order':x.order, 'parent_pk':str(x.parent_theme.pk)} for x in obj.parent_orders]
         # arcRestLayer = obj.layer_type == 'ArcRest'
         # wmsLayer = obj.layer_type == 'WMS'
