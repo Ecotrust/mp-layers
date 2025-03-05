@@ -622,9 +622,15 @@ class LayerResource(resources.ModelResource):
                 except ObjectDoesNotExist as e:
                     pass
             arl_resource = LayerArcRESTResource()
+            # this field has a nasty habit with some formats of coming in as floats. Not sure if that happens with commas, but this
+            #       should enforce the correct format in the end.
+            arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
+            for index, layer_id in enumerate(arcgis_layers):
+                arcgis_layers[index] = str(int(float(layer_id)))
+            arcgis_layers = ','.join(arcgis_layers)
             arl_row = OrderedDict([
                 ('id', existing_arl_pk), ('layer', row['id']), ('query_by_point', pop_dict['query_by_point']), 
-                ('arcgis_layers', pop_dict['arcgis_layers']),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
+                ('arcgis_layers', arcgis_layers),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
             result = self.import_related_record(arl_resource, arl_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         return result
