@@ -450,7 +450,7 @@ class ChildOrderResource(resources.ModelResource):
     # parent_themes = fields.Field(
     #     column_name='parent_themes',
     #     attribute='parent_themes',
-    #     widget=widgets.ManyToManyWidget(Theme, field='id', separator='|')
+    #     widget=widgets.ManyToManyWidget(Theme, field='id', separator=',')
     # )
 
     class Meta:
@@ -480,7 +480,7 @@ class LayerResource(resources.ModelResource):
     parent_themes = fields.Field(
         column_name='parent_themes',
         attribute='parent_themes',
-        widget=widgets.ManyToManyWidget(Theme, field='id', separator='|')
+        widget=widgets.ManyToManyWidget(Theme, field='id', separator=',')
     )
 
     #########################
@@ -547,7 +547,7 @@ class LayerResource(resources.ModelResource):
                     parent_pks = []
                     for parent in parent_orders:
                         parent_pks.append(parent['parent_pk'])
-                    appendValue = '|'.join(parent_pks)
+                    appendValue = ','.join(parent_pks)
                 elif not specific_instance == None:
                     if field.column_name in self._meta.raster_keys:
                         #########################
@@ -591,7 +591,7 @@ class LayerResource(resources.ModelResource):
         #############################
         layer_type = ContentType.objects.get_for_model(Layer)
         co_resource = ChildOrderResource()
-        for parent_theme in str(pop_dict['parent_themes']).split('|'):
+        for parent_theme in str(pop_dict['parent_themes']).split(','):
             existing_co_pk = None
             try:
                 existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=row['id']).pk
