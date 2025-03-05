@@ -457,8 +457,21 @@ class ChildOrderResource(resources.ModelResource):
         model = ChildOrder
         fields = ('id', 'parent_theme', 'content_type', 'object_id', 'order' )
 
+class LayerArcRESTResource(resources.ModelResource):
+
+    class Meta:
+        model = LayerArcREST
+        fields = (
+            'id', 'layer', 'query_by_point',
+            'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
+        )
+        
+
 class LayerResource(resources.ModelResource):
 
+    #########################
+    # Child Orders
+    #########################
     order = fields.Field(
         column_name='order',
         attribute='order',
@@ -469,46 +482,94 @@ class LayerResource(resources.ModelResource):
         attribute='parent_themes',
         widget=widgets.ManyToManyWidget(Theme, field='id', separator='|')
     )
-    
+
+    #########################
+    # Raster
+    #########################
+    query_by_point = fields.Field(
+        column_name='query_by_point',
+        attribute='query_by_point',
+        widget=widgets.BooleanWidget()
+    )
+
+    #########################
+    # LayerArcREST 
+    #########################
+    arcgis_layers = fields.Field(
+        column_name='arcgis_layers',
+        attribute='arcgis_layers',
+        widget=widgets.CharWidget()
+    )
+    password_protected = fields.Field(
+        column_name='password_protected',
+        attribute='password_protected',
+        widget=widgets.BooleanWidget()
+    )
+    disable_arcgis_attributes = fields.Field(
+        column_name='disable_arcgis_attributes',
+        attribute='disable_arcgis_attributes',
+        widget=widgets.BooleanWidget()
+    )
+
     def export_resource(self, obj):
         # RDH 2025-03-03: I tried overriding at 'self.export_field', but this required multiple queries per row for the same data.
         # The result was making a 9 second request into a 35 second request just to get 'order' and 'parent_theme' for ChildOrders
         # Doing this once per object, brought that down to 19 seconds.
         resource_values_list = []
-        exception_list = ['order','parent_themes']
+        exception_list = self._meta.specific_keys
         parent_orders = [{'order':x.order, 'parent_pk':str(x.parent_theme.pk)} for x in obj.parent_orders]
+        # arcRestLayer = obj.layer_type == 'ArcRest'
+        # wmsLayer = obj.layer_type == 'WMS'
+        # arcFeatureLayer = obj.layer_type == 'ArcFeatureServer'
+        # vectorLayer = obj.layer_type == 'Vector'
+        # vectorTileLayer = obj.layer_type == 'VectorTile'
+        # xyzLayer = obj.layer_type == 'XYZ'
+        # sliderLayer = obj.layer_type == 'slider'
+        # if arcRestLayer:
+        specific_instance = obj.specific_instance
+
         for field in self.get_export_fields():
+            appendValue = None
             if not field.column_name in exception_list:
-                resource_values_list.append(self.export_field(field, obj))
+                appendValue = self.export_field(field, obj)
             else:
-                #########################
-                # Child Orders
-                #########################
                 if field.column_name == 'order':
+                    #########################
+                    # Child Orders
+                    #########################
                     order = ''
                     for parent in parent_orders:
                         if not parent['order'] in ['',None]:
                             order = parent['order']
                             break
-                    resource_values_list.append(order)
+                    appendValue = order
                 elif field.column_name == 'parent_themes':
                     parent_pks = []
                     for parent in parent_orders:
                         parent_pks.append(parent['parent_pk'])
-                    resource_values_list.append('|'.join(parent_pks))
+                    appendValue = '|'.join(parent_pks)
+                elif not specific_instance == None:
+                    if field.column_name in self._meta.raster_keys:
+                        #########################
+                        # Raster
+                        #########################
+                        if obj.layer_type in ['ArcRest', 'XYZ', 'WMS'] and type(specific_instance) in [LayerArcREST, LayerXYZ, LayerWMS]:
+                            appendValue = getattr(specific_instance, field.column_name)
+
+                    elif field.column_name in self._meta.arc_keys:
+                        #########################
+                        # ArcServer (MapServer, ImageServer, or FeatureServer)
+                        #########################
+                        if obj.layer_type in ['ArcRest', 'ArcFeatureServer'] and type(specific_instance) in [LayerArcREST, LayerArcFeatureService]:
+                            appendValue = getattr(specific_instance, field.column_name)
+
+            resource_values_list.append(appendValue)
 
         return resource_values_list
             
     def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
-        child_order_keys = ['order', 'parent_themes']
-        arc_keys = []
-        vector_keys = []
-        wms_keys = []
-        xyz_keys = []
-        raster_keys = []
-        pop_keys = child_order_keys + arc_keys + vector_keys + wms_keys + xyz_keys + raster_keys
         pop_dict = {}
-        for key in pop_keys:
+        for key in self._meta.specific_keys:
             if key in row.keys():
                 pop_dict[key] = row.pop(key)
 
@@ -535,6 +596,19 @@ class LayerResource(resources.ModelResource):
             for error in co_result.errors:
                 result.errors.append(error)
 
+        #############################
+        # Raster
+        #############################
+        # query_by_point
+
+
+        #############################
+        # ArcREST 
+        #############################
+        # arcgis_layers
+        # disable_arcgis_attributes
+        # password_protected
+
         return result
 
     class Meta:
@@ -559,9 +633,6 @@ class LayerResource(resources.ModelResource):
 
         # VECTOR DISPLAY/Style [ArcFeature/Vector]
         lookup_field,lookup_table,custom_style,vector_outline_color,vector_outline_opacity,vector_outline_width,vector_color,vector_fill,vector_graphic,vector_graphic_scale,point_radius,
-
-        # ArcGIS [ArcREST, ArcFeatureServer]
-        arcgis_layers, query_by_point,disable_arcgis_attributes,password_protected
 
         # WMS [WMS]
         wms_help,wms_slug,wms_version,wms_format,wms_srs,wms_styles,wms_timing,wms_time_item,wms_additional,wms_info,wms_info_format
@@ -589,7 +660,20 @@ class LayerResource(resources.ModelResource):
         ]
 
         # ChildOrder
-        fields += ['order', 'parent_themes',]
+        child_order_keys = ['order', 'parent_themes',]
+        fields += child_order_keys
+
+        # specific fields
+        raster_keys = ['query_by_point',]
+        vector_keys = []
+        arc_keys = ['arcgis_layers','disable_arcgis_attributes','password_protected',]
+        wms_keys = []
+        xyz_keys = []
+        specific_keys = raster_keys + vector_keys + arc_keys + wms_keys + xyz_keys 
+
+        fields += specific_keys
+        # LayerArcREST MapServer (Raster)
+        # fields += ['arcgis_layers', 'query_by_point','disable_arcgis_attributes','password_protected']
 
         export_order = fields
 
