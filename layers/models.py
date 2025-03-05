@@ -4,6 +4,7 @@ from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 from django.conf import settings
@@ -956,7 +957,10 @@ class Layer(models.Model, SiteFlags):
     @property
     def specific_instance(self):
         if not self.model == None:
-            return self.model.objects.get(layer=self)
+            try:
+                return self.model.objects.get(layer=self)
+            except ObjectDoesNotExist as e:
+                pass
         return None
 
     def __str__(self):
