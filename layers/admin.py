@@ -567,9 +567,17 @@ class LayerResource(resources.ModelResource):
 
         return resource_values_list
             
+    def import_related_record(self, rel_resource, rel_row, result, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
+        rel_loader = rel_resource._meta.instance_loader_class(rel_resource, rel_row)
+        rel_result = rel_resource.import_row(rel_row, rel_loader, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+        for error in rel_result.errors:
+            result.errors.append(error)
+        return result
+
     def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
         pop_dict = {}
-        for key in self._meta.specific_keys:
+        pop_keys = self._meta.order_keys + self._meta.specific_keys
+        for key in pop_keys:
             if key in row.keys():
                 pop_dict[key] = row.pop(key)
 
@@ -583,18 +591,15 @@ class LayerResource(resources.ModelResource):
         #############################
         layer_type = ContentType.objects.get_for_model(Layer)
         co_resource = ChildOrderResource()
-        for parent_theme in pop_dict['parent_themes'].split('|'):
+        for parent_theme in str(pop_dict['parent_themes']).split('|'):
             existing_co_pk = None
             try:
-                existing_co_pk = ChildOrder.objects.get(parent_theme=parent_theme, content_type=layer_type, object_id=row['id']).pk
-            except Exception as e:
+                existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=row['id']).pk
+            except ObjectDoesNotExist as e:
                 # existing record does not match
                 pass
-            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', parent_theme),  ('content_type', layer_type.pk), ('object_id', row['id']), ('order', pop_dict['order'])])
-            co_loader = co_resource._meta.instance_loader_class(co_resource, co_row)
-            co_result = co_resource.import_row(co_row, co_loader, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
-            for error in co_result.errors:
-                result.errors.append(error)
+            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', row['id']), ('order', int(float(pop_dict['order'])))])
+            result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         #############################
         # Raster
@@ -608,6 +613,19 @@ class LayerResource(resources.ModelResource):
         # arcgis_layers
         # disable_arcgis_attributes
         # password_protected
+
+        if row['layer_type'] == 'ArcRest':
+            existing_arl_pk = None
+            if row['id'] not in [None, '']:
+                try:
+                    existing_arl_pk = LayerArcREST.objects.get(layer__id=row['id']).pk
+                except ObjectDoesNotExist as e:
+                    pass
+            arl_resource = LayerArcRESTResource()
+            arl_row = OrderedDict([
+                ('id', existing_arl_pk), ('layer', row['id']), ('query_by_point', pop_dict['query_by_point']), 
+                ('arcgis_layers', pop_dict['arcgis_layers']),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
+            result = self.import_related_record(arl_resource, arl_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         return result
 
@@ -660,8 +678,8 @@ class LayerResource(resources.ModelResource):
         ]
 
         # ChildOrder
-        child_order_keys = ['order', 'parent_themes',]
-        fields += child_order_keys
+        order_keys = ['order', 'parent_themes',]
+        fields += order_keys
 
         # specific fields
         raster_keys = ['query_by_point',]
@@ -672,8 +690,6 @@ class LayerResource(resources.ModelResource):
         specific_keys = raster_keys + vector_keys + arc_keys + wms_keys + xyz_keys 
 
         fields += specific_keys
-        # LayerArcREST MapServer (Raster)
-        # fields += ['arcgis_layers', 'query_by_point','disable_arcgis_attributes','password_protected']
 
         export_order = fields
 
