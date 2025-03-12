@@ -472,6 +472,8 @@ class Theme(models.Model, SiteFlags):
                 dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
         for key in dirty_cache_keys:
             cache.delete(key)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Theme, self).save(*args, **kwargs)
@@ -1013,6 +1015,8 @@ class Layer(models.Model, SiteFlags):
 
         for key in dirty_cache_keys:
             cache.delete(key)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
@@ -1074,6 +1078,8 @@ class ChildOrder(models.Model):
             dirty_cache_keys.append('layers_childorder_{}_{}'.format(self.pk, site.pk))
         for key in dirty_cache_keys:
             cache.delete(key)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(ChildOrder, self).save(*args, **kwargs)
