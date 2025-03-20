@@ -466,12 +466,13 @@ class Theme(models.Model, SiteFlags):
         children = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
         if self.slug_name == None or self.slug_name == '':
-            self.slug_name = slugify(self.name)
+            self.slug_name = "{}{}".format(slugify(self.name), self.pk)
         for site_id in [x.pk for x in Site.objects.all()] + ['']:
             for child in children:
                 dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site_id))
             for ancestor_id in ancestor_ids:
                 dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
+            dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(self.pk, site_id))        
         for key in dirty_cache_keys:
             cache.delete(key)
             with connection.cursor() as cursor:
