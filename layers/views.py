@@ -300,7 +300,10 @@ def get_layers_for_theme(request, themeID):
     child_orders = ChildOrder.objects.filter(parent_theme=theme).order_by("order")
     sorted_child_orders = sorted(
         child_orders,
-        key=lambda co: getattr(co.content_object, 'name', '').lower()
+        key=lambda co: (
+            co.order,
+            getattr(co.content_object, 'name', '').lower()
+        )
     )
     filtered_child_orders = []
     current_site = get_current_site(request)
