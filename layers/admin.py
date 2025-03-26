@@ -465,6 +465,15 @@ class LayerArcRESTResource(resources.ModelResource):
             'id', 'layer', 'query_by_point',
             'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
         )
+
+class LayerArcFeatureServiceResource(resources.ModelResource):
+
+    class Meta:
+        model = LayerArcFeatureService
+        fields = (
+            'id', 'layer',
+            'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
+        )
         
 
 class LayerResource(resources.ModelResource):
@@ -585,6 +594,18 @@ class LayerResource(resources.ModelResource):
         #       Namely that 'raise_errors' is going away.
         result = super(LayerResource, self).import_row(row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs)
 
+        #############################
+        # Related Records
+        #############################
+        parent_layer_pk = None
+        if result and not result.object_id == None:
+            parent_layer_pk = result.object_id
+        if parent_layer_pk == None and row['id'] not in [None, '']:
+            try:
+                parent_layer_pk = int(float(row['id']))
+            except ValueError as e: 
+                pass
+
 
         #############################
         # Child Order
@@ -594,11 +615,14 @@ class LayerResource(resources.ModelResource):
         for parent_theme in str(pop_dict['parent_themes']).split(','):
             existing_co_pk = None
             try:
-                existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=row['id']).pk
+                existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=parent_layer_pk).pk
             except ObjectDoesNotExist as e:
                 # existing record does not match
                 pass
-            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', row['id']), ('order', int(float(pop_dict['order'])))])
+            except ValueError as e:
+                # common case when an 'id' field is not given
+                pass
+            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
             result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         #############################
@@ -614,14 +638,20 @@ class LayerResource(resources.ModelResource):
         # disable_arcgis_attributes
         # password_protected
 
-        if row['layer_type'] == 'ArcRest':
+        if row['layer_type'] in  ['ArcRest', 'ArcFeatureServer']:
+            if row['layer_type'] == 'ArcRest':
+                target_model = LayerArcREST
+                arl_resource = LayerArcRESTResource()
+            elif row['layer_type'] == 'ArcFeatureServer':
+                target_model = LayerArcFeatureService
+                arl_resource = LayerArcFeatureServiceResource()
             existing_arl_pk = None
-            if row['id'] not in [None, '']:
-                try:
-                    existing_arl_pk = LayerArcREST.objects.get(layer__id=row['id']).pk
-                except ObjectDoesNotExist as e:
-                    pass
-            arl_resource = LayerArcRESTResource()
+
+            try:
+                existing_arl_pk = target_model.objects.get(layer__id=parent_layer_pk).pk
+            except ObjectDoesNotExist as e:
+                pass
+            
             # this field has a nasty habit with some formats of coming in as floats. Not sure if that happens with commas, but this
             #       should enforce the correct format in the end.
             arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
@@ -629,7 +659,7 @@ class LayerResource(resources.ModelResource):
                 arcgis_layers[index] = str(int(float(layer_id)))
             arcgis_layers = ','.join(arcgis_layers)
             arl_row = OrderedDict([
-                ('id', existing_arl_pk), ('layer', row['id']), ('query_by_point', pop_dict['query_by_point']), 
+                ('id', existing_arl_pk), ('layer', parent_layer_pk), ('query_by_point', pop_dict['query_by_point']), 
                 ('arcgis_layers', arcgis_layers),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
             result = self.import_related_record(arl_resource, arl_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 

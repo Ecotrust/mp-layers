@@ -1083,18 +1083,20 @@ class ChildOrder(models.Model):
             cache.delete(key)
             with connection.cursor() as cursor:
                 cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
-        try:
-            with transaction.atomic():
-                super(ChildOrder, self).save(*args, **kwargs)
-        except IntegrityError as e:
-            if 'duplicate key value violates unique constraint' in str(e):
-                model = type(self)
-                unique_key = str(e).split('Key (')[-1].split(')=(')[0]
-                update_model_sequence(model, unique_key, manager=model.objects)
+        if not self.object_id == None:
+            # During import, if this is a dry run there will be no child object for this order.
+            try:
                 with transaction.atomic():
                     super(ChildOrder, self).save(*args, **kwargs)
-            else:
-                raise IntegrityError(e)
+            except IntegrityError as e:
+                if 'duplicate key value violates unique constraint' in str(e):
+                    model = type(self)
+                    unique_key = str(e).split('Key (')[-1].split(')=(')[0]
+                    update_model_sequence(model, unique_key, manager=model.objects)
+                    with transaction.atomic():
+                        super(ChildOrder, self).save(*args, **kwargs)
+                else:
+                    raise IntegrityError(e)
 
     # def __str__(self):
     #     try:
