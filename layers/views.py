@@ -877,6 +877,7 @@ def top_level_themes(request):
             'id': theme.id,
             "name": theme.name,
             "display_name": theme.display_name,
+            "theme_type": theme.theme_type,
             "is_visible": theme.is_visible,
         }
         themes.append(data)
