@@ -474,6 +474,18 @@ class LayerArcFeatureServiceResource(resources.ModelResource):
             'id', 'layer',
             'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
         )
+
+class LayerWMSResource(resources.ModelResource):
+    
+    class Meta:
+        model = LayerWMS
+        fields = (
+            'id', 'layer', 
+            #'query_by_point', # This is not exposed in the forms currently, which would make it hard to debug or turn off
+            # 'wms_help', # This is not relevant for bulk import/export
+            'wms_slug', 'wms_version', 'wms_format', 'wms_srs', 'wms_styles',
+            'wms_timing', 'wms_time_item', 'wms_additional', 'wms_info', 'wms_info_format',
+        )
         
 
 class LayerResource(resources.ModelResource):
@@ -519,6 +531,67 @@ class LayerResource(resources.ModelResource):
         attribute='disable_arcgis_attributes',
         widget=widgets.BooleanWidget()
     )
+
+    #########################
+    # WMS
+    #########################
+
+    # wms_help = fields.Field(
+    #     column_name='wms_help',
+    #     attribute='wms_help',
+    #     widget=widgets.BooleanWidget()
+    # )
+    wms_slug = fields.Field(
+        column_name='wms_slug',
+        attribute='wms_slug',
+        widget=widgets.CharWidget()
+    )
+    wms_version = fields.Field(
+        column_name='wms_version',
+        attribute='wms_version',
+        widget=widgets.CharWidget()
+    )
+    wms_format = fields.Field(
+        column_name='wms_format',
+        attribute='wms_format',
+        widget=widgets.CharWidget()
+    )
+    wms_srs = fields.Field(
+        column_name='wms_srs',
+        attribute='wms_srs',
+        widget=widgets.CharWidget()
+    )
+    wms_styles = fields.Field(
+        column_name='wms_styles',
+        attribute='wms_styles',
+        widget=widgets.CharWidget()
+    )
+    wms_timing = fields.Field(
+        column_name='wms_timing',
+        attribute='wms_timing',
+        widget=widgets.CharWidget()
+    )
+    wms_time_item = fields.Field(
+        column_name='wms_time_item',
+        attribute='wms_time_item',
+        widget=widgets.CharWidget()
+    )
+    wms_additional = fields.Field(
+        column_name='wms_additional',
+        attribute='wms_additional',
+        widget=widgets.CharWidget()
+    )
+    wms_info = fields.Field(
+        column_name='wms_info',
+        attribute='wms_info',
+        widget=widgets.BooleanWidget()
+    )
+    wms_info_format = fields.Field(
+        column_name='wms_info_format',
+        attribute='wms_info_format',
+        widget=widgets.CharWidget()
+    )
+
 
     def export_resource(self, obj):
         # RDH 2025-03-03: I tried overriding at 'self.export_field', but this required multiple queries per row for the same data.
@@ -571,6 +644,12 @@ class LayerResource(resources.ModelResource):
                         #########################
                         if obj.layer_type in ['ArcRest', 'ArcFeatureServer'] and type(specific_instance) in [LayerArcREST, LayerArcFeatureService]:
                             appendValue = getattr(specific_instance, field.column_name)
+                    elif field.column_name in self._meta.wms_keys:
+                        #########################
+                        # WMS
+                        #########################
+                        if obj.layer_type == 'WMS' and type(specific_instance) == LayerWMS:
+                            appendValue = getattr(specific_instance, field.column_name)
 
             resource_values_list.append(appendValue)
 
@@ -613,17 +692,18 @@ class LayerResource(resources.ModelResource):
         layer_type = ContentType.objects.get_for_model(Layer)
         co_resource = ChildOrderResource()
         for parent_theme in str(pop_dict['parent_themes']).split(','):
-            existing_co_pk = None
-            try:
-                existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=parent_layer_pk).pk
-            except ObjectDoesNotExist as e:
-                # existing record does not match
-                pass
-            except ValueError as e:
-                # common case when an 'id' field is not given
-                pass
-            co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
-            result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+            if not parent_theme in ['', None]:
+                existing_co_pk = None
+                try:
+                    existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=parent_layer_pk).pk
+                except ObjectDoesNotExist as e:
+                    # existing record does not match
+                    pass
+                except ValueError as e:
+                    # common case when an 'id' field is not given
+                    pass
+                co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
+                result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         #############################
         # Raster
@@ -651,7 +731,7 @@ class LayerResource(resources.ModelResource):
                 existing_arl_pk = target_model.objects.get(layer__id=parent_layer_pk).pk
             except ObjectDoesNotExist as e:
                 pass
-            
+
             # this field has a nasty habit with some formats of coming in as floats. Not sure if that happens with commas, but this
             #       should enforce the correct format in the end.
             arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
@@ -662,6 +742,26 @@ class LayerResource(resources.ModelResource):
                 ('id', existing_arl_pk), ('layer', parent_layer_pk), ('query_by_point', pop_dict['query_by_point']), 
                 ('arcgis_layers', arcgis_layers),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
             result = self.import_related_record(arl_resource, arl_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+
+        #############################
+        # WMS
+        #############################
+        if row['layer_type'] == 'WMS':
+            wms_resource = LayerWMSResource()
+            existing_wms_pk = None
+            try:
+                existing_wms_pk = LayerWMS.objects.get(layer__id=parent_layer_pk).pk
+            except ObjectDoesNotExist as e:
+                pass
+            wms_row = OrderedDict([
+                ('id', existing_wms_pk), ('layer', parent_layer_pk), #('wms_help', pop_dict['wms_help']),
+                ('wms_slug', pop_dict['wms_slug']), ('wms_version', pop_dict['wms_version']),
+                ('wms_format', pop_dict['wms_format']), ('wms_srs', pop_dict['wms_srs']),
+                ('wms_styles', pop_dict['wms_styles']), ('wms_timing', pop_dict['wms_timing']),
+                ('wms_time_item', pop_dict['wms_time_item']), ('wms_additional', pop_dict['wms_additional']),
+                ('wms_info', pop_dict['wms_info']), ('wms_info_format', pop_dict['wms_info_format'])
+            ])
+            result = self.import_related_record(wms_resource, wms_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         return result
 
@@ -719,10 +819,14 @@ class LayerResource(resources.ModelResource):
 
         # specific fields
         raster_keys = ['query_by_point',]
-        vector_keys = []
+        vector_keys = [] #This is where we'd add vector styling fields if relevant.
         arc_keys = ['arcgis_layers','disable_arcgis_attributes','password_protected',]
-        wms_keys = []
-        xyz_keys = []
+        wms_keys = [
+            # 'wms_help',
+            'wms_slug','wms_version','wms_format','wms_srs','wms_styles',
+            'wms_timing','wms_time_item','wms_additional','wms_info','wms_info_format',
+        ]
+        xyz_keys = [] # XYZ is not interactive, and does not require additional fields (including query_by_point)
         specific_keys = raster_keys + vector_keys + arc_keys + wms_keys + xyz_keys 
 
         fields += specific_keys
