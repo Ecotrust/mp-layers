@@ -147,10 +147,10 @@ const Layer = ({
     if (isLayerInvisible && isActive) {
       return "fa fa-eye-slash";
     } else {
-      if (themeType === "checkbox") {
-        return isActive ? "fas fa-check-square" : "far fa-square";
-      } else {
+      if (themeType === "radio") {
         return isActive ? "fa fa-check-circle" : "far fa-circle";
+      } else {
+        return isActive ? "fas fa-check-square" : "far fa-square";
       }
     } // Default icons
   };
