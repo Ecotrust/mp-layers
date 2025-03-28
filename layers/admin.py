@@ -7,13 +7,18 @@ from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+from django.http import JsonResponse
+from django.urls import path
+from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.html import format_html
 from django.views.decorators.http import require_POST
 from import_export.admin import ImportExportMixin
 from import_export import resources, fields, widgets
 import nested_admin
 import os
 from queryset_sequence import QuerySetSequence
+import requests
 from .models import *
 
 # Register your models here.
@@ -874,7 +879,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
 
         return db_field.formfield(**kwargs)
 
-    list_display = ('name', "get_parent_themes", 'layer_type', 'date_modified', 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'url')
+    list_display = ('name', 'get_parent_themes', 'layer_type', 'date_modified', 'data_publish_date', 'data_source', 'primary_site', 'preview_site', 'http_status', 'last_success_status', 'url')
     search_fields = ['name', 'layer_type', 'date_modified', 'url', 'data_source']
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
@@ -1157,6 +1162,63 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_form(self, request, obj=None, **kwargs):
         form = super(LayerAdmin, self).get_form(request, obj, **kwargs)
         return form
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('get-layer-list/', self.admin_site.admin_view(self.get_layer_list), name='get-layer-list'),
+            path('update-layer-status/<int:layer_id>/', self.admin_site.admin_view(self.update_layer_status), name='update-layer-status'),
+        ]
+        return custom_urls + urls
+
+    def http_status(self, obj):
+        return format_html(
+            '<span class="http-status" data-layer-id="{}" data-url="{}" data-name="{}" data-status="{}">{}</span>',
+            obj.pk, obj.url, obj.name, obj.last_http_status, obj.last_http_status
+        )
+    http_status.short_description = 'HTTP Status'
+
+    def update_layer_status(self, request, layer_id):
+        try:
+            layer = Layer.objects.get(pk=layer_id)
+        except Layer.DoesNotExist:
+            return JsonResponse({"error": "Layer not found"}, status=404)
+        try:
+            response = requests.get(layer.url, timeout=5, allow_redirects=True)
+            status = response.status_code
+        except Exception as e:
+            status = 404
+        layer.last_http_status = status
+        update_fields = ['last_http_status']
+        if status == 200:
+            layer.last_success_status = timezone.now()
+            update_fields.append('last_success_status')
+        layer.save(update_fields=update_fields)
+        return JsonResponse({
+            "layer": layer.name,
+            "status": status,
+            "last_http_status": layer.last_http_status,
+            "last_success_status": layer.last_success_status.isoformat() if layer.last_success_status else None
+        })
+    
+    def get_layer_list(self, request):
+        layers = Layer.objects.all()
+        layer_statuses = {}
+        for layer in layers:
+            if layer.name and layer.url:
+                layer_statuses[layer.name] = layer.url
+        return JsonResponse(layer_statuses)
+    
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['layers'] = Layer.objects.all()
+        return super(LayerAdmin, self).changelist_view(request, extra_context=extra_context)
+    
+    class Media:
+        js = ("admin/js/layer_http_status.js",)
+        css = {
+            'all': ("admin/css/layer_http_status.css",)
+        }
     
 class LookupInfoAdmin(admin.ModelAdmin):
     list_display = ('value', 'description', 'color', 'stroke_color', 'dashstyle', 'fill', 'graphic')

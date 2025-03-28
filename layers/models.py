@@ -525,6 +525,12 @@ class Layer(models.Model, SiteFlags):
     all_objects = AllObjectsManager()
 
     ######################################################
+    #                     HTTP STATUS                    #
+    ######################################################
+    last_success_status = models.DateTimeField(null=True, blank=True)
+    last_http_status = models.CharField(max_length=100, blank=True, null=True, help_text="HTTP status code from last check")
+
+    ######################################################
     #                      DISPLAY                       #
     ######################################################
     opacity = models.FloatField(default=.5, blank=True, null=True, verbose_name="Initial Opacity")
