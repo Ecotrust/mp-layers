@@ -1,11 +1,16 @@
+from collections import OrderedDict
 from dal import autocomplete
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+from django.utils.decorators import method_decorator
+from django.views.decorators.http import require_POST
 from import_export.admin import ImportExportMixin
+from import_export import resources, fields, widgets
 import nested_admin
 import os
 from queryset_sequence import QuerySetSequence
@@ -441,6 +446,393 @@ class LayerParentInline(GenericTabularInline, nested_admin.NestedTabularInline):
     verbose_name = 'Parent'
     verbose_name_plural = 'Parents'
 
+class ChildOrderResource(resources.ModelResource):
+    # parent_themes = fields.Field(
+    #     column_name='parent_themes',
+    #     attribute='parent_themes',
+    #     widget=widgets.ManyToManyWidget(Theme, field='id', separator=',')
+    # )
+
+    class Meta:
+        model = ChildOrder
+        fields = ('id', 'parent_theme', 'content_type', 'object_id', 'order' )
+
+class LayerArcRESTResource(resources.ModelResource):
+
+    class Meta:
+        model = LayerArcREST
+        fields = (
+            'id', 'layer', 'query_by_point',
+            'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
+        )
+
+class LayerArcFeatureServiceResource(resources.ModelResource):
+
+    class Meta:
+        model = LayerArcFeatureService
+        fields = (
+            'id', 'layer',
+            'arcgis_layers', 'password_protected', 'disable_arcgis_attributes',
+        )
+
+class LayerWMSResource(resources.ModelResource):
+    
+    class Meta:
+        model = LayerWMS
+        fields = (
+            'id', 'layer', 
+            #'query_by_point', # This is not exposed in the forms currently, which would make it hard to debug or turn off
+            # 'wms_help', # This is not relevant for bulk import/export
+            'wms_slug', 'wms_version', 'wms_format', 'wms_srs', 'wms_styles',
+            'wms_timing', 'wms_time_item', 'wms_additional', 'wms_info', 'wms_info_format',
+        )
+        
+
+class LayerResource(resources.ModelResource):
+
+    #########################
+    # Child Orders
+    #########################
+    order = fields.Field(
+        column_name='order',
+        attribute='order',
+        widget=widgets.IntegerWidget()
+    )
+    parent_themes = fields.Field(
+        column_name='parent_themes',
+        attribute='parent_themes',
+        widget=widgets.ManyToManyWidget(Theme, field='id', separator=',')
+    )
+
+    #########################
+    # Raster
+    #########################
+    query_by_point = fields.Field(
+        column_name='query_by_point',
+        attribute='query_by_point',
+        widget=widgets.BooleanWidget()
+    )
+
+    #########################
+    # LayerArcREST 
+    #########################
+    arcgis_layers = fields.Field(
+        column_name='arcgis_layers',
+        attribute='arcgis_layers',
+        widget=widgets.CharWidget()
+    )
+    password_protected = fields.Field(
+        column_name='password_protected',
+        attribute='password_protected',
+        widget=widgets.BooleanWidget()
+    )
+    disable_arcgis_attributes = fields.Field(
+        column_name='disable_arcgis_attributes',
+        attribute='disable_arcgis_attributes',
+        widget=widgets.BooleanWidget()
+    )
+
+    #########################
+    # WMS
+    #########################
+
+    # wms_help = fields.Field(
+    #     column_name='wms_help',
+    #     attribute='wms_help',
+    #     widget=widgets.BooleanWidget()
+    # )
+    wms_slug = fields.Field(
+        column_name='wms_slug',
+        attribute='wms_slug',
+        widget=widgets.CharWidget()
+    )
+    wms_version = fields.Field(
+        column_name='wms_version',
+        attribute='wms_version',
+        widget=widgets.CharWidget()
+    )
+    wms_format = fields.Field(
+        column_name='wms_format',
+        attribute='wms_format',
+        widget=widgets.CharWidget()
+    )
+    wms_srs = fields.Field(
+        column_name='wms_srs',
+        attribute='wms_srs',
+        widget=widgets.CharWidget()
+    )
+    wms_styles = fields.Field(
+        column_name='wms_styles',
+        attribute='wms_styles',
+        widget=widgets.CharWidget()
+    )
+    wms_timing = fields.Field(
+        column_name='wms_timing',
+        attribute='wms_timing',
+        widget=widgets.CharWidget()
+    )
+    wms_time_item = fields.Field(
+        column_name='wms_time_item',
+        attribute='wms_time_item',
+        widget=widgets.CharWidget()
+    )
+    wms_additional = fields.Field(
+        column_name='wms_additional',
+        attribute='wms_additional',
+        widget=widgets.CharWidget()
+    )
+    wms_info = fields.Field(
+        column_name='wms_info',
+        attribute='wms_info',
+        widget=widgets.BooleanWidget()
+    )
+    wms_info_format = fields.Field(
+        column_name='wms_info_format',
+        attribute='wms_info_format',
+        widget=widgets.CharWidget()
+    )
+
+
+    def export_resource(self, obj):
+        # RDH 2025-03-03: I tried overriding at 'self.export_field', but this required multiple queries per row for the same data.
+        # The result was making a 9 second request into a 35 second request just to get 'order' and 'parent_theme' for ChildOrders
+        # Doing this once per object, brought that down to 19 seconds.
+        resource_values_list = []
+        exception_list = self._meta.order_keys + self._meta.specific_keys
+        parent_orders = [{'order':x.order, 'parent_pk':str(x.parent_theme.pk)} for x in obj.parent_orders]
+        # arcRestLayer = obj.layer_type == 'ArcRest'
+        # wmsLayer = obj.layer_type == 'WMS'
+        # arcFeatureLayer = obj.layer_type == 'ArcFeatureServer'
+        # vectorLayer = obj.layer_type == 'Vector'
+        # vectorTileLayer = obj.layer_type == 'VectorTile'
+        # xyzLayer = obj.layer_type == 'XYZ'
+        # sliderLayer = obj.layer_type == 'slider'
+        # if arcRestLayer:
+        specific_instance = obj.specific_instance
+
+        for field in self.get_export_fields():
+            appendValue = None
+            if not field.column_name in exception_list:
+                appendValue = self.export_field(field, obj)
+            else:
+                if field.column_name == 'order':
+                    #########################
+                    # Child Orders
+                    #########################
+                    order = ''
+                    for parent in parent_orders:
+                        if not parent['order'] in ['',None]:
+                            order = parent['order']
+                            break
+                    appendValue = order
+                elif field.column_name == 'parent_themes':
+                    parent_pks = []
+                    for parent in parent_orders:
+                        parent_pks.append(parent['parent_pk'])
+                    appendValue = ','.join(parent_pks)
+                elif not specific_instance == None:
+                    if field.column_name in self._meta.raster_keys:
+                        #########################
+                        # Raster
+                        #########################
+                        if obj.layer_type in ['ArcRest', 'XYZ', 'WMS'] and type(specific_instance) in [LayerArcREST, LayerXYZ, LayerWMS]:
+                            appendValue = getattr(specific_instance, field.column_name)
+
+                    elif field.column_name in self._meta.arc_keys:
+                        #########################
+                        # ArcServer (MapServer, ImageServer, or FeatureServer)
+                        #########################
+                        if obj.layer_type in ['ArcRest', 'ArcFeatureServer'] and type(specific_instance) in [LayerArcREST, LayerArcFeatureService]:
+                            appendValue = getattr(specific_instance, field.column_name)
+                    elif field.column_name in self._meta.wms_keys:
+                        #########################
+                        # WMS
+                        #########################
+                        if obj.layer_type == 'WMS' and type(specific_instance) == LayerWMS:
+                            appendValue = getattr(specific_instance, field.column_name)
+
+            resource_values_list.append(appendValue)
+
+        return resource_values_list
+            
+    def import_related_record(self, rel_resource, rel_row, result, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
+        rel_loader = rel_resource._meta.instance_loader_class(rel_resource, rel_row)
+        rel_result = rel_resource.import_row(rel_row, rel_loader, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+        for error in rel_result.errors:
+            result.errors.append(error)
+        return result
+
+    def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
+        pop_dict = {}
+        pop_keys = self._meta.order_keys + self._meta.specific_keys
+        for key in pop_keys:
+            if key in row.keys():
+                pop_dict[key] = row.pop(key)
+
+        # TODO: When we upgrade to django 4.2 and upgrade django_import_export to 4.2.x, we will need to review this deprecation
+        #       Namely that 'raise_errors' is going away.
+        result = super(LayerResource, self).import_row(row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs)
+
+        #############################
+        # Related Records
+        #############################
+        parent_layer_pk = None
+        if result and not result.object_id == None:
+            parent_layer_pk = result.object_id
+        if parent_layer_pk == None and row['id'] not in [None, '']:
+            try:
+                parent_layer_pk = int(float(row['id']))
+            except ValueError as e: 
+                pass
+
+
+        #############################
+        # Child Order
+        #############################
+        layer_type = ContentType.objects.get_for_model(Layer)
+        co_resource = ChildOrderResource()
+        for parent_theme in str(pop_dict['parent_themes']).split(','):
+            if not parent_theme in ['', None]:
+                existing_co_pk = None
+                try:
+                    existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=parent_layer_pk).pk
+                except ObjectDoesNotExist as e:
+                    # existing record does not match
+                    pass
+                except ValueError as e:
+                    # common case when an 'id' field is not given
+                    pass
+                co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
+                result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+
+        #############################
+        # Raster
+        #############################
+        # query_by_point
+
+
+        #############################
+        # ArcREST 
+        #############################
+        # arcgis_layers
+        # disable_arcgis_attributes
+        # password_protected
+
+        if row['layer_type'] in  ['ArcRest', 'ArcFeatureServer']:
+            if row['layer_type'] == 'ArcRest':
+                target_model = LayerArcREST
+                arl_resource = LayerArcRESTResource()
+            elif row['layer_type'] == 'ArcFeatureServer':
+                target_model = LayerArcFeatureService
+                arl_resource = LayerArcFeatureServiceResource()
+            existing_arl_pk = None
+
+            try:
+                existing_arl_pk = target_model.objects.get(layer__id=parent_layer_pk).pk
+            except ObjectDoesNotExist as e:
+                pass
+
+            # this field has a nasty habit with some formats of coming in as floats. Not sure if that happens with commas, but this
+            #       should enforce the correct format in the end.
+            arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
+            for index, layer_id in enumerate(arcgis_layers):
+                arcgis_layers[index] = str(int(float(layer_id)))
+            arcgis_layers = ','.join(arcgis_layers)
+            arl_row = OrderedDict([
+                ('id', existing_arl_pk), ('layer', parent_layer_pk), ('query_by_point', pop_dict['query_by_point']), 
+                ('arcgis_layers', arcgis_layers),('password_protected', pop_dict['password_protected']),('disable_arcgis_attributes', pop_dict['disable_arcgis_attributes'])])
+            result = self.import_related_record(arl_resource, arl_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+
+        #############################
+        # WMS
+        #############################
+        if row['layer_type'] == 'WMS':
+            wms_resource = LayerWMSResource()
+            existing_wms_pk = None
+            try:
+                existing_wms_pk = LayerWMS.objects.get(layer__id=parent_layer_pk).pk
+            except ObjectDoesNotExist as e:
+                pass
+            wms_row = OrderedDict([
+                ('id', existing_wms_pk), ('layer', parent_layer_pk), #('wms_help', pop_dict['wms_help']),
+                ('wms_slug', pop_dict['wms_slug']), ('wms_version', pop_dict['wms_version']),
+                ('wms_format', pop_dict['wms_format']), ('wms_srs', pop_dict['wms_srs']),
+                ('wms_styles', pop_dict['wms_styles']), ('wms_timing', pop_dict['wms_timing']),
+                ('wms_time_item', pop_dict['wms_time_item']), ('wms_additional', pop_dict['wms_additional']),
+                ('wms_info', pop_dict['wms_info']), ('wms_info_format', pop_dict['wms_info_format'])
+            ])
+            result = self.import_related_record(wms_resource, wms_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
+
+        return result
+
+    class Meta:
+        model = Layer
+
+        '''
+        Old list:
+        id,uuid,site,name,order,slug_name,layer_type,url,shareable_url,proxy_url,arcgis_layers,query_by_point,disable_arcgis_attributes,wms_help,wms_slug,wms_version,wms_format,wms_srs,wms_styles,wms_timing,wms_time_item,wms_additional,wms_info,wms_info_format,is_sublayer,sublayers,themes,search_query,has_companion,connect_companion_layers_to,is_disabled,disabled_message,legend,legend_title,legend_subtitle,show_legend,utfurl,filterable,geoportal_id,description,data_overview,data_source,data_notes,data_publish_date,catalog_name,catalog_id,bookmark,kml,data_download,learn_more,metadata,source,map_tiles,thumbnail,label_field,attribute_fields,compress_display,attribute_event,mouseover_field,lookup_field,lookup_table,is_annotated,custom_style,vector_outline_color,vector_outline_opacity,vector_outline_width,vector_color,vector_fill,vector_graphic,vector_graphic_scale,point_radius,opacity,espis_enabled,espis_search,espis_region,date_created,date_modified,minZoom,maxZoom,password_protected
+
+        New list:
+        id,name,uuid,layer_type,url,site,opacity,is_disabled,disabled_message,is_visible,search_query,geoportal_id,catalog_name,catalog_id,proxy_url,shareable_url,utfurl,show_legend,legend,legend_title,legend_subtitle,description,overview,data_source,data_notes,data_publish_date,metadata,source,bookmark,kml,data_download,learn_more,map_tiles,label_field,attribute_event,attribute_fields,annotated,compress_display,mouseover_field,espis_enabled,espis_search,espis_region,date_created,date_modified,minZoom,maxZoom
+
+        Munge:
+        # Atribute Reporting [Vector/Tile/ArcREST/Feature/WMS]
+        label_field,attribute_event,attribute_fields,mouseover_field,
+
+        # Uncertain Use
+        shareable_url
+
+        # Organization info [ChildOrder]
+        order, parent_themes(NEW), has_companion,connect_companion_layers_to,
+
+        # VECTOR DISPLAY/Style [ArcFeature/Vector]
+        lookup_field,lookup_table,custom_style,vector_outline_color,vector_outline_opacity,vector_outline_width,vector_color,vector_fill,vector_graphic,vector_graphic_scale,point_radius,
+
+        # WMS [WMS]
+        wms_help,wms_slug,wms_version,wms_format,wms_srs,wms_styles,wms_timing,wms_time_item,wms_additional,wms_info,wms_info_format
+
+        # Uncertain
+        is_disabled,disabled_message,filterable,compress_display,
+
+        # Auto (leave out)
+
+        # Dropped (leave out)
+        slug_name,is_sublayer,sublayers,search_query,utfurl,thumbnail,annotated,espis_enabled,espis_search,espis_region,is_visible
+        '''
+        # Primary Fields
+        fields = ['id', 'name', 'layer_type', 'url',]
+        # Secondary Fields
+        fields += ['uuid', 'site','proxy_url','opacity','date_created','date_modified','minZoom','maxZoom',]
+        # Legend
+        fields += ['show_legend','legend','legend_title','legend_subtitle',]
+        # Catalog
+        fields += [
+            'geoportal_id','catalog_name','catalog_id',
+            'description','overview','data_source','data_notes',
+            'data_publish_date','metadata','source','bookmark',
+            'kml','data_download','learn_more','map_tiles',
+        ]
+
+        # ChildOrder
+        order_keys = ['order', 'parent_themes',]
+        fields += order_keys
+
+        # specific fields
+        raster_keys = ['query_by_point',]
+        vector_keys = [] #This is where we'd add vector styling fields if relevant.
+        arc_keys = ['arcgis_layers','disable_arcgis_attributes','password_protected',]
+        wms_keys = [
+            # 'wms_help',
+            'wms_slug','wms_version','wms_format','wms_srs','wms_styles',
+            'wms_timing','wms_time_item','wms_additional','wms_info','wms_info_format',
+        ]
+        xyz_keys = [] # XYZ is not interactive, and does not require additional fields (including query_by_point)
+        specific_keys = raster_keys + vector_keys + arc_keys + wms_keys + xyz_keys 
+
+        fields += specific_keys
+
+        export_order = fields
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
@@ -487,6 +879,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     ordering = ('name', )
     exclude = ('slug_name', "is_sublayer", "sublayers")
     form = LayerForm
+    resource_classes = [LayerResource]
     class Media:
         js = ['layer_admin.js',]
         css = {

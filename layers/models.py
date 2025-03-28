@@ -4,6 +4,7 @@ from django.contrib.sites.models import Site
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.exceptions import ObjectDoesNotExist
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 from django.conf import settings
@@ -464,13 +465,18 @@ class Theme(models.Model, SiteFlags):
         # clean keys tied to /children/ api
         children = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
+        if self.slug_name == None or self.slug_name == '':
+            self.slug_name = "{}{}".format(slugify(self.name), self.pk)
         for site_id in [x.pk for x in Site.objects.all()] + ['']:
             for child in children:
                 dirty_cache_keys.append('layers_childorder_{}_{}'.format(child.pk, site_id))
             for ancestor_id in ancestor_ids:
                 dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
+            dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(self.pk, site_id))        
         for key in dirty_cache_keys:
             cache.delete(key)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Theme, self).save(*args, **kwargs)
@@ -829,8 +835,7 @@ class Layer(models.Model, SiteFlags):
 
     
     @property
-    def parents(self):
-        
+    def parent_orders(self):
         # Get the ContentType for the Layer model
         layer_content_type = ContentType.objects.get_for_model(self.__class__)
 
@@ -840,9 +845,13 @@ class Layer(models.Model, SiteFlags):
         ).order_by(
             'parent_theme__order', 'order', 'parent_theme__name', 'parent_theme__id'
         )
+        return child_orders
+
+    @property
+    def parents(self):
         # Child orders have no concept of 'site'. To ensure 'site' is respected between layers 
         #   and themes, we can query 'objects' by the possible ids of matching themes
-        parent_theme_ids = [x.parent_theme.pk for x in child_orders]
+        parent_theme_ids = [x.parent_theme.pk for x in self.parent_orders]
         parent_themes = Theme.all_objects.filter(pk__in=parent_theme_ids).order_by('order', 'name', 'id')
             
         return parent_themes
@@ -953,7 +962,10 @@ class Layer(models.Model, SiteFlags):
     @property
     def specific_instance(self):
         if not self.model == None:
-            return self.model.objects.get(layer=self)
+            try:
+                return self.model.objects.get(layer=self)
+            except ObjectDoesNotExist as e:
+                pass
         return None
 
     def __str__(self):
@@ -1006,6 +1018,8 @@ class Layer(models.Model, SiteFlags):
 
         for key in dirty_cache_keys:
             cache.delete(key)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
@@ -1067,18 +1081,22 @@ class ChildOrder(models.Model):
             dirty_cache_keys.append('layers_childorder_{}_{}'.format(self.pk, site.pk))
         for key in dirty_cache_keys:
             cache.delete(key)
-        try:
-            with transaction.atomic():
-                super(ChildOrder, self).save(*args, **kwargs)
-        except IntegrityError as e:
-            if 'duplicate key value violates unique constraint' in str(e):
-                model = type(self)
-                unique_key = str(e).split('Key (')[-1].split(')=(')[0]
-                update_model_sequence(model, unique_key, manager=model.objects)
+            with connection.cursor() as cursor:
+                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
+        if not self.object_id == None:
+            # During import, if this is a dry run there will be no child object for this order.
+            try:
                 with transaction.atomic():
                     super(ChildOrder, self).save(*args, **kwargs)
-            else:
-                raise IntegrityError(e)
+            except IntegrityError as e:
+                if 'duplicate key value violates unique constraint' in str(e):
+                    model = type(self)
+                    unique_key = str(e).split('Key (')[-1].split(')=(')[0]
+                    update_model_sequence(model, unique_key, manager=model.objects)
+                    with transaction.atomic():
+                        super(ChildOrder, self).save(*args, **kwargs)
+                else:
+                    raise IntegrityError(e)
 
     # def __str__(self):
     #     try:
