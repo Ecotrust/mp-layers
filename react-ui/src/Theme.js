@@ -106,7 +106,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   }, [childrenThemes, searchQuery]);
 
   useEffect(() => {
-    if (expanded && childrenThemes!= "no-children") {
+    if (expanded && childrenThemes!== "no-children") {
       childrenThemes.forEach((child) => {
         if (layersActiveStatus[child.id]) {
           setExpanded(true);
@@ -399,7 +399,17 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                   {child.type === "theme" ? (
                     <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
                   ) : (
-                    <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
+                    <Layer 
+                      key={child.id} 
+                      theme_id={theme.id} 
+                      topLevelThemeId={currentTopLevelThemeId} 
+                      layer={child} 
+                      borderColor={getGreenShade(level + 1)} 
+                      themeType={theme.theme_type} 
+                      childData={child} 
+                      isActive={layersActiveStatus[child.id]} 
+                      handleToggleLayerChangeState={handleToggleLayerChangeState} 
+                      parentTheme={theme}/>
                   )}
                 {/* </div> */}
               </div>
@@ -419,7 +429,18 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                     {child.type === "theme" ? (
                       <Theme key={child.id} theme={child} level={level + 1} borderColor={getGreenShade(level + 1)} topLevelThemeId={currentTopLevelThemeId} parentTheme={theme}/>
                     ) : (
-                      <Layer key={child.id} theme_id={theme.id} topLevelThemeId={currentTopLevelThemeId} layer={child} borderColor={getGreenShade(level + 1)} themeType={theme.theme_type} childData={child} isActive={layersActiveStatus[child.id]} handleToggleLayerChangeState={handleToggleLayerChangeState} parentTheme={theme}/>
+                      <Layer 
+                        key={child.id} 
+                        theme_id={theme.id} 
+                        topLevelThemeId={currentTopLevelThemeId} 
+                        layer={child} 
+                        borderColor={getGreenShade(level + 1)} 
+                        themeType={theme.theme_type} 
+                        childData={child} 
+                        isActive={layersActiveStatus[child.id]} 
+                        handleToggleLayerChangeState={handleToggleLayerChangeState} 
+                        parentTheme={theme}
+                      />
                     )}
                   {/* </div> */}
                 </div>
