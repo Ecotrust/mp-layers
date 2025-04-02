@@ -1,4 +1,6 @@
-show_layertype_form = function(layertype) {
+// TODO: Refactor this file to use ES6 syntax and JavaScript best practices.
+
+show_layertype_form = function (layertype) {
 
   if (layertype == null) {
     layertype = $('#id_layer_type').val();
@@ -411,27 +413,37 @@ var replace_input_with_select2 = function(id, options) {
 
 }
 
-var get_catalog_records = function() {
-  var url = "/data_manager/get_catalog_records";
-  $.ajax({
-    url: url,
-    success: function(data) {
+/**
+ * @description Fetches catalog records from the server and populates the select2 field with the data.
+ * @returns {void}
+ * @throws {Error} If the fetch request fails.
+ */
+var get_catalog_records = function () {
+  var url = "/layers/get_catalog_records"; // Update the endpoint for mp-layers
+  fetch(url)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      response.json()
+    })
+    .then(data => {
       catalog_record_data = data;
-      var record_names = Object.keys(data.record_name_lookup);
-      options = [{'name': '', 'value': null}];
-      for (var i = 0; i < record_names.length; i++) {
-        for (var j = 0; j < data.record_name_lookup[record_names[i]].length; j++){
+      const record_names = Object.keys(data.record_name_lookup);
+      const options = [{ name: '', value: null }];
+      for (let i = 0; i < record_names.length; i++) {
+        for (let j = 0; j < data.record_name_lookup[record_names[i]].length; j++) {
           options.push({
-            'name': record_names[i],
-            'value': data.record_name_lookup[record_names[i]][j]
+            name: record_names[i],
+            value: data.record_name_lookup[record_names[i]][j]
           });
         }
       }
 
       replace_input_with_select2('id_catalog_name', options);
-    }
-  });
-}
+    })
+    .catch(error => console.error('Error fetching catalog records:', error));
+};
 
 var show_spinner = function() {
   $('#spinner-dialog').dialog('open');
@@ -441,42 +453,41 @@ var hide_spinner = function() {
   $('#spinner-dialog').dialog('close');
 }
 
-var select_catalog_record = function(event, ui) {
+var select_catalog_record = function (event, ui) {
   show_spinner();
-  if ($( this ).select2('data').length > 0) {
-    var selected_name = $( this ).select2('data')[0].text;
+  if ($(this).select2('data').length > 0) {
+    var selected_name = $(this).select2('data')[0].text;
   } else {
     var selected_name = '';
   }
-  var record_id = $( this ).val();
+  var record_id = $(this).val();
   if (record_id) {
     populate_layer_fields_from_catalog_record(catalog_record_data, record_id, selected_name);
   } else {
     hide_spinner();
   }
-}
+};
 
-var populate_layer_fields_from_catalog_record = function(catalog_record_data, record_id, selected_name) {
-  selected_catalog_data = catalog_record_data.records[record_id];
-  $('#id_catalog_id').val(record_id);
-  if ($('#id_name').val() == "") {
-    $('#id_name').val(selected_name);
+const populate_layer_fields_from_catalog_record = (catalog_record_data, record_id, selected_name) => {
+  const selected_catalog_data = catalog_record_data.records[record_id];
+  const catalogIdField = document.getElementById('id_catalog_id');
+
+  if (catalogIdField) {
+    catalogIdField.value = record_id;
   }
 
-  if (typeof populate_fields_from_catalog != "undefined" && typeof populate_fields_from_catalog === "function") {
+  const nameField = document.getElementById('id_name');
+
+  if (nameField && nameField.value === "") {
+    nameField.value = selected_name;
+  }
+
+  if (typeof populate_fields_from_catalog === "function") {
     populate_fields_from_catalog(catalog_record_data, record_id);
   }
-  // if (window.confirm("Do you want to set all form fields from the selected catalog record?")) {
-    if (CATALOG_TECHNOLOGY == 'GeoPortal2') {
 
-    } else {
-      hide_spinner();
-    }
-  // } else {
-  //   hide_spinner();
-  // }
-
-}
+  hide_spinner();
+};
 
 var union = function(array1, array2) {
   var hash = {}, union_arr = [];
@@ -567,8 +578,32 @@ assign_field_values_from_source_technology = function() {
   }
 }
 
+/**
+ * 
+ * @returns {void}
+ * @description Initializes the catalog ID field based on the CATALOG_TECHNOLOGY.
+ * If the technology is not 'default', it disables the field and fetches catalog records.
+ * If the technology is 'default', it hides the field.
+ * It also sets up an event listener for the field to trigger the select_catalog_record function on change.
+ */
+const initializeCatalogIdField = () => {
+  const catalogIdField = document.getElementById('id_catalog_id');
 
-$(document).ready(function() {
+  if (!catalogIdField) return;
+
+  if (CATALOG_TECHNOLOGY !== 'default') {
+    catalogIdField.disabled = true;
+    get_catalog_records();
+  } else {
+    catalogIdField.style.display = 'none';
+  }
+
+  catalogIdField.addEventListener('change', select_catalog_record);
+};
+
+// TODO: Refactor this to remove jQuery dependency
+
+document.addEventListener('DOMContentLoaded', function() {
 
   $('#spinner-dialog').dialog({autoOpen:false, modal: true, width: 150});
 
@@ -578,29 +613,7 @@ $(document).ready(function() {
 
   console.log("CATALOG_TECHNOLOGY: '" + CATALOG_TECHNOLOGY + "'");
 
-  // If catalog tech supported:
-  if (CATALOG_TECHNOLOGY != 'default') {
-    $('#id_catalog_id').height(15);
-    $('#id_catalog_id').prop('disabled', true);
-    $('#id_catalog_name').height(15);
-    // TODO: Query for catalog records
-    get_catalog_records();
-    // - populate typeahead field with available catalog records
-
-    // $('#id_catalog_id').autocomplete({
-    //   source: [
-    //     "Adam", "Becky", "Charlie", "Danielle"
-    //   ]
-    // });
-
-    // - Filter records based on:
-    //    - record has layer info
-    //    - record not already in use
-  } else {
-    $('#id_catalog_id').hide();
-  }
-
-
+  initializeCatalogIdField();
 
   $('#id_layer_type').change(function() {
     show_layertype_form($('#id_layer_type option:selected').text());
@@ -616,6 +629,8 @@ $(document).ready(function() {
   $('#id_layerwms_set-0-wms_help').change(function() {
     get_wms_capabilities();
   });
+
+  $('#id_catalog_name').change(select_catalog_record);
 
   assign_field_values_from_source_technology();
 
