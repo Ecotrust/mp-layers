@@ -419,13 +419,13 @@ var replace_input_with_select2 = function(id, options) {
  * @throws {Error} If the fetch request fails.
  */
 var get_catalog_records = function () {
-  var url = "/layers/get_catalog_records"; // Update the endpoint for mp-layers
+  var url = "/layers/get_catalog_records/"; // Update the endpoint for mp-layers
   fetch(url)
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      response.json()
+      return response.json(); // Ensure the JSON response is returned
     })
     .then(data => {
       catalog_record_data = data;
@@ -586,21 +586,42 @@ assign_field_values_from_source_technology = function() {
  * If the technology is 'default', it hides the field.
  * It also sets up an event listener for the field to trigger the select_catalog_record function on change.
  */
+// const initializeCatalogIdField = () => {
+//   const catalogIdField = document.getElementById('id_catalog_id');
+
+//   if (!catalogIdField) return;
+
+//   if (CATALOG_TECHNOLOGY !== 'default') {
+//     catalogIdField.disabled = true;
+//     get_catalog_records();
+//   } else {
+//     catalogIdField.style.display = 'none';
+//   }
+
+//   catalogIdField.addEventListener('change', select_catalog_record);
+// };
+
 const initializeCatalogIdField = () => {
   const catalogIdField = document.getElementById('id_catalog_id');
-
-  if (!catalogIdField) return;
+  const catalogNameField = document.getElementById('id_catalog_name');
 
   if (CATALOG_TECHNOLOGY !== 'default') {
-    catalogIdField.disabled = true;
+    if (catalogIdField) {
+      catalogIdField.style.height = '15px';
+      catalogIdField.disabled = true;
+    }
+    if (catalogNameField) {
+      catalogNameField.style.height = '15px';
+    }
     get_catalog_records();
   } else {
-    catalogIdField.style.display = 'none';
+    if (catalogIdField) {
+      catalogIdField.style.display = 'none';
+    }
   }
-
-  catalogIdField.addEventListener('change', select_catalog_record);
 };
 
+  
 // TODO: Refactor this to remove jQuery dependency
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -629,8 +650,6 @@ document.addEventListener('DOMContentLoaded', function() {
   $('#id_layerwms_set-0-wms_help').change(function() {
     get_wms_capabilities();
   });
-
-  $('#id_catalog_name').change(select_catalog_record);
 
   assign_field_values_from_source_technology();
 
