@@ -24,7 +24,7 @@
   <script type="text/javascript" src="{% static 'layers/js/admin_layer_form.js' %}"></script>
 
   {% if CATALOG_TECHNOLOGY != 'default' %}
-    <script type="text/javascript" src="{% static 'data_manager/js/catalog/'|add:CATALOG_TECHNOLOGY|add:'.js' %}"></script>
+    <script type="text/javascript" src="{% static 'layers/js/catalog/'|add:CATALOG_TECHNOLOGY|add:'.js' %}"></script>
   {% endif %}
 {% endblock %}
 
