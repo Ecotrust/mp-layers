@@ -331,6 +331,9 @@ var change_layer_url = function(self) {
   }
 }
 
+/**
+ * ALSO USED IN GeoPOrtal2.js
+ */
 var replace_all_select2_with_input = function() {
   var sel2_fields = $('.select2').siblings('select.select2-hidden-accessible').not('#id_catalog_name');
   for (var i = 0; i < sel2_fields.length; i++) {
@@ -354,6 +357,9 @@ var replace_all_select2_with_input = function() {
 
 }
 
+/**
+ * ALSO USED IN GeoPOrtal2.js
+ */
 var replace_input_with_select2 = function(id, options) {
   var input_field = $('#'+ id);
   var initial_width = input_field.parent().width();
@@ -515,6 +521,9 @@ enforce_organization_show = function() {
   }, 200);
 }
 
+/**
+ * Also use in layer_admin.js
+ */
 assign_field_values_from_source_technology = function() {
   if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer") {
       var url = $('#id_url').val();
@@ -586,21 +595,6 @@ assign_field_values_from_source_technology = function() {
  * If the technology is 'default', it hides the field.
  * It also sets up an event listener for the field to trigger the select_catalog_record function on change.
  */
-// const initializeCatalogIdField = () => {
-//   const catalogIdField = document.getElementById('id_catalog_id');
-
-//   if (!catalogIdField) return;
-
-//   if (CATALOG_TECHNOLOGY !== 'default') {
-//     catalogIdField.disabled = true;
-//     get_catalog_records();
-//   } else {
-//     catalogIdField.style.display = 'none';
-//   }
-
-//   catalogIdField.addEventListener('change', select_catalog_record);
-// };
-
 const initializeCatalogIdField = () => {
   const catalogIdField = document.getElementById('id_catalog_id');
   const catalogNameField = document.getElementById('id_catalog_name');
