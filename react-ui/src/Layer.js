@@ -100,7 +100,6 @@ const Layer = ({
     const event = new CustomEvent('ReactLayerActivated', {
       detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
     });
-    console.log(event);
     window.dispatchEvent(event);
   };  
 

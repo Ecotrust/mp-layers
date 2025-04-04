@@ -97,7 +97,9 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   
   useEffect(() => {
     // Initially filter by default_keyword when no search query is present
-    if (!searchQuery && theme.is_dynamic && !populatedByServices && theme.default_keyword) {
+    const hasSearchQuery = searchQuery && searchQuery.trim() !== '' && searchQuery !== null && searchQuery !== undefined;
+    const hasKeyword = theme.default_keyword && theme.default_keyword.trim() !== '' && theme.default_keyword !== null && theme.default_keyword !== undefined;
+    if (!hasSearchQuery && theme.is_dynamic && !populatedByServices && hasKeyword) {
       const filteredByDefault = childrenThemes.filter(layer =>
         layer.name.toLowerCase().includes(theme.default_keyword.toLowerCase())
       );
@@ -106,7 +108,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   }, [childrenThemes, searchQuery]);
 
   useEffect(() => {
-    if (expanded && childrenThemes!== "no-children") {
+    if (expanded && childrenThemes!== "no-children" && childrenThemes !== "error") {
       childrenThemes.forEach((child) => {
         if (layersActiveStatus[child.id]) {
           setExpanded(true);
@@ -152,45 +154,66 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     if (theme.is_dynamic === true) {
       try {
         // Make the JSON request to the dynamic_url
-        const response = await fetch(theme.url + "?f=pjson");
+        const cleanThemeUrl = theme.url[theme.url.length - 1] === '/' ? theme.url.slice(0, -1) : theme.url; // Remove trailing slash if present
+        const response = await fetch(cleanThemeUrl + "/?f=pjson");
   
         // Check if the response is OK
         if (response.ok) {
           // Parse the JSON data
           const data = await response.json();
 
-          let category = "mdat"; // Default to MDAT
+          let category = "dynamic"; 
 
-          // Check if the passed parent theme is dynamic
-          if (parentTheme && parentTheme.is_dynamic) {
-              category = "vtr"; // If the parent is dynamic, categorize as VTR
-          }
-
-  
           // Check for the presence of the keys 'services' or 'layers'
-          if ('services' in data) {
-            const serviceThemes = data.services.map(service => {
-              // Extract the year range or name
-              const nameParts = service.name.split('/');
-              const yearRange = nameParts[nameParts.length - 1];
+          if ('folders' in data || 'services' in data) {
+            let newChildThemes = [];
+            if ('folders' in data) {
+              const folderThemes = data.folders.map((folder, index) => {
+                return {
+                  name: folder, // Use the folder name directly
+                  id: theme.id + "_" + index, // Create a unique ID for the folder
+                  url: cleanThemeUrl + "/" + folder,
+                  is_dynamic: true,
+                  type: "theme",
+                  default_keyword: theme.default_keyword,
+                  placeholder_text: theme.placeholder_text
+                };
+              });
+              newChildThemes = newChildThemes.concat(folderThemes)
+            }
+            if ('services' in data) {
+                const serviceThemes = data.services.map((service, index) => {
+                    // Extract the year range or name
+                    const nameParts = service.name.split('/');
+                    const yearRange = nameParts[nameParts.length - 1];
 
-              // Replace underscores with hyphens
-              const newYearRange = yearRange.replace(/_/g, '-');
-    
-              return {
-                name: newYearRange,
-                url: theme.url + "/" + yearRange + "/MapServer",
-                is_dynamic: true,
-                type: "theme",
-                default_keyword: theme.default_keyword,
-                placeholder_text: theme.placeholder_text
-                // Add other necessary properties here if needed
-              };
-            });
-            const fetchedChildren = [...serviceThemes];
+                    // Replace underscores with hyphens
+                    const newYearRange = yearRange.replace(/_/g, '-');
+
+                    console.log('parent pk', parentTheme.id);
+                    console.log('service name', service.name);
+                    console.log('nameParts', nameParts);
+                    console.log('yearRange', yearRange);
+                    console.log('newYearRange', newYearRange);
+                    console.log(data)
+
+          
+                    return {
+                        name: newYearRange,
+                        id: theme.id + "_" + index, // Create a unique ID for the folder
+                        url: cleanThemeUrl + "/" + yearRange + "/MapServer",
+                        is_dynamic: true,
+                        type: "theme",
+                        default_keyword: theme.default_keyword,
+                        placeholder_text: theme.placeholder_text
+                        // Add other necessary properties here if needed
+                    };
+                });
+                newChildThemes = newChildThemes.concat(serviceThemes)
+            }
             // Set the children themes state
-            setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
-            setFilteredChildrenThemes(serviceThemes);
+            setChildrenThemes(newChildThemes.length > 0 ? newChildThemes : "no-children");
+            setFilteredChildrenThemes(newChildThemes);
             setPopulatedByServices(true);
           } else if ('layers' in data) {
             const filteredLayers = data.layers.filter(layer => !layer.subLayerIds);
@@ -206,7 +229,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
               return {
                 name: layer.name, // Extract the layer name
                 id: category === "mdat" ? 'mdat_layer_' + theme.name + "_" + layer.id : 'vtr_layer_' + theme.name + "_" + layer.id,
-                url: parentTheme && parentTheme.is_dynamic ? theme.url.replace("/MapServer", "") : theme.url,
+                url: parentTheme && parentTheme.is_dynamic ? cleanThemeUrl.replace("/MapServer", "") : cleanThemeUrl,
                 ...(isVTR 
                   ? { dateRangeDirectory: data } 
                   : { parentDirectory: parentDirectory }), // Conditionally add properties
@@ -220,9 +243,10 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
             setFilteredChildrenThemes(layerThemes);
             setPopulatedByServices(false);
           } else {
-            console.log("Neither 'services' nor 'layers' found.");
+            console.log("Neither 'folders' nor 'services' nor 'layers' found.");
           }
         } else {
+          setChildrenThemes("error");
           console.error(`Request failed with status: ${response.status}`);
         }
       } catch (error) {
@@ -412,6 +436,10 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         {childrenThemes === "no-children" ? (
           <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
             No layers
+          </div>
+        ) : childrenThemes === "error" ? (
+          <div className="error-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+            Error loading layers. Please try again later.
           </div>
         ) : childrenThemes.length === 0 ? (
           <div className="loading-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
