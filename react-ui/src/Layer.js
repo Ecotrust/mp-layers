@@ -8,7 +8,8 @@ const Layer = ({
   childData,
   topLevelThemeId,
   themeType,
-  isActive,
+  // Layer status ('isActive') can be: 'on', 'off', 'loading', 'closing', or 'error'
+  status,
   handleToggleLayerChangeState, parentTheme
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
@@ -16,42 +17,22 @@ const Layer = ({
   const [stateZ, setStateZ] = useState(null);
   const isInitialMount = useRef(true);
 
+  //////////////////////////////////////////////
+  //
+  // When layer status ('isActive') changes, handle any special cases
+  //
+  //////////////////////////////////////////////
   useEffect(() => {
-    const handleLayerDeactivation = (event) => {
-
-      if (layer.id === event.detail.layerId && isActive) {
-
-        handleToggleLayerChangeState(layer.id);  // Toggle state in React
-      }
+    if (status === 'radio-off') {
+      deactivateOpenLayer();
     };
+  }, [status]);
 
-    window.addEventListener("LayerDeactivated", handleLayerDeactivation);
-
-    return () => {
-      window.removeEventListener("LayerDeactivated", handleLayerDeactivation);
-    };
-  }, [layer.id, isActive]);
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-    } else {
-      if (isActive === true && !layer.category) {
-        // Layer activated in React, dispatch to Knockout
-        const event = new CustomEvent('ReactLayerActivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
-        });
-        window.dispatchEvent(event);
-      } else if (isActive === false) {
-        // Layer deactivated in React, dispatch to Knockout
-        const event = new CustomEvent('ReactLayerDeactivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
-        });
-        window.dispatchEvent(event);
-      }
-    }
-  }, [isActive]);
-
+  //////////////////////////////////////////////
+    //
+    // Determine if the layer is visible or not; refresh on map zoom changes
+    //
+    //////////////////////////////////////////////
   useEffect(() => {
     const checkZoomLevel = () => {
       const currentZoom = window.app.map.zoom();
@@ -78,6 +59,11 @@ const Layer = ({
     };
   }, [layer.minZoom, layer.maxZoom]);
 
+  //////////////////////////////////////////////
+    //
+    // Catch and handle clicks to toggle the display of the layer's links and details
+    //
+    //////////////////////////////////////////////
   const toggleLinkBar = (event) => {
     event.preventDefault();
     event.stopPropagation(); // Prevent click from bubbling up to parent theme click handler
@@ -85,39 +71,82 @@ const Layer = ({
     setShowLinkBar(!showLinkBar);
 
   };
+
+
+  //////////////////////////////////////////////
+    //
+    // Styling settings
+    //
+    //////////////////////////////////////////////
   const wrap = "column";
   const layerStyle = {
     // borderLeft: `7px solid ${borderColor}`,
     display: "flex",
     flexDirection: wrap,
   };
-  // Handler for the main layer item click (excluding the info icon)
+
+
+  //////////////////////////////////////////////
+  //
+  // When layer status changes, send the toggle request to Knockout
+  //
+  //////////////////////////////////////////////
+  const activateOpenLayer = () => {
+    status = 'loading';
+    handleToggleLayerChangeState(layer.id);
+    if (theme_id === undefined || theme_id === null) {
+      theme_id = topLevelThemeId; // Fallback to topLevelThemeId if theme_id is not provided
+    }
+    const event = new CustomEvent('ReactLayerActivated', {
+      detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+    });
+    console.log(event);
+    window.dispatchEvent(event);
+  };  
+
+  const deactivateOpenLayer = () => {
+    status = 'closing';
+    handleToggleLayerChangeState(layer.id);
+    const event = new CustomEvent('ReactLayerDeactivated', {
+      detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+    });
+    window.dispatchEvent(event);
+  };
+
+  //////////////////////////////////////////////
+    //
+    // Handler for the main layer item click (excluding the info icon)
+    //
+    //////////////////////////////////////////////
   const layerClickHandler = (event) => {
     event.preventDefault();
     event.stopPropagation();
 
+    // handleToggleLayerChangeState(layer.id);
     // Toggle the active state first
-    handleToggleLayerChangeState(layer.id);
-
-    // TODO: Delay dispatching the events until after the state is updated, then handle on click logic, not useEffect
-    // let matching_layer = window.app.viewModel.getLayerById(layer.id);
-    // if (matching_layer) {
-    //   matching_layer.toggleActive(matching_layer, null);
-    // }
+    if (status === 'off') {
+      activateOpenLayer();
+    } else {
+      deactivateOpenLayer();
+    }
 
   };
 
 
   const iconClass = () => {
-    if (isLayerInvisible && isActive) {
+    if (isLayerInvisible && status === "on") {
       return "fa fa-eye-slash";
-    } else {
+    } else if (status === 'loading' || status === 'closing' || status === 'radio-off') {
+      return "fa fa-spinner fa-spin"; // Loading icon
+    } else if (status === "off" || status === "on") {
       if (themeType === "radio") {
-        return isActive ? "fa fa-check-circle" : "far fa-circle";
+        return status === "on" ? "fa fa-check-circle" : "far fa-circle";
       } else {
-        return isActive ? "fas fa-check-square" : "far fa-square";
+        return status === "on" ? "fas fa-check-square" : "far fa-square";
       }
-    } // Default icons
+    } else {
+      return "fas fa-times-circle error-icon status_" + status; 
+    }
   };
   const infoIconColor = showLinkBar ? "black" : "green";
   return (

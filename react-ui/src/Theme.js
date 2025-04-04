@@ -47,7 +47,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         const id = parseInt(dls[i + 2], 10);
 
         // Add to dictionary with key as id and value as true or false based on visibility
-        layersActiveStatusDict[id] = true;
+        layersActiveStatusDict[id] = "on";
       }
 
       // Merge with the existing state
@@ -76,7 +76,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         setFilteredChildrenThemes(fetchedChildren);
         const layerDict = {};
         fetchedChildren.forEach(child => {
-            layerDict[child.id] = layersActiveStatus[child.id] || false;
+            layerDict[child.id] = layersActiveStatus[child.id] || "off";
         });
         
         // Merge with the existing state
@@ -115,6 +115,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     }
   }, [expanded, childrenThemes, layersActiveStatus]);
 
+  // This hook watches for the KnockOut 'layerActivated' and 'layerDeactivated' events
   useEffect(() => {
     const handleLayerActivated = (event) => {
       const { layerId, themeId} = event.detail;
@@ -125,14 +126,27 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
       // Set the layer's active status to true
       setLayersActiveStatus(prevState => ({
         ...prevState,
-        [layerId]: true
+        [layerId]: "on"
       }));
     };
 
     window.addEventListener('layerActivated', handleLayerActivated);
+
+    const handleLayerDeactivated = (event) => {
+      const { layerId, themeId} = event.detail;
+  
+      // Set the layer's active status to true
+      setLayersActiveStatus(prevState => ({
+        ...prevState,
+        [layerId]: "off"
+      }));
+    };
+  
+    window.addEventListener('layerDeactivated', handleLayerDeactivated);
   }, [])
   // 1. this needs to change, it renders once only
   // 2. when i close a theme, it doesnt update the url for themes
+
   
   const handleClick = async (parentTheme) => {
     if (theme.is_dynamic === true) {
@@ -260,18 +274,39 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   //   }
   // };
 
+  const determineState = (prevState) => {
+    if (prevState === 'on' || prevState === 'error') {
+      return 'closing';
+    } else if (prevState === 'off') {
+      return 'loading'; 
+    } 
+    return prevState; // Keep the same state if it's loading or closing
+  }
+
   const handleToggleLayerChangeState = (layerId) => {
     setLayersActiveStatus(prevState => ({
       ...prevState,
-      [layerId]: !prevState[layerId]
+      [layerId]: determineState(prevState[layerId])
     }))
-    const keyTrue = Object.keys(layersActiveStatus).find(key => layersActiveStatus[key] === true)
-    if ((theme.theme_type === "radio") && keyTrue) {
-      //deactivate current active layer and activate layer that was clicked
-      setLayersActiveStatus(prevState => ({
-        ...prevState,
-        [keyTrue]: !prevState[keyTrue]
-      }))
+    // if activating a layer in a radio group...
+    if (theme.theme_type === "radio" && layersActiveStatus[layerId] === "off") {
+      // Since layers may be shared between themes, and other themes might not be 'radio' types,
+      // we need to deactivate all other active layers in the same radio group
+      let oldTrueKeys = [];
+      for (let i = 0; i < Object.keys(layersActiveStatus).length; i++) {
+        let key = Object.keys(layersActiveStatus)[i];
+        if (layersActiveStatus[key] === "on" && key !== layerId) {
+          oldTrueKeys.push(key);
+        }
+      }
+      for (let i = 0; i < oldTrueKeys.length; i++) {
+        const oldKey = oldTrueKeys[i];
+        //deactivate current active layer(s) and activate layer that was clicked
+        setLayersActiveStatus(prevState => ({
+          ...prevState,
+          [oldKey]: "radio-off"
+        }))
+      }
     }
   }
 
@@ -407,7 +442,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                       borderColor={getGreenShade(level + 1)} 
                       themeType={theme.theme_type} 
                       childData={child} 
-                      isActive={layersActiveStatus[child.id]} 
+                      status={"off"} // dynamic themes cannot be loaded from state, so will always be off
                       handleToggleLayerChangeState={handleToggleLayerChangeState} 
                       parentTheme={theme}/>
                   )}
@@ -437,7 +472,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                         borderColor={getGreenShade(level + 1)} 
                         themeType={theme.theme_type} 
                         childData={child} 
-                        isActive={layersActiveStatus[child.id]} 
+                        status={layersActiveStatus[child.id]} 
                         handleToggleLayerChangeState={handleToggleLayerChangeState} 
                         parentTheme={theme}
                       />
