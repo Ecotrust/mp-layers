@@ -7,7 +7,7 @@
 
 var populate_fields_from_catalog = function (catalog_record_data, record_id) {
     if (record_id == null || record_id == "null") {
-        replace_all_select2_with_input();
+        AdminLayerForm.replace_all_select2_with_input();
         hide_spinner();
     } else {
         es_index = catalog_record_data.ELASTICSEARCH_INDEX;
@@ -62,9 +62,9 @@ var assign_field_values_from_catalog_record = function (record_json) {
     // TODO: write function to create appropriate list of links and associate them with tech options
     if (!record_json.hasOwnProperty('links_s')) {
         record_json.links_s = [];
-        // replace_input_with_select2('id_url', union([],[]));
+        // AdminLayerForm.replace_input_with_select2('id_url', union([],[]));
     }
-    replace_input_with_select2('id_url', union([], record_json.links_s));
+    AdminLayerForm.replace_input_with_select2('id_url', union([], record_json.links_s));
 
     // Metadata & Links
     /*
@@ -76,7 +76,7 @@ var assign_field_values_from_catalog_record = function (record_json) {
     */
 
 
-    replace_input_with_select2('id_description', union([record_json.description], [record_json.apiso_Abstract_txt]));
+    AdminLayerForm.replace_input_with_select2('id_description', union([record_json.description], [record_json.apiso_Abstract_txt]));
     $('#select2-id_description-container').addClass('select2-textarea');
     $('#id_description').siblings('.select2').find('span.select2-selection').height(150);
 
@@ -87,13 +87,13 @@ var assign_field_values_from_catalog_record = function (record_json) {
         }
     }
     if (kml_options.length > 0) {
-        replace_input_with_select2('id_kml', union([], kml_options));
+        AdminLayerForm.replace_input_with_select2('id_kml', union([], kml_options));
     } else {
-        replace_input_with_select2('id_kml', union([], record_json.links_s));
+        AdminLayerForm.replace_input_with_select2('id_kml', union([], record_json.links_s));
     }
-    replace_input_with_select2('id_data_download', union([record_json.url_http_download_s], record_json.links_s));
-    replace_input_with_select2('id_metadata', union([record_json.src_uri_s], record_json.links_s));
-    replace_input_with_select2('id_source', union([], record_json.links_s));
+    AdminLayerForm.replace_input_with_select2('id_data_download', union([record_json.url_http_download_s], record_json.links_s));
+    AdminLayerForm.replace_input_with_select2('id_metadata', union([record_json.src_uri_s], record_json.links_s));
+    AdminLayerForm.replace_input_with_select2('id_source', union([], record_json.links_s));
 
     // Legend
     /*
