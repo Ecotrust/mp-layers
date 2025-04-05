@@ -8,20 +8,43 @@ const Layer = ({
   childData,
   topLevelThemeId,
   themeType,
-  // Layer status ('isActive') can be: 'on', 'off', 'loading', 'closing', or 'error'
+  // Layer status can be: 'on', 'off', 'loading', 'closing', or 'error'
   status,
+  isDynamicLayer, // Optional prop to determine if the layer is dynamic
   handleToggleLayerChangeState, parentTheme
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
   const [isLayerInvisible, setIsLayerInvisible] = useState(false)
   const [stateZ, setStateZ] = useState(null);
-  const isInitialMount = useRef(true);
 
   //////////////////////////////////////////////
-  //
-  // When layer status ('isActive') changes, handle any special cases
-  //
+    //
+    // Initialization of all layers
+    // -- Currently only used for dynamic layers
+    //
+    //////////////////////////////////////////////
+  useEffect(() => {
+    if (isDynamicLayer) {
+      const eventLayer = {
+        type: layer.type == "ArcFeatureServer"? layer.type : "ArcRest",
+        name: layer.name,
+        url: layer.url + '/' + layer.type,
+        arcgis_layers: layer.arcgis_layers,
+        id: layer.id, 
+        isDynamic: true,
+      };
+      const event = new CustomEvent('ReactVisualizeLayer', {
+        detail: { layer: eventLayer, themeId: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+      });
+      window.dispatchEvent(event);
+    }
+  }, []);
+
   //////////////////////////////////////////////
+    //
+    // When layer status changes, handle any special cases
+    //
+    //////////////////////////////////////////////
   useEffect(() => {
     if (status === 'radio-off') {
       deactivateOpenLayer();
@@ -87,12 +110,11 @@ const Layer = ({
 
 
   //////////////////////////////////////////////
-  //
-  // When layer status changes, send the toggle request to Knockout
-  //
-  //////////////////////////////////////////////
+    //
+    // When layer status changes, send the toggle request to Knockout
+    //
+    //////////////////////////////////////////////
   const activateOpenLayer = () => {
-    status = 'loading';
     handleToggleLayerChangeState(layer.id);
     if (theme_id === undefined || theme_id === null) {
       theme_id = topLevelThemeId; // Fallback to topLevelThemeId if theme_id is not provided
@@ -104,7 +126,6 @@ const Layer = ({
   };  
 
   const deactivateOpenLayer = () => {
-    status = 'closing';
     handleToggleLayerChangeState(layer.id);
     const event = new CustomEvent('ReactLayerDeactivated', {
       detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
@@ -121,7 +142,6 @@ const Layer = ({
     event.preventDefault();
     event.stopPropagation();
 
-    // handleToggleLayerChangeState(layer.id);
     // Toggle the active state first
     if (status === 'off') {
       activateOpenLayer();
