@@ -111,6 +111,22 @@ const Layer = ({
 
   //////////////////////////////////////////////
     //
+    // Ensure visualize is aware of layer before dispatching events
+    //
+    //////////////////////////////////////////////
+  const dispatchEventWhenReady = (event) => {
+    if (Object.keys(window.app.viewModel.layerIndex).indexOf(event['detail']['layerId'].toString()) === -1) {
+      console.log("Layer not found in viewModel, delaying event dispatch.");
+      window.setTimeout(() => {
+        dispatchEventWhenReady(event);
+      }, 500); // Delay to ensure the layer is fully activated
+    } else {
+      window.dispatchEvent(event);
+    }
+  }
+
+  //////////////////////////////////////////////
+    //
     // When layer status changes, send the toggle request to Knockout
     //
     //////////////////////////////////////////////
@@ -122,7 +138,8 @@ const Layer = ({
     const event = new CustomEvent('ReactLayerActivated', {
       detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
     });
-    window.dispatchEvent(event);
+    // Some themes take time to load, so we need to ensure the layer is ready before dispatching the event
+    dispatchEventWhenReady(event);
   };  
 
   const deactivateOpenLayer = () => {
