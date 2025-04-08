@@ -8,50 +8,54 @@ const Layer = ({
   childData,
   topLevelThemeId,
   themeType,
-  isActive,
+  // Layer status can be: 'on', 'off', 'loading', 'closing', or 'error'
+  status,
+  isDynamicLayer, // Optional prop to determine if the layer is dynamic
   handleToggleLayerChangeState, parentTheme
 }) => {
   const [showLinkBar, setShowLinkBar] = useState(false);
   const [isLayerInvisible, setIsLayerInvisible] = useState(false)
   const [stateZ, setStateZ] = useState(null);
-  const isInitialMount = useRef(true);
 
+  //////////////////////////////////////////////
+    //
+    // Initialization of all layers
+    // -- Currently only used for dynamic layers
+    //
+    //////////////////////////////////////////////
   useEffect(() => {
-    const handleLayerDeactivation = (event) => {
-
-      if (layer.id === event.detail.layerId && isActive) {
-
-        handleToggleLayerChangeState(layer.id);  // Toggle state in React
-      }
-    };
-
-    window.addEventListener("LayerDeactivated", handleLayerDeactivation);
-
-    return () => {
-      window.removeEventListener("LayerDeactivated", handleLayerDeactivation);
-    };
-  }, [layer.id, isActive]);
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-    } else {
-      if (isActive === true && !layer.category) {
-        // Layer activated in React, dispatch to Knockout
-        const event = new CustomEvent('ReactLayerActivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
-        });
-        window.dispatchEvent(event);
-      } else if (isActive === false) {
-        // Layer deactivated in React, dispatch to Knockout
-        const event = new CustomEvent('ReactLayerDeactivated', {
-          detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
-        });
-        window.dispatchEvent(event);
-      }
+    if (isDynamicLayer) {
+      const eventLayer = {
+        type: layer.type == "ArcFeatureServer"? layer.type : "ArcRest",
+        name: layer.name,
+        url: layer.url + '/' + layer.type,
+        arcgis_layers: layer.arcgis_layers,
+        id: layer.id, 
+        isDynamic: true,
+      };
+      const event = new CustomEvent('ReactVisualizeLayer', {
+        detail: { layer: eventLayer, themeId: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+      });
+      window.dispatchEvent(event);
     }
-  }, [isActive]);
+  }, []);
 
+  //////////////////////////////////////////////
+    //
+    // When layer status changes, handle any special cases
+    //
+    //////////////////////////////////////////////
+  useEffect(() => {
+    if (status === 'radio-off') {
+      deactivateOpenLayer();
+    };
+  }, [status]);
+
+  //////////////////////////////////////////////
+    //
+    // Determine if the layer is visible or not; refresh on map zoom changes
+    //
+    //////////////////////////////////////////////
   useEffect(() => {
     const checkZoomLevel = () => {
       const currentZoom = window.app.map.zoom();
@@ -78,6 +82,11 @@ const Layer = ({
     };
   }, [layer.minZoom, layer.maxZoom]);
 
+  //////////////////////////////////////////////
+    //
+    // Catch and handle clicks to toggle the display of the layer's links and details
+    //
+    //////////////////////////////////////////////
   const toggleLinkBar = (event) => {
     event.preventDefault();
     event.stopPropagation(); // Prevent click from bubbling up to parent theme click handler
@@ -85,39 +94,95 @@ const Layer = ({
     setShowLinkBar(!showLinkBar);
 
   };
+
+
+  //////////////////////////////////////////////
+    //
+    // Styling settings
+    //
+    //////////////////////////////////////////////
   const wrap = "column";
   const layerStyle = {
     // borderLeft: `7px solid ${borderColor}`,
     display: "flex",
     flexDirection: wrap,
   };
-  // Handler for the main layer item click (excluding the info icon)
+
+
+  //////////////////////////////////////////////
+    //
+    // Ensure visualize is aware of layer before dispatching events
+    //
+    //////////////////////////////////////////////
+  const dispatchEventWhenReady = (event) => {
+    if (Object.keys(window.app.viewModel.layerIndex).indexOf(event['detail']['layerId'].toString()) === -1) {
+      console.log("Layer not found in viewModel, delaying event dispatch.");
+      window.setTimeout(() => {
+        dispatchEventWhenReady(event);
+      }, 500); // Delay to ensure the layer is fully activated
+    } else {
+      window.dispatchEvent(event);
+    }
+  }
+
+  //////////////////////////////////////////////
+    //
+    // When layer status changes, send the toggle request to Knockout
+    //
+    //////////////////////////////////////////////
+  const activateOpenLayer = () => {
+    handleToggleLayerChangeState(layer.id);
+    if (theme_id === undefined || theme_id === null) {
+      theme_id = topLevelThemeId; // Fallback to topLevelThemeId if theme_id is not provided
+    }
+    const event = new CustomEvent('ReactLayerActivated', {
+      detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+    });
+    // Some themes take time to load, so we need to ensure the layer is ready before dispatching the event
+    dispatchEventWhenReady(event);
+  };  
+
+  const deactivateOpenLayer = () => {
+    handleToggleLayerChangeState(layer.id);
+    const event = new CustomEvent('ReactLayerDeactivated', {
+      detail: { layerId: layer.id, theme_id: theme_id, topLevelThemeId: topLevelThemeId, layerName: layer.name }
+    });
+    window.dispatchEvent(event);
+  };
+
+  //////////////////////////////////////////////
+    //
+    // Handler for the main layer item click (excluding the info icon)
+    //
+    //////////////////////////////////////////////
   const layerClickHandler = (event) => {
     event.preventDefault();
     event.stopPropagation();
 
     // Toggle the active state first
-    handleToggleLayerChangeState(layer.id);
-
-    // TODO: Delay dispatching the events until after the state is updated, then handle on click logic, not useEffect
-    // let matching_layer = window.app.viewModel.getLayerById(layer.id);
-    // if (matching_layer) {
-    //   matching_layer.toggleActive(matching_layer, null);
-    // }
+    if (status === 'off') {
+      activateOpenLayer();
+    } else {
+      deactivateOpenLayer();
+    }
 
   };
 
 
   const iconClass = () => {
-    if (isLayerInvisible && isActive) {
+    if (isLayerInvisible && status === "on") {
       return "fa fa-eye-slash";
-    } else {
+    } else if (status === 'loading' || status === 'closing' || status === 'radio-off') {
+      return "fa fa-spinner fa-spin"; // Loading icon
+    } else if (status === "off" || status === "on") {
       if (themeType === "radio") {
-        return isActive ? "fa fa-check-circle" : "far fa-circle";
+        return status === "on" ? "fa fa-check-circle" : "far fa-circle";
       } else {
-        return isActive ? "fas fa-check-square" : "far fa-square";
+        return status === "on" ? "fas fa-check-square" : "far fa-square";
       }
-    } // Default icons
+    } else {
+      return "fas fa-times-circle error-icon status_" + status; 
+    }
   };
   const infoIconColor = showLinkBar ? "black" : "green";
   return (

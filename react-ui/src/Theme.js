@@ -38,7 +38,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
       const dls = params.getAll("dls[]");
 
       // Initialize the dictionary for layers active status
-      const layersActiveStatusDict = {};
+      let layersActiveStatusDict = {};
 
       // Process the `dls` array in groups of three
       for (let i = 0; i < dls.length; i += 3) {
@@ -47,7 +47,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         const id = parseInt(dls[i + 2], 10);
 
         // Add to dictionary with key as id and value as true or false based on visibility
-        layersActiveStatusDict[id] = true;
+        layersActiveStatusDict[id] = "on";
       }
 
       // Merge with the existing state
@@ -76,7 +76,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         setFilteredChildrenThemes(fetchedChildren);
         const layerDict = {};
         fetchedChildren.forEach(child => {
-            layerDict[child.id] = layersActiveStatus[child.id] || false;
+            layerDict[child.id] = layersActiveStatus[child.id] || "off";
         });
         
         // Merge with the existing state
@@ -88,16 +88,133 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
         console.error('Error fetching children themes:', error);
       }
     };
+
+    const fetchDynamicChildren = async () => {
+        try {
+          // Make the JSON request to the dynamic_url
+          const cleanThemeUrl = theme.url[theme.url.length - 1] === '/' ? theme.url.slice(0, -1) : theme.url; // Remove trailing slash if present
+          const response = await fetch(cleanThemeUrl + "/?f=pjson");
     
-    if (childrenThemes.length === 0 && expanded && !theme.is_dynamic) {
-      fetchChildren();
+          // Check if the response is OK
+          if (response.ok) {
+            // Parse the JSON data
+            const data = await response.json();
+  
+            let category = "dynamic"; 
+  
+            // Check for the presence of the keys 'services' or 'layers'
+            if ('folders' in data || 'services' in data) {
+              let newChildThemes = [];
+              if ('folders' in data) {
+                const folderThemes = data.folders.map((folder, index) => {
+                  return {
+                    name: folder, // Use the folder name directly
+                    id: theme.id + "_" + index, // Create a unique ID for the folder
+                    url: cleanThemeUrl + "/" + folder,
+                    is_dynamic: true,
+                    type: "theme",
+                    serviceType: false,
+                    default_keyword: theme.default_keyword,
+                    placeholder_text: theme.placeholder_text
+                  };
+                });
+                newChildThemes = newChildThemes.concat(folderThemes)
+              }
+              if ('services' in data) {
+                  const serviceThemes = data.services.map((service, index) => {
+                      // Extract the year range or name
+                      const nameParts = service.name.split('/');
+                      const serviceName = nameParts[nameParts.length - 1];
+  
+                      // Replace underscores with hyphens
+                      // This was a custom addition to support VTR, but seems generic enough to use broadly
+                      const cleanServiceName = serviceName.replace(/_/g, '-');
+                      const serviceType = service.type || "MapServer"; // Default to MapServer if type is not specified
+                      
+                      return {
+                          name: cleanServiceName,
+                          id: theme.id + "_" + index, // Create a unique ID for the folder
+                          url: cleanThemeUrl + "/" + serviceName + "/" + serviceType,
+                          is_dynamic: true,
+                          type: "theme",
+                          serviceType: service.type,
+                          default_keyword: theme.default_keyword,
+                          placeholder_text: theme.placeholder_text
+                          // Add other necessary properties here if needed
+                      };
+                  });
+                  newChildThemes = newChildThemes.concat(serviceThemes)
+              }
+              // Set the children themes state
+              setChildrenThemes(newChildThemes.length > 0 ? newChildThemes : "no-children");
+              setFilteredChildrenThemes(newChildThemes);
+              setPopulatedByServices(true);
+            } else if ('layers' in data) {
+              const filteredLayers = data.layers.filter(layer => !layer.subLayerIds);
+              const parentDirectory = {
+                ...data,
+                serviceLayers: filteredLayers  // Add the filtered layers to serviceLayers
+              };
+              const serviceType = theme.serviceType || "MapServer"; // Default to MapServer if type is not specified
+              const layerThemes = data.layers
+              .filter(layer => layer.type !== "Group Layer" && !layer.subLayerIds)  // Filter out Group Layers and those with subLayerIds
+              .map((layer, index) => {
+                let cleanLayerUrl = cleanThemeUrl;
+                if (cleanThemeUrl.split("/")[cleanThemeUrl.split("/").length - 1].toLowerCase() === serviceType.toLowerCase()) {
+                  cleanLayerUrl = cleanThemeUrl.replace("/" + serviceType, ""); // Remove the service type from the URL
+                }
+                return {
+                  name: layer.name, // Extract the layer name
+                  id: theme.id + "_" + layer.id,
+                  url: cleanLayerUrl,
+                  category: category, 
+                  type: serviceType,
+                  arcgis_layers: layer.id,
+                  isDynamicLayer: true
+                };
+              });
+              // Set the children themes state with layers
+              setChildrenThemes(layerThemes.length > 0 ? layerThemes : "no-children");
+              setFilteredChildrenThemes(layerThemes);
+              setPopulatedByServices(false);
+  
+              const layerDict = {};
+              layerThemes.forEach(child => {
+                  layerDict[child.id] = layersActiveStatus[child.id] || "off";
+              });
+              
+              // Merge with the existing state
+              setLayersActiveStatus(prevState => ({
+                  ...prevState,
+                  ...layerDict
+              }));
+            } else {
+              console.log("Neither 'folders' nor 'services' nor 'layers' found.");
+            }
+          } else {
+            setChildrenThemes("error");
+            console.error(`Request failed with status: ${response.status}`);
+          }
+        } catch (error) {
+          console.error("Error fetching the dynamic URL:", error);
+        }
+    };
+    
+    if (childrenThemes.length === 0 && expanded ) {
+      if (theme.is_dynamic) {
+        fetchDynamicChildren();
+      } else {
+        fetchChildren();
+      }
     }
     
   }, [childrenThemes, expanded, layersActiveStatus])
   
   useEffect(() => {
     // Initially filter by default_keyword when no search query is present
-    if (!searchQuery && theme.is_dynamic && !populatedByServices && theme.default_keyword) {
+    const hasSearchQuery = searchQuery && searchQuery.trim() !== '' && searchQuery !== null && searchQuery !== undefined;
+    const hasKeyword = theme.default_keyword && theme.default_keyword.trim() !== '' && theme.default_keyword !== null && theme.default_keyword !== undefined;
+    if (!hasSearchQuery && theme.is_dynamic && !populatedByServices && hasKeyword) {
       const filteredByDefault = childrenThemes.filter(layer =>
         layer.name.toLowerCase().includes(theme.default_keyword.toLowerCase())
       );
@@ -106,7 +223,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
   }, [childrenThemes, searchQuery]);
 
   useEffect(() => {
-    if (expanded && childrenThemes!== "no-children") {
+    if (expanded && childrenThemes!== "no-children" && childrenThemes !== "error") {
       childrenThemes.forEach((child) => {
         if (layersActiveStatus[child.id]) {
           setExpanded(true);
@@ -115,6 +232,7 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     }
   }, [expanded, childrenThemes, layersActiveStatus]);
 
+  // This hook watches for the KnockOut 'layerActivated' and 'layerDeactivated' events
   useEffect(() => {
     const handleLayerActivated = (event) => {
       const { layerId, themeId} = event.detail;
@@ -125,96 +243,28 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
       // Set the layer's active status to true
       setLayersActiveStatus(prevState => ({
         ...prevState,
-        [layerId]: true
+        [layerId]: "on"
       }));
     };
 
     window.addEventListener('layerActivated', handleLayerActivated);
+
+    const handleLayerDeactivated = (event) => {
+      const { layerId, themeId} = event.detail;
+  
+      // Set the layer's active status to true
+      setLayersActiveStatus(prevState => ({
+        ...prevState,
+        [layerId]: "off"
+      }));
+    };
+  
+    window.addEventListener('layerDeactivated', handleLayerDeactivated);
   }, [])
   // 1. this needs to change, it renders once only
   // 2. when i close a theme, it doesnt update the url for themes
   
   const handleClick = async (parentTheme) => {
-    if (theme.is_dynamic === true) {
-      try {
-        // Make the JSON request to the dynamic_url
-        const response = await fetch(theme.url + "?f=pjson");
-  
-        // Check if the response is OK
-        if (response.ok) {
-          // Parse the JSON data
-          const data = await response.json();
-
-          let category = "mdat"; // Default to MDAT
-
-          // Check if the passed parent theme is dynamic
-          if (parentTheme && parentTheme.is_dynamic) {
-              category = "vtr"; // If the parent is dynamic, categorize as VTR
-          }
-
-  
-          // Check for the presence of the keys 'services' or 'layers'
-          if ('services' in data) {
-            const serviceThemes = data.services.map(service => {
-              // Extract the year range or name
-              const nameParts = service.name.split('/');
-              const yearRange = nameParts[nameParts.length - 1];
-
-              // Replace underscores with hyphens
-              const newYearRange = yearRange.replace(/_/g, '-');
-    
-              return {
-                name: newYearRange,
-                url: theme.url + "/" + yearRange + "/MapServer",
-                is_dynamic: true,
-                type: "theme",
-                default_keyword: theme.default_keyword,
-                placeholder_text: theme.placeholder_text
-                // Add other necessary properties here if needed
-              };
-            });
-            const fetchedChildren = [...serviceThemes];
-            // Set the children themes state
-            setChildrenThemes(fetchedChildren.length > 0 ? fetchedChildren : "no-children");
-            setFilteredChildrenThemes(serviceThemes);
-            setPopulatedByServices(true);
-          } else if ('layers' in data) {
-            const filteredLayers = data.layers.filter(layer => !layer.subLayerIds);
-            const parentDirectory = {
-              ...data,
-              serviceLayers: filteredLayers  // Add the filtered layers to serviceLayers
-            };
-            const layerThemes = data.layers
-            .filter(layer => layer.type !== "Group Layer" && !layer.subLayerIds)  // Filter out Group Layers and those with subLayerIds
-            .map(layer => {
-              const isVTR = category === "vtr";
-              
-              return {
-                name: layer.name, // Extract the layer name
-                id: category === "mdat" ? 'mdat_layer_' + theme.name + "_" + layer.id : 'vtr_layer_' + theme.name + "_" + layer.id,
-                url: parentTheme && parentTheme.is_dynamic ? theme.url.replace("/MapServer", "") : theme.url,
-                ...(isVTR 
-                  ? { dateRangeDirectory: data } 
-                  : { parentDirectory: parentDirectory }), // Conditionally add properties
-                category: category, 
-                type: "ArcRest",
-                arcgis_layers: layer.id,
-              };
-          });
-            // Set the children themes state with layers
-            setChildrenThemes(layerThemes.length > 0 ? layerThemes : "no-children");
-            setFilteredChildrenThemes(layerThemes);
-            setPopulatedByServices(false);
-          } else {
-            console.log("Neither 'services' nor 'layers' found.");
-          }
-        } else {
-          console.error(`Request failed with status: ${response.status}`);
-        }
-      } catch (error) {
-        console.error("Error fetching the dynamic URL:", error);
-      }
-    }
     window["reactToggleTheme"](theme.id);
     setExpanded(!expanded);
   };
@@ -238,40 +288,39 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
     }
   };
 
-  // const handleLayerSelect = (layer) => {
-  //   // Handle what happens when a layer is selected from the dropdown
-  //   if (layer.category) {
-  //     if (layer.category === "vtr") {
-  //       // Dispatch a custom event for VTR activation
-  //       const event = new CustomEvent('ReactVTRLayer', {
-  //         detail: { layer: layer}
-  //       });
-  //       window.dispatchEvent(event);
-  //     }
-  //     else if (layer.category === "mdat") {
-  //       // Dispatch a custom event for MDAT activation
-  //       const event = new CustomEvent('ReactMDATLayer', {
-  //         detail: { layer: layer,
-  //           parentTheme: parentTheme,
-  //         }
-  //       });
-  //       window.dispatchEvent(event);
-  //     }
-  //   }
-  // };
+  const determineState = (prevState) => {
+    if (prevState === 'on' || prevState === 'error') {
+      return 'closing';
+    } else if (prevState === 'off') {
+      return 'loading'; 
+    } 
+    return prevState; // Keep the same state if it's loading or closing
+  }
 
   const handleToggleLayerChangeState = (layerId) => {
     setLayersActiveStatus(prevState => ({
       ...prevState,
-      [layerId]: !prevState[layerId]
+      [layerId]: determineState(prevState[layerId])
     }))
-    const keyTrue = Object.keys(layersActiveStatus).find(key => layersActiveStatus[key] === true)
-    if ((theme.theme_type === "radio") && keyTrue) {
-      //deactivate current active layer and activate layer that was clicked
-      setLayersActiveStatus(prevState => ({
-        ...prevState,
-        [keyTrue]: !prevState[keyTrue]
-      }))
+    // if activating a layer in a radio group...
+    if (theme.theme_type === "radio" && layersActiveStatus[layerId] === "off") {
+      // Since layers may be shared between themes, and other themes might not be 'radio' types,
+      // we need to deactivate all other active layers in the same radio group
+      let oldTrueKeys = [];
+      for (let i = 0; i < Object.keys(layersActiveStatus).length; i++) {
+        let key = Object.keys(layersActiveStatus)[i];
+        if (layersActiveStatus[key] === "on" && key !== layerId) {
+          oldTrueKeys.push(key);
+        }
+      }
+      for (let i = 0; i < oldTrueKeys.length; i++) {
+        const oldKey = oldTrueKeys[i];
+        //deactivate current active layer(s) and activate layer that was clicked
+        setLayersActiveStatus(prevState => ({
+          ...prevState,
+          [oldKey]: "radio-off"
+        }))
+      }
     }
   }
 
@@ -378,6 +427,10 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
           <div className="no-layers-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
             No layers
           </div>
+        ) : childrenThemes === "error" ? (
+          <div className="error-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
+            Error loading layers. Please try again later.
+          </div>
         ) : childrenThemes.length === 0 ? (
           <div className="loading-msg" style={{ position: "relative", padding: "10px", border: `3px solid ${getGreenShade(level)}`, marginBottom: "1px" }}>
             Loading...
@@ -407,7 +460,8 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                       borderColor={getGreenShade(level + 1)} 
                       themeType={theme.theme_type} 
                       childData={child} 
-                      isActive={layersActiveStatus[child.id]} 
+                      isDynamicLayer={theme.is_dynamic}
+                      status={layersActiveStatus[child.id]} // dynamic themes cannot be loaded from state, so will always be off
                       handleToggleLayerChangeState={handleToggleLayerChangeState} 
                       parentTheme={theme}/>
                   )}
@@ -437,7 +491,8 @@ const Theme = ({ theme, level, borderColor, topLevelThemeId, parentTheme }) => {
                         borderColor={getGreenShade(level + 1)} 
                         themeType={theme.theme_type} 
                         childData={child} 
-                        isActive={layersActiveStatus[child.id]} 
+                        isDynamicLayer={theme.is_dynamic}
+                        status={layersActiveStatus[child.id]} 
                         handleToggleLayerChangeState={handleToggleLayerChangeState} 
                         parentTheme={theme}
                       />

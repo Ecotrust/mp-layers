@@ -73,6 +73,10 @@ body {
   
 }
 
+.error-icon {
+  color: red;
+}
+
 .fa.fa-eye-slash {
   font-size: 12px;
 }
