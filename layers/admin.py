@@ -885,11 +885,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     exclude = ('slug_name', "is_sublayer", "sublayers")
     form = LayerForm
     resource_classes = [LayerResource]
-    class Media:
-        js = ['layer_admin.js',]
-        css = {
-            'all': ('css/layer_admin.css',)  
-        }
+    
 
     if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
         # catalog_fields = ('catalog_name', 'catalog_id',)
@@ -1215,9 +1211,9 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
         return super(LayerAdmin, self).changelist_view(request, extra_context=extra_context)
     
     class Media:
-        js = ("admin/js/layer_http_status.js",)
+        js = ["admin/js/layer_http_status.js", 'admin/js/layer_admin.js']
         css = {
-            'all': ("admin/css/layer_http_status.css",)
+            'all': ("admin/css/layer_http_status.css","admin/css/layer_admin.css",)
         }
     
 class LookupInfoAdmin(admin.ModelAdmin):
