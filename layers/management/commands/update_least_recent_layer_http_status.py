@@ -19,6 +19,7 @@ class Command(BaseCommand):
                 response = requests.get(layer.url, timeout=5, allow_redirects=True)
                 status = response.status_code
             except Exception as e:
+                self.stderr.write(f"Error while checking URL {layer.url}: {e}")
                 status = 404  # Default to 404 if the request fails
 
             layer.last_http_status = status
