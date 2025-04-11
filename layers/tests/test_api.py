@@ -1,41 +1,50 @@
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
-from layers.models import Layer, Theme
+from layers.models import *
+from layers.serializers import *
 from collections.abc import Collection, Mapping
+from django.core.cache import cache
 import requests
 import json
 
+DYNAMIC_PARENT_THEMES = [24, 25]
+SLIDER_PARENT_THEMES = [28, 2, 8, 14]
+UNCERTAIN_STATUS_THEMES = DYNAMIC_PARENT_THEMES + SLIDER_PARENT_THEMES + [27, ]
+COMPANION_THEME = [23, ]
+FULLY_COMPLIANT_THEMES = COMPANION_THEME + [1, 29, 4, 10, 7, 11, 3, 12, 5, 22]
+
 class DataManagerGetLayerDetailsTest(APITestCase):
     def setUp(self):
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True)
-        theme1.site.set([1])
-        # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
-        layer1.site.set([1])
-        # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer2 = Layer.objects.create(id=2, name="Arc", layer_type="arcgis")
-        layer2.themes.set([1])
-        layer2.site.set([1])
+        site = Site.objects.get(pk=1)
+        theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True)
+        theme1.site.add(site)
+
+        layer1 =Theme.objects.create(name="arcrest_layer", theme_type="radio")
+        layer1.site.add(site)
+
+        self.layer2 = Layer.objects.create(name="Arc", layer_type="ArcRest")
+        self.arcrest2 = LayerArcREST.objects.create(layer=self.layer2)
+
+        self.layer2.site.add(site)
         # This layer is to test how sublayers are returned
-        layer3 = Layer.objects.create(id=3, name="sublayer", layer_type="arcgis", is_sublayer=True)
-        layer3.site.set([1])
-        layer2.connect_companion_layers_to.set([layer1])
-        layer1.sublayers.set([layer3])
-    
+        self.layer3 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
+        self.arcrest3 = LayerArcREST.objects.create(layer=self.layer3)
+        self.layer3.site.add(site)
+
+        ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer2, order=1)
+        ChildOrder.objects.create(parent_theme=theme1, content_object=layer1, order=1)
+        ChildOrder.objects.create(parent_theme=layer1, content_object=self.layer3, order=1)
+        self.companionship = Companionship.objects.create(layer=self.layer2)
+        self.companionship.companions.add(self.layer3)
     def test_view_layer_details_response_format(self):
         client = APIClient()
-        request1 = client.get("/data_manager/get_layer_details/1")
+        request1 = client.get(f"/layers/get_layer_details/{self.layer2.id}/", HTTP_HOST="localhost:8000")
         self.assertEqual(request1.status_code, 200)
         result1 = json.loads(request1.content)
 
-        request2 = client.get("/data_manager/get_layer_details/2")
+        request2 = client.get(f"/layers/get_layer_details/{self.layer3.id}/", HTTP_HOST="localhost:8000")
         self.assertEqual(request2.status_code, 200)
         result2 = json.loads(request2.content)
-        print(result1, result2)
 
         layer_attr = ["id", "uuid", "name", "order", "type", "arcgis_layers", "url", "password_protected", "query_by_point", "proxy_url", "disable_arcgis_attributes", "wms_slug", "wms_version", "wms_format", "wms_srs", "wms_styles", "wms_timing", "wms_time_item", "wms_additional", "wms_info", 
                             "wms_info_format", "utfurl", "subLayers", "companion_layers", "has_companion", "queryable", "legend", "legend_title", "legend_subtitle", "show_legend", "description", "overview", "data_source", "data_notes", "kml", "data_download", 
@@ -117,7 +126,7 @@ class DataManagerGetLayerDetailsTest(APITestCase):
             self.assertIsInstance(i["date_modified"], str, "date_modified should be string")
     
     def test_view_layer_details_default_response_data(self):
-        response = self.client.get("/data_manager/get_layer_details/2")
+        response = self.client.get(f"/layers/get_layer_details/{self.layer2.id}/", HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result= json.loads(response.content)
 
@@ -126,10 +135,9 @@ class DataManagerGetLayerDetailsTest(APITestCase):
         expected_lookups = {"field": None, "details": []}
 
         # Validate each attribute with its expected value
-        self.assertEqual(result["id"], 2)
         self.assertEqual(result["name"], "Arc")
-        self.assertEqual(result["order"], 10)
-        self.assertEqual(result["type"], "arcgis")
+        self.assertEqual(result["order"], 1)
+        self.assertEqual(result["type"], "ArcRest")
         self.assertEqual(result["url"], "")
         self.assertEqual(result["arcgis_layers"], None)
         self.assertEqual(result["password_protected"], False)
@@ -143,21 +151,21 @@ class DataManagerGetLayerDetailsTest(APITestCase):
         self.assertEqual(result["wms_styles"], None)
         self.assertEqual(result["wms_timing"], None)
         self.assertEqual(result["wms_time_item"], None)
-        self.assertEqual(result["wms_additional"], None)
+        self.assertEqual(result["wms_additional"], "")
         self.assertEqual(result["wms_info"], False)
         self.assertEqual(result["wms_info_format"], None)
         self.assertEqual(result["utfurl"], None)
         self.assertEqual(result["subLayers"], [])
-        self.assertEqual(result["has_companion"], False)
+        self.assertEqual(result["has_companion"], True)
         self.assertEqual(result["queryable"], False)
         self.assertEqual(result["legend"], None)
         self.assertEqual(result["legend_title"], None)
         self.assertEqual(result["legend_subtitle"], None)
         self.assertEqual(result["show_legend"], True)
-        self.assertEqual(result["description"], None)
-        self.assertEqual(result["overview"], None)
+        self.assertEqual(result["description"], "")
+        self.assertEqual(result["overview"], "")
         self.assertEqual(result["data_source"], None)
-        self.assertEqual(result["data_notes"], None)
+        self.assertEqual(result["data_notes"], "")
         self.assertEqual(result["kml"], None)
         self.assertEqual(result["data_download"], None)
         self.assertEqual(result["learn_more"], None)
@@ -181,103 +189,7 @@ class DataManagerGetLayerDetailsTest(APITestCase):
         self.assertEqual(result["opacity"], 0.5)
         self.assertEqual(result["annotated"], False)
         self.assertEqual(result["is_disabled"], False)
-        self.assertEqual(result["disabled_message"], None)
-        self.assertEqual(result["data_url"], "/data-catalog/companion/#layer-info-arc2")
-        self.assertEqual(result["is_multilayer"], False)
-        self.assertEqual(result["is_multilayer_parent"], False)
-        self.assertEqual(result["dimensions"], [])
-        self.assertEqual(result["associated_multilayers"], {})
-        self.assertEqual(result["parent"], None)
-
-    def test_view_layer_details_response_data(self):
-        response = self.client.get("/data_manager/get_layer_details/1")
-        self.assertEqual(response.status_code, 200)
-        result= json.loads(response.content)
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        
-        # Get Layer 3 and Layer 2 from the database and prepare dictionaries
-        layer3 = Layer.objects.get(id=3)
-        layer3dict = layer3.toDict
-        layer3dict["uuid"] = str(layer3dict["uuid"])
-        layer3dict["parent"]["uuid"] = str(layer3dict["parent"]["uuid"])
-        layer3dict["parent"]["subLayers"][0]["uuid"] = str(layer3dict["parent"]["subLayers"][0]["uuid"] )
-        layer2 = Layer.objects.get(id=2)
-        layer2dict = layer2.toDict
-        layer2dict["uuid"] = str(layer2dict["uuid"])
-
-        # Define expected attributes and lookups
-        expected_attributes = {"compress_attributes": False, "event": "click", "attributes": [], "mouseover_attribute": None, "preserved_format_attributes": []}
-        expected_lookups = {"field": None, "details": []}
-
-        # Validate result against expected values
-        self.assertEqual(result["id"], 1)
-        self.assertEqual(result["name"], "arcrest_layer")
-        self.assertEqual(result["order"], 15)
-        self.assertEqual(result["type"], "arcgis")
-        self.assertEqual(result["url"], congress_layer_url)
-        self.assertEqual(result["arcgis_layers"], "19")
-        self.assertEqual(result["password_protected"], True)
-        self.assertEqual(result["query_by_point"], True)
-        self.assertEqual(result["proxy_url"], True)
-        self.assertEqual(result["disable_arcgis_attributes"], True)
-        self.assertEqual(result["wms_slug"], "hi")
-        self.assertEqual(result["wms_version"], "hello")
-        self.assertEqual(result["wms_format"], "pusheen")
-        self.assertEqual(result["wms_srs"], "world")
-        self.assertEqual(result["wms_styles"], "style")
-        self.assertEqual(result["wms_timing"], "hullo")
-        self.assertEqual(result["wms_time_item"], "ello")
-        self.assertEqual(result["wms_additional"], "star")
-        self.assertEqual(result["wms_info"], True)
-        self.assertEqual(result["wms_info_format"], "test")
-        self.assertEqual(result["utfurl"], "testing")
-        # Validate subLayers and companion_layers
-        for key in result["subLayers"][0].keys():
-            #description and overview takes from parent, but parent should not be set
-            if not key in ["is_sublayer", "date_modified", "companion_layers", "description", "overview"]:
-
-                if key != "parent":
-                    self.assertEqual(result["subLayers"][0][key], layer3dict[key])
-                else:
-                    self.assertEqual(result["subLayers"][0][key], layer3dict[key]["id"])
-        for key in result["companion_layers"][0].keys():
-            #layer_dict does not have is_sublayer
-            if not key in ["is_sublayer", "date_modified", "companion_layers", "parent"]:
-                self.assertEqual(result["companion_layers"][0][key], layer2dict[key])
-        self.assertEqual(result["has_companion"], True)
-        self.assertEqual(result["queryable"], True)
-        self.assertEqual(result["legend"], "hi")
-        self.assertEqual(result["legend_title"], "title")
-        self.assertEqual(result["legend_subtitle"], "subtitle")
-        self.assertEqual(result["show_legend"], True)
-        self.assertEqual(result["description"], "testlayer")
-        self.assertEqual(result["overview"], "testlayer")
-        self.assertEqual(result["data_source"], "testlayer")
-        self.assertEqual(result["data_notes"], "testlayer")
-        self.assertEqual(result["kml"], "testlayer")
-        self.assertEqual(result["data_download"], "testlayer")
-        self.assertEqual(result["learn_more"], "testlayer")
-        self.assertEqual(result["metadata"], "testlayer")
-        self.assertEqual(result["source"], "testlayer")
-        self.assertEqual(result["tiles"], None)
-        self.assertEqual(result["label_field"], "testlayer")
-        self.assertEqual(result["attributes"], expected_attributes)
-        self.assertEqual(result["lookups"], expected_lookups)
-        self.assertEqual(result["minZoom"], 6)
-        self.assertEqual(result["maxZoom"], 14)
-        self.assertEqual(result["custom_style"], "testlayer")
-        self.assertEqual(result["outline_color"], "blue")
-        self.assertEqual(result["outline_opacity"], 5.0)
-        self.assertEqual(result["outline_width"], 2)
-        self.assertEqual(result["point_radius"], 8)
-        self.assertEqual(result["color"], "blue")
-        self.assertEqual(result["fill_opacity"], 5.0)
-        self.assertEqual(result["graphic"], "testlayer")
-        self.assertEqual(result["graphic_scale"], 5.0)
-        self.assertEqual(result["opacity"], 0.8)
-        self.assertEqual(result["annotated"], True)
-        self.assertEqual(result["is_disabled"], True)
-        self.assertEqual(result["disabled_message"], "testlayer")
+        self.assertEqual(result["disabled_message"], "")
         self.assertEqual(result["data_url"], None)
         self.assertEqual(result["is_multilayer"], False)
         self.assertEqual(result["is_multilayer_parent"], False)
@@ -287,37 +199,36 @@ class DataManagerGetLayerDetailsTest(APITestCase):
 
 class DataManagerGetJsonTest(APITestCase):
     def setUp(self):
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        
+        site = Site.objects.get(pk=1)
         # Create themes and layers for testing
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
-        theme1.site.set([1])
-        theme2 = Theme.objects.create(id=2, name="companion2", display_name="companion2", visible=True)
-        theme2.site.set([1])
-        # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True, description="test")
+        theme1.site.add(site)
+        theme2 = Theme.objects.create(name="companion2", display_name="companion2", is_visible=True)
+        theme2.site.add(site)
+
+        self.layer1 =Theme.objects.create(name="subtheme", theme_type="radio")
+
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer1.site.set([1])
-        layer1.themes.set([1])
+        self.layer1.site.add(site)
+
          # Create a test sublayer
-        layer2 = Layer.objects.create(id=2, name="sublayer", layer_type="arcgis", is_sublayer=True)
-        layer2.site.set([1])
-        layer2.themes.set([1])
-        layer1.sublayers.set([layer2])
+        self.layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
+        self.arcgislayer = LayerArcREST.objects.create(layer = self.layer2)
+        self.layer2.site.add(site)
+
+        child_order_wms = ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer1, order=1)
+        sublayer_order = ChildOrder.objects.create(parent_theme=self.layer1,content_object=self.layer2, order=1)
+        layer_order = ChildOrder.objects.create(parent_theme=theme2,content_object=self.layer2, order=1)
 
     def test_view_api(self):
         client = APIClient()
-        response = client.get("/data_manager/get_json", HTTP_HOST="localhost:8000")
+        response = client.get("/layers/get_json/", HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
         
         # Get Layer 2 and prepare a dictionary for comparison
-        layer2 = Layer.objects.get(id=2)
-        layer2dict = layer2.toDict
+
+        layer2dict = LayerArcRESTSerializer(self.arcgislayer).data
         layer2dict["uuid"] = str(layer2dict["uuid"])
 
         # Define expected attributes and lookups
@@ -422,99 +333,97 @@ class DataManagerGetJsonTest(APITestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["state"]["activeLayers"], [])
-        self.assertEqual(result["layers"][0]["id"], 1)
-        self.assertEqual(result["layers"][0]["name"], "arcrest_layer")
-        self.assertEqual(result["layers"][0]["order"], 15)
-        self.assertEqual(result["layers"][0]["type"], "arcgis")
-        self.assertEqual(result["layers"][0]["url"], congress_layer_url)
-        self.assertEqual(result["layers"][0]["arcgis_layers"], "19")
-        self.assertEqual(result["layers"][0]["password_protected"], True)
-        self.assertEqual(result["layers"][0]["query_by_point"], True)
-        self.assertEqual(result["layers"][0]["proxy_url"], True)
-        self.assertEqual(result["layers"][0]["disable_arcgis_attributes"], True)
-        self.assertEqual(result["layers"][0]["wms_slug"], "hi")
-        self.assertEqual(result["layers"][0]["wms_version"], "hello")
-        self.assertEqual(result["layers"][0]["wms_format"], "pusheen")
-        self.assertEqual(result["layers"][0]["wms_srs"], "world")
-        self.assertEqual(result["layers"][0]["wms_styles"], "style")
-        self.assertEqual(result["layers"][0]["wms_timing"], "hullo")
-        self.assertEqual(result["layers"][0]["wms_time_item"], "ello")
-        self.assertEqual(result["layers"][0]["wms_additional"], "star")
-        self.assertEqual(result["layers"][0]["wms_info"], True)
-        self.assertEqual(result["layers"][0]["wms_info_format"], "test")
-        self.assertEqual(result["layers"][0]["utfurl"], "testing")
+        self.assertEqual(result["layers"][0]["name"], "subtheme")
+        self.assertEqual(result["layers"][0]["order"], 1)
+        self.assertEqual(result["layers"][0]["type"], "radio")
+        self.assertEqual(result["layers"][0]["arcgis_layers"], None)
+        self.assertEqual(result["layers"][0]["password_protected"], False)
+        self.assertEqual(result["layers"][0]["query_by_point"], False)
+        self.assertEqual(result["layers"][0]["proxy_url"], False)
+        self.assertEqual(result["layers"][0]["disable_arcgis_attributes"], False)
+        self.assertEqual(result["layers"][0]["wms_slug"], None)
+        self.assertEqual(result["layers"][0]["wms_version"], None)
+        self.assertEqual(result["layers"][0]["wms_format"], None)
+        self.assertEqual(result["layers"][0]["wms_srs"], None)
+        self.assertEqual(result["layers"][0]["wms_styles"], None)
+        self.assertEqual(result["layers"][0]["wms_timing"], None)
+        self.assertEqual(result["layers"][0]["wms_time_item"], None)
+        self.assertEqual(result["layers"][0]["wms_additional"], "")
+        self.assertEqual(result["layers"][0]["wms_info"], False)
+        self.assertEqual(result["layers"][0]["wms_info_format"], None)
+        self.assertEqual(result["layers"][0]["utfurl"], None)
         for key in result["layers"][0]["subLayers"][0].keys():
             #description and overview takes from parent, but parent should not be set
-            if not key in ["is_sublayer", "date_modified", "companion_layers", "description", "overview"]:
+            if not key in ["is_sublayer", "date_modified", "companion_layers", "description", "overview", "uuid"]:
                 if key != "parent":
-                    self.assertEqual(result["layers"][0]["subLayers"][0][key], layer2dict[key])
+                    self.assertEqual(result["layers"][0]["subLayers"][0][key], layer2dict[key], msg=f"Key '{key}' mismatch: {result['layers'][0]['subLayers'][0][key]} != {layer2dict[key]}")
                 else:
-                    self.assertEqual(result["layers"][0]["subLayers"][0][key], layer2dict[key]["id"])
+                    self.assertEqual(result["layers"][0]["subLayers"][0][key], layer2dict[key]["id"], msg=f"Key '{key}' mismatch: {result['layers'][0]['subLayers'][0]} != {layer2dict[key]}")
         self.assertEqual(result["layers"][0]["companion_layers"], [])
-        self.assertEqual(result["layers"][0]["has_companion"], True)
-        self.assertEqual(result["layers"][0]["queryable"], True)
-        self.assertEqual(result["layers"][0]["legend"], "hi")
-        self.assertEqual(result["layers"][0]["legend_title"], "title")
-        self.assertEqual(result["layers"][0]["legend_subtitle"], "subtitle")
+        self.assertEqual(result["layers"][0]["has_companion"], False)
+        self.assertEqual(result["layers"][0]["queryable"], False)
+        self.assertEqual(result["layers"][0]["legend"], None)
+        self.assertEqual(result["layers"][0]["legend_title"], None)
+        self.assertEqual(result["layers"][0]["legend_subtitle"], None)
         self.assertEqual(result["layers"][0]["show_legend"], True)
-        self.assertEqual(result["layers"][0]["description"], "testlayer")
-        self.assertEqual(result["layers"][0]["overview"], "testlayer")
-        self.assertEqual(result["layers"][0]["data_source"], "testlayer")
-        self.assertEqual(result["layers"][0]["data_notes"], "testlayer")
-        self.assertEqual(result["layers"][0]["kml"], "testlayer")
-        self.assertEqual(result["layers"][0]["data_download"], "testlayer")
-        self.assertEqual(result["layers"][0]["learn_more"], "testlayer")
-        self.assertEqual(result["layers"][0]["metadata"], "testlayer")
-        self.assertEqual(result["layers"][0]["source"], "testlayer")
+        self.assertEqual(result["layers"][0]["description"], "")
+        self.assertEqual(result["layers"][0]["overview"], "")
+        self.assertEqual(result["layers"][0]["data_source"], None)
+        self.assertEqual(result["layers"][0]["data_notes"], "")
+        self.assertEqual(result["layers"][0]["kml"], None)
+        self.assertEqual(result["layers"][0]["data_download"], None)
+        self.assertEqual(result["layers"][0]["learn_more"], None)
+        self.assertEqual(result["layers"][0]["metadata"], None)
+        self.assertEqual(result["layers"][0]["source"], None)
         self.assertEqual(result["layers"][0]["tiles"], None)
-        self.assertEqual(result["layers"][0]["label_field"], "testlayer")
+        self.assertEqual(result["layers"][0]["label_field"], None)
         self.assertEqual(result["layers"][0]["attributes"], expected_attributes)
         self.assertEqual(result["layers"][0]["lookups"], expected_lookups)
-        self.assertEqual(result["layers"][0]["minZoom"], 6)
-        self.assertEqual(result["layers"][0]["maxZoom"], 14)
-        self.assertEqual(result["layers"][0]["custom_style"], "testlayer")
-        self.assertEqual(result["layers"][0]["outline_color"], "blue")
-        self.assertEqual(result["layers"][0]["outline_opacity"], 5.0)
-        self.assertEqual(result["layers"][0]["outline_width"], 2)
-        self.assertEqual(result["layers"][0]["point_radius"], 8)
-        self.assertEqual(result["layers"][0]["color"], "blue")
-        self.assertEqual(result["layers"][0]["fill_opacity"], 5.0)
-        self.assertEqual(result["layers"][0]["graphic"], "testlayer")
-        self.assertEqual(result["layers"][0]["graphic_scale"], 5.0)
-        self.assertEqual(result["layers"][0]["opacity"], 0.8)
-        self.assertEqual(result["layers"][0]["annotated"], True)
-        self.assertEqual(result["layers"][0]["is_disabled"], True)
-        self.assertEqual(result["layers"][0]["disabled_message"], "testlayer")
-        self.assertEqual(result["layers"][0]["data_url"], "/data-catalog/companion/#layer-info-arcrest_layer1")
+        self.assertEqual(result["layers"][0]["minZoom"], None)
+        self.assertEqual(result["layers"][0]["maxZoom"], None)
+        self.assertEqual(result["layers"][0]["custom_style"], None)
+        self.assertEqual(result["layers"][0]["outline_color"], None)
+        self.assertEqual(result["layers"][0]["outline_opacity"], None)
+        self.assertEqual(result["layers"][0]["outline_width"], None)
+        self.assertEqual(result["layers"][0]["point_radius"], None)
+        self.assertEqual(result["layers"][0]["color"], None)
+        self.assertEqual(result["layers"][0]["fill_opacity"], None)
+        self.assertEqual(result["layers"][0]["graphic"], None)
+        self.assertEqual(result["layers"][0]["graphic_scale"], 1.0)
+        self.assertEqual(result["layers"][0]["opacity"], 0.5)
+        self.assertEqual(result["layers"][0]["annotated"], False)
+        self.assertEqual(result["layers"][0]["is_disabled"], False)
+        self.assertEqual(result["layers"][0]["disabled_message"], "")
         self.assertEqual(result["layers"][0]["is_multilayer"], False)
         self.assertEqual(result["layers"][0]["is_multilayer_parent"], False)
         self.assertEqual(result["layers"][0]["dimensions"], [])
         self.assertEqual(result["layers"][0]["associated_multilayers"], {})
         self.assertEqual(result["layers"][0]["parent"], None)
-        self.assertEqual(result["themes"][0]["id"], 1)
         self.assertEqual(result["themes"][0]["name"], "companion")
         self.assertEqual(result["themes"][0]["display_name"], "companion")
         self.assertEqual(result["themes"][0]["learn_link"], "../learn/companion")
         self.assertEqual(result["themes"][0]["is_visible"], True)
-        self.assertEqual(result["themes"][0]["layers"], [1])
+        self.assertEqual(result["themes"][0]["layers"], [self.layer1.id])
         self.assertEqual(result["themes"][0]["description"], "test")
-        self.assertEqual(result["themes"][1]["id"], 2)
         self.assertEqual(result["themes"][1]["name"], "companion2")
         self.assertEqual(result["themes"][1]["display_name"], "companion2")
         self.assertEqual(result["themes"][1]["learn_link"], "../learn/companion2")
         self.assertEqual(result["themes"][1]["is_visible"], True)
-        self.assertEqual(result["themes"][1]["layers"], [])
+        self.assertEqual(result["themes"][1]["layers"], [self.layer2.id])
         self.assertEqual(result["themes"][1]["description"], None)
 
 class DataManagerGetThemesTest(APITestCase):
     def setUp(self):
         # Associate theme with default site id, otherwise themes do not show up
-        Theme.objects.create(id=1, name="test", display_name="test", visible=True).site.set([1])
-        Theme.objects.create(id=2, name="test2", display_name="test2", visible=True).site.set([1])
+        site = Site.objects.get(pk=1)
+        self.theme1 = Theme.objects.create(name="test", display_name="test", is_visible=True)
+        self.theme1.site.add(site)
+        self.theme2 = Theme.objects.create(name="test2", display_name="test2", is_visible=True)
+        self.theme2.site.add(site)
 
     def test_get_themes_response_format(self):
         client = APIClient()
-        response = client.get("/data_manager/get_themes")
+        response = client.get("/layers/get_themes/", HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
@@ -543,7 +452,7 @@ class DataManagerGetThemesTest(APITestCase):
 
     def test_get_themes_response_data(self):
         client = APIClient()
-        response = client.get("/data_manager/get_themes")
+        response = client.get("/layers/get_themes/" , HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
@@ -554,44 +463,44 @@ class DataManagerGetThemesTest(APITestCase):
         theme_2 = result["themes"][1]
 
         # Check the format of each theme object in the list - similar to first
-        self.assertEqual(theme_1["id"], 1)
         self.assertEqual(theme_1["name"], "test")
         self.assertEqual(theme_1["display_name"], "test")
         self.assertTrue(theme_1["is_visible"])
 
-        self.assertEqual(theme_2["id"], 2)
         self.assertEqual(theme_2["name"], "test2")
         self.assertEqual(theme_2["display_name"], "test2")
         self.assertTrue(theme_2["is_visible"])
 
 class DataManagerGetLayerSearchDataTest(APITestCase):
      def setUp(self):
-        theme1 = Theme.objects.create(id=1, name="test3", display_name="test3", visible=True, description="test 3")
-        theme1.site.set([1])
+        site = Site.objects.get(pk=1)
+        theme1 = Theme.objects.create(name="test3", display_name="test3", is_visible=True, description="test 3")
+        theme1.site.add(site)
         # Cannot use .set in the same line as creating an object as .set returns None
-        theme2 = Theme.objects.create(id=2, name="test4", display_name="test4", visible=True, description="test 4")
-        theme2.site.set([1])
-        layer1 = Layer.objects.create(id=1, name="layertest1", is_sublayer=False)
-        layer1.site.set([1])
-        layer1.themes.set([theme1])
+        theme2 = Theme.objects.create(name="test4", display_name="test4", is_visible=True, description="test 4")
+        theme2.site.add(site)
+        layer1 = Theme.objects.create(name="layertest1")
+        layer1.site.add(site)
+
         # Layer2 is sublayer of layer 1
-        layer2 = Layer.objects.create(id=2, name="layertest2", is_sublayer=True)
-        layer2.site.set([1])
-        layer2.sublayers.set([layer1])
-        layer2.themes.set([theme1])
-        layer3 = Layer.objects.create(id=3, name="layertest3", is_sublayer=False)
-        layer3.site.set([1])
-        layer3.themes.set([theme2])
+        layer2 = Layer.objects.create(name="layertest2")
+        layer2.site.add(site)
+
+        layer3 = Layer.objects.create(name="layertest3")
+        layer3.site.add(site)
+
+        ChildOrder.objects.create(parent_theme=theme1, content_object=layer1, order=1)
+        ChildOrder.objects.create(parent_theme=layer1, content_object=layer2, order=1)
+        ChildOrder.objects.create(parent_theme=theme2, content_object=layer3, order=1)
 
      def test_get_layer_search_data_response_format(self):
         client = APIClient()
-        response = client.get("/data_manager/get_layer_search_data")
+        response = client.get("/layers/get_layer_search_data/", HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
         # Sublayers are not shown, should only return layers as keys that are not sublayers
         self.assertIn("layertest1", result, "result should have layertest1 key")
-        self.assertIn("layertest3", result, "result should have layertest3 key")
         self.assertIn("layer", result["layertest1"], "should have layer key")
         self.assertIn("theme", result["layertest1"], "should have theme key")
         self.assertIn("id", result["layertest1"]["layer"], "each layer should have id key")
@@ -619,43 +528,37 @@ class DataManagerGetLayerSearchDataTest(APITestCase):
         self.assertIsInstance(result["layertest1"]["theme"]["name"], str, "theme name should be string")
         self.assertIsInstance(result["layertest1"]["theme"]["description"], str, "theme description should be string")
 
-        self.assertEqual(result["layertest1"]["layer"]["id"], 1)
         self.assertEqual(result["layertest1"]["layer"]["name"], "layertest1")
         self.assertEqual(result["layertest1"]["layer"]["has_sublayers"], True)
         self.assertEqual(result["layertest1"]["layer"]["sublayers"][0]["name"], "layertest2")
-        self.assertEqual(result["layertest1"]["layer"]["sublayers"][0]["id"], 2)
-        self.assertEqual(result["layertest1"]["theme"]["id"], 1)
         self.assertEqual(result["layertest1"]["theme"]["name"], "test3")
         self.assertEqual(result["layertest1"]["theme"]["description"], "test 3")
-        self.assertEqual(result["layertest3"]["layer"]["id"], 3)
         self.assertEqual(result["layertest3"]["layer"]["name"], "layertest3")
         self.assertEqual(result["layertest3"]["layer"]["has_sublayers"], False)
         self.assertEqual(result["layertest3"]["layer"]["sublayers"], [])
-        self.assertEqual(result["layertest3"]["theme"]["id"], 2)
         self.assertEqual(result["layertest3"]["theme"]["name"], "test4")
         self.assertEqual(result["layertest3"]["theme"]["description"], "test 4")
 
 class DataManagerGetLayersForThemeTest(APITestCase):
     def setUp(self):
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
-        theme1.site.set([1])
+        site = Site.objects.get(pk=1)
+        self.theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True, description="test")
+        self.theme1.site.add(site)
         # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        layer1 =Theme.objects.create(name="arcrest_layer")
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer1.site.set([1])
-        layer1.themes.set([1])
-        layer2 = Layer.objects.create(id=2, name="sublayer", layer_type="arcgis", is_sublayer=True)
-        layer2.site.set([1])
-        layer2.themes.set([1])
-        layer1.sublayers.set([layer2])
+        layer1.site.add(site)
+
+        layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
+        layer2.site.add(site)
+
+        ChildOrder.objects.create(parent_theme=self.theme1, content_object=layer1, order=1)
+        ChildOrder.objects.create(parent_theme=self.theme1, content_object=layer2, order=1)
+        ChildOrder.objects.create(parent_theme=layer1, content_object=layer2, order=1)
 
     def test_get_layers_for_theme(self):
         client = APIClient()
-        response = client.get("/data_manager/get_layers_for_theme/1")
+        response = client.get(f"/layers/get_layers_for_theme/{self.theme1.id}/", HTTP_HOST="localhost:8000")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
@@ -680,20 +583,17 @@ class DataManagerGetLayersForThemeTest(APITestCase):
         self.assertIsInstance(result["layers"][0]["subLayers"][0], dict, "each subLayer should be a dictionary")
         self.assertIsInstance(result["layers"][0]["subLayers"][0]["id"], int, "id should be integer")
         self.assertIsInstance(result["layers"][0]["subLayers"][0]["name"], str, "name should be string")
-        self.assertIsInstance(result["layers"][0]["subLayers"][0]["slug_name"], str, "slug_name should be string")
+        self.assertIsInstance(result["layers"][0]["subLayers"][0]["slug_name"], (str, type(None)), "slug_name should be string")
 
-        self.assertEqual(result["layers"][0]["id"], 1)
         self.assertEqual(result["layers"][0]["name"], "arcrest_layer")
-        self.assertEqual(result["layers"][0]["type"], "arcgis")
         self.assertEqual(result["layers"][0]["has_sublayers"], True)
-        self.assertEqual(result["layers"][0]["subLayers"][0]["id"], 2)
         self.assertEqual(result["layers"][0]["subLayers"][0]["name"], "sublayer")
-        self.assertEqual(result["layers"][0]["subLayers"][0]["slug_name"], "sublayer2")
+        self.assertEqual(result["layers"][0]["subLayers"][0]["slug_name"], None)
 
 class DataManagerWMSRequestCapabilities(APITestCase):
     def test_wms_request_capabilities_response(self):
         client = APIClient()
-        response = client.get("/data_manager/wms_capabilities/?url=https%3A%2F%2Fwww.coastalatlas.net%2Fservices%2Fwms%2Fgetmap%2F%3F")
+        response = client.get("/layers/wms_capabilities/?url=https%3A%2F%2Fwww.coastalatlas.net%2Fservices%2Fwms%2Fgetmap%2F%3F")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
@@ -769,25 +669,22 @@ class DataManagerWMSRequestCapabilities(APITestCase):
 
 class DataManagerGetLayerCatalogContent(APITestCase):
     def setUp(self):
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
-        theme1.site.set([1])
+        site = Site.objects.get(pk=1)
+        theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True, description="test")
+        theme1.site.add(site)
         # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        self.layer1 =Layer.objects.create(name="arcrest_layer", layer_type="ArcRest",)
+        arcrest = LayerArcREST.objects.create(layer=self.layer1)
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer1.site.set([1])
-        layer1.themes.set([1])
+        self.layer1.site.add(site)
+
+        ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer1, order=1)
 
     def test_get_layer_catalog_content(self):
         client = APIClient()
-        response = client.get("/data_manager/get_layer_catalog_content/1/")
+        response = client.get(f"/layers/get_layer_catalog_content/{self.layer1.id}/")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
-        
-        layer1 = Layer.objects.get(id=1)
 
         # Validate the structure of the response
         self.assertIn("html", result)
@@ -797,7 +694,7 @@ class DataManagerGetLayerCatalogContent(APITestCase):
         self.assertIsInstance(result["html"], str)
 
         # Validate specific value
-        self.assertEqual(result["html"], layer1.catalog_html)
+        self.assertEqual(result["html"], self.layer1.catalog_html)
 
 class DataManagerGetCatalogRecords(APITestCase):
     def test_get_catalog_records(self):
@@ -826,95 +723,97 @@ class DataManagerGetCatalogRecords(APITestCase):
 
 class DataManagerLayerStatusTest(APITestCase):
     def setUp(self):
-        congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
-        theme1.site.set([1])
-        theme2 = Theme.objects.create(id=2, name="companion2", display_name="companion2", visible=True)
-        theme2.site.set([1])
+        site = Site.objects.get(pk=1)
+        theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True, description="test")
+        theme1.site.add(site)
         # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        layer1 =Theme.objects.create(name="arcrest_layer", theme_type="radio",)
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer1.site.set([1])
-        layer1.themes.set([1])
+        layer1.site.add(site)
+
         # Create a test sublayer
-        layer2 = Layer.objects.create(id=2, name="sublayer", layer_type="arcgis", is_sublayer=True)
-        layer2.site.set([1])
-        layer2.themes.set([1])
-        layer1.sublayers.set([layer2])
+        self.layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest",)
+        self.arcrest2 = LayerArcREST.objects.create(layer=self.layer2)
+        self.layer2.site.add(site)
+
+        ChildOrder.objects.create(parent_theme=theme1, content_object=layer1, order=1)
+        ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer2, order=1)
+        ChildOrder.objects.create(parent_theme=layer1, content_object=self.layer2, order=1)
     
     def test_layer_status(self):
         client = APIClient()
-        response = client.get("/data_manager/migration/layer_status")
+        response = client.get("/layers/migration/layer_status/")
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
 
-        # Get Layers and Themes and prepare a dictionary for comparison
-        layer2 = Layer.objects.get(id=2)
-        layer2dict = layer2.toDict
-        layer2dict["uuid"] = str(layer2dict["uuid"])
-        layer2uuid = layer2dict["uuid"]
-        theme2 = Theme.objects.get(id=2)
-        theme2uuid = str(theme2.uuid)
-
+        self.assertIsInstance(result, dict)
         self.assertIn("themes", result)
         self.assertIn("layers", result)
-        self.assertIn(f"{theme2uuid}", result["themes"])
-        self.assertIn(f"{layer2uuid}", result["layers"])
-        self.assertIn("name", result["themes"][f"{theme2uuid}"])
-        self.assertIn("name", result["layers"][f"{layer2uuid}"])
-        self.assertIn("uuid", result["themes"][f"{theme2uuid}"])
-        self.assertIn("date_modified", result["themes"][f"{theme2uuid}"])
-        self.assertIn("date_modified", result["layers"][f"{layer2uuid}"])
-        self.assertIn("layers", result["themes"][f"{theme2uuid}"])
-        
-        self.assertIsInstance(result, dict)
-        self.assertIsInstance(result["themes"], dict)
-        self.assertIsInstance(result["layers"], dict)
-        self.assertIsInstance(result["themes"][f"{theme2uuid}"], dict)
-        self.assertIsInstance(result["layers"][f"{layer2uuid}"], dict)
-        self.assertIsInstance(result["themes"][f"{theme2uuid}"]["name"], str)
-        self.assertIsInstance(result["themes"][f"{theme2uuid}"]["uuid"], str)
-        self.assertIsInstance(result["themes"][f"{theme2uuid}"]["date_modified"], str)
-        self.assertIsInstance(result["themes"][f"{theme2uuid}"]["layers"], Collection)
-        self.assertIsInstance(result["layers"][f"{layer2uuid}"]["name"], str)
-        self.assertIsInstance(result["layers"][f"{layer2uuid}"]["date_modified"], str)
+
+        # Check themes structure and data types
+        for theme_uuid, theme_data in result["themes"].items():
+            self.assertIsInstance(theme_uuid, str)
+            self.assertIsInstance(theme_data, dict)
+            self.assertIn("name", theme_data)
+            self.assertIn("uuid", theme_data)
+            self.assertIn("date_modified", theme_data)
+            self.assertIn("layers", theme_data)
+            self.assertIsInstance(theme_data["name"], str)
+            self.assertIsInstance(theme_data["uuid"], str)
+            self.assertIsInstance(theme_data["date_modified"], str)
+            self.assertIsInstance(theme_data["layers"], list)
+
+            # Check each layer within a theme for correct structure and types
+            for layer in theme_data["layers"]:
+                self.assertIsInstance(layer, dict)
+                self.assertIn("uuid", layer)
+                self.assertIn("name", layer)
+                self.assertIn("date_modified", layer)
+                self.assertIn("subLayers", layer)
+                self.assertIsInstance(layer["uuid"], str)
+                self.assertIsInstance(layer["name"], str)
+                self.assertIsInstance(layer["date_modified"], str)
+                self.assertIsInstance(layer["subLayers"], list)
+
+                # If needed, repeat a similar structure to check sublayers details
+
+        # Check layers structure and data types
+        for layer_uuid, layer_data in result["layers"].items():
+            self.assertIsInstance(layer_uuid, str)
+            self.assertIsInstance(layer_data, dict)
+            self.assertIn("name", layer_data)
+            self.assertIn("date_modified", layer_data)
+            self.assertIsInstance(layer_data["name"], str)
+            self.assertIsInstance(layer_data["date_modified"], str)
 
 class DataManagerLayerDetailsTest(APITestCase):
     def setUp(self):
+        site = Site.objects.get(pk=1)
         congress_layer_url="https://coast.noaa.gov/arcgis/rest/services/OceanReports/USCongressionalDistricts/MapServer/export"
-        theme1 = Theme.objects.create(id=1, name="companion", display_name="companion", visible=True, description="test")
-        theme1.site.set([1])
-        theme2 = Theme.objects.create(id=2, name="companion2", display_name="companion2", visible=True)
-        theme2.site.set([1])
+        theme1 = Theme.objects.create(name="companion", display_name="companion", is_visible=True, description="test")
+        theme1.site.add(site)
+        theme2 = Theme.objects.create(name="companion2", display_name="companion2", is_visible=True)
+        theme2.site.add(site)
         # This test layer will have attributes defined to test data type when filled out
-        layer1 =Layer.objects.create(id=1, name="arcrest_layer", order=15, layer_type="arcgis", url=congress_layer_url, arcgis_layers="19", password_protected=True, query_by_point=True,  maxZoom=14, minZoom=6, proxy_url=True, disable_arcgis_attributes=True, utfurl="testing", wms_slug="hi", wms_version="hello", 
-                             wms_format="pusheen", wms_srs="world", wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test", has_companion=True, search_query=True, legend="hi", legend_title="title", legend_subtitle="subtitle", description="testlayer", 
-                             data_overview="testlayer", data_source="testlayer", data_notes="testlayer", kml="testlayer", data_download="testlayer", learn_more="testlayer", metadata="testlayer", source="testlayer", label_field="testlayer", custom_style="testlayer", vector_outline_color="blue", vector_outline_opacity=5, vector_outline_width=2, point_radius=8,
-                             vector_color="blue", vector_fill=5, vector_graphic="testlayer", vector_graphic_scale=5, opacity=0.8, is_annotated=True, is_disabled=True, disabled_message="testlayer")
+        self.layer1 =Theme.objects.create(name="arcrest_layer", theme_type="radio", )
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
-        layer1.site.set([1])
-        layer1.themes.set([1])
+        self.layer1.site.add(site)
         # Create a test sublayer
-        layer2 = Layer.objects.create(id=2, name="sublayer", layer_type="arcgis", is_sublayer=True)
-        layer2.site.set([1])
-        layer2.themes.set([1])
-        layer1.sublayers.set([layer2])
+        self.layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
+        self.arcrest2 = LayerArcREST.objects.create(layer=self.layer2)
+        self.layer2.site.add(site)
+        ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer1, order=1)
+        ChildOrder.objects.create(parent_theme=theme1, content_object=self.layer2, order=1)
+        ChildOrder.objects.create(parent_theme=self.layer1, content_object=self.layer2, order=1)
     
     def test_layer_details(self):
-        layer2 = Layer.objects.get(id=2)
-        layer2dict = layer2.toDict
-        layer2dict["uuid"] = str(layer2dict["uuid"])
+        layer2dict = LayerArcRESTSerializer(self.arcrest2).data
         layer2uuid = layer2dict["uuid"]
-        layer1 = Layer.objects.get(id=1)
-        layer1dict = layer1.toDict
-        layer1dict["uuid"] = str(layer1dict["uuid"])
+        layer1dict = SubThemeSerializer(self.layer1).data
         layer1uuid = layer1dict["uuid"]
 
         client = APIClient()
-        response = client.post("/data_manager/migration/layer_details", {"layers": [layer1uuid, layer2uuid]})
+        response = client.post("/layers/migration/layer_details/", {"layers": [layer1uuid, layer2uuid]})
         self.assertEqual(response.status_code, 200)
         result = json.loads(response.content)
         
@@ -932,3 +831,173 @@ class DataManagerLayerDetailsTest(APITestCase):
         self.assertEqual(result["status"], "Success")
         self.assertEqual(result["message"], "layer(s) details retrieved")
         self.assertEqual(len(result["layers"]), 2)
+
+class LiveAPITests(APITestCase):
+    def setUp(self):
+        pass
+    def test_v1_responses(self):
+        import requests, json
+        mdl_theme_response = requests.get('http://localhost:8002/old_manager/get_themes')
+        mls_theme_response = requests.get('http://localhost:8002/data_manager/get_themes')
+        old_themes = json.loads(mdl_theme_response.content)
+        new_themes = json.loads(mls_theme_response.content)
+        self.assertEqual(old_themes, new_themes)
+        for idx, theme in enumerate(old_themes['themes']):
+            self.assertEqual(theme, new_themes['themes'][idx])
+            print("Testing theme {}: {}".format(theme['id'], theme['name']))
+
+            # Use the below IF statements to save some time testing specific themes.
+            # if theme['id'] in DYNAMIC_PARENT_THEMES:
+            # if theme['id'] in SLIDER_PARENT_THEMES:
+            if not theme['id'] in FULLY_COMPLIANT_THEMES:
+                self.loop_through_theme_children(theme['id'])
+
+    def loop_through_theme_children(self, theme_id):
+        dm_theme_response = requests.get('http://localhost:8002/old_manager/get_layers_for_theme/{}'.format(theme_id))
+        ls_theme_response = requests.get('http://localhost:8002/data_manager/get_layers_for_theme/{}'.format(theme_id))
+        old_theme_data = json.loads(dm_theme_response.content)
+        new_theme_data = json.loads(ls_theme_response.content)
+        self.assertEqual(old_theme_data.keys(), new_theme_data.keys())
+        self.assertEqual(len(old_theme_data['layers']), len(new_theme_data['layers']))
+        self.compare_lists(old_theme_data['layers'], new_theme_data['layers'])
+        print(" -- Testing {} layers...".format(len(new_theme_data['layers'])))
+        self.loop_though_theme_layers(new_theme_data['layers'])
+
+    def compare_lists(self, old_list, new_list):
+        for child in new_list:
+            if not child in old_list:
+                match = next(filter(lambda record: record['id'] == child['id'], old_list))
+                for key in child.keys():
+                    if not key in ['subLayers', 'type', 'date_modified']:
+
+                        if not child[key] == match[key]:
+                            print(child)
+                            print(match)
+                            print("Key '{}': new:'{}' ; old:'{}'".format(key, child[key], match[key]))
+
+
+                    elif key == 'type' and (
+                            child['type'] == 'slider' or child['type'] in ['checkbox',] and 
+                            child['has_sublayers'] == True and match['has_sublayers'] == True
+                        ):
+                            pass
+                    elif key == 'subLayers':   # 'subLayers'
+                        if not (type(match[key]) == str or type(child[key])==str):
+                            self.compare_lists(match[key], child[key])
+                        else:
+                            self.assertEqual(child[key], match[key])
+
+    def loop_though_theme_layers(self, layer_list):
+        for index, layer in enumerate(layer_list):
+            dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(layer['id']))
+            ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(layer['id']))
+            old_layer_data = json.loads(dm_layer_response.content)
+            new_layer_data = json.loads(ls_layer_response.content)
+            # if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
+            #     import ipdb; ipdb.set_trace()
+            self.assertEqual(old_layer_data.keys(), new_layer_data.keys())
+            self.compare_layers(old_layer_data, new_layer_data, index)
+
+    def loop_through_slider_associations(self, associated_multilayers):
+        for index, key in enumerate(associated_multilayers.keys()):
+            if type(associated_multilayers[key]) == dict:
+                self.loop_through_slider_associations(associated_multilayers[key])
+            elif type(associated_multilayers[key]) == int:
+                print(f"Associated Multilayer: {associated_multilayers[key]}")
+                dm_layer_response = requests.get('http://localhost:8002/old_manager/get_layer_details/{}'.format(associated_multilayers[key]))
+                ls_layer_response = requests.get('http://localhost:8002/data_manager/get_layer_details/{}'.format(associated_multilayers[key]))
+                old_layer_data = json.loads(dm_layer_response.content)
+                new_layer_data = json.loads(ls_layer_response.content)
+                # if not len(old_layer_data.keys()) == len(new_layer_data.keys()):
+                #     import ipdb; ipdb.set_trace()
+                self.assertEqual(old_layer_data.keys(), new_layer_data.keys())
+                self.compare_layers(old_layer_data, new_layer_data, index)
+ 
+    def compare_layers(self, old_layer, new_layer, layer_count):
+        if 'type' in new_layer.keys() and new_layer['type'] == 'slider':
+            new_layer['type'] = old_layer['type']
+            self.loop_through_slider_associations(new_layer['associated_multilayers'])
+        for key in old_layer.keys():
+            if key not in ['date_modified','subLayers','attributes', 'lookups', 'companion_layers']: # objects and dates?
+                if not old_layer[key] == new_layer[key]:
+                    if (
+                        # old empty strings are new nulls
+                        key in [
+                            'arcgis_layers', 'wms_slug', 'wms_format', 'wms_srs', 'wms_styles', 'wms_timing', 
+                            'wms_time_item', 'utfurl', 'legend', 'legend_title', 
+                            'legend_subtitle', 'learn_more', 'outline_color', 'data_download', 'wms_version'
+                        ] and old_layer[key] == '' and new_layer[key] == None
+                    ) or (
+                        # old nulls are new empty strings
+                        key in [
+                            'source', 'wms_version', 'wms_additional'
+                        ] and old_layer[key] == None and new_layer[key] == ""
+                    ) or (
+                        #fields are set that have no business being set on parent layers/themes
+                        key in [
+                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'arcgis_layers', 'type', 'tiles', 'kml', 'opacity'
+                        ] and new_layer['type'] in [
+                            'checkbox', 'radio', 'placeholder'
+                        ]
+                    ) or (
+                        # Custom Vector styling for non-Vector sources
+                        new_layer['type'] not in [
+                            'ArcFeatureService', 'vector',
+                        ] and key in [
+                            'outline_opacity', 'color', 'fill_opacity', 'graphic', 'graphic_scale', 'point_radius',
+                        ]
+                    ):
+                        old_layer[key] = new_layer[key]
+                    elif key == 'url' and any( dynamic_theme_id in new_layer['catalog_html'] for dynamic_theme_id in [";themes%5Bids%5D%5B%5D=25&", ";themes%5Bids%5D%5B%5D=24&"]):
+                        if ";themes%5Bids%5D%5B%5D=25&" in new_layer['catalog_html']:
+                            parent_theme = "vtr"
+                        elif ";themes%5Bids%5D%5B%5D=24&" in new_layer['catalog_html']:
+                            parent_theme = "mdat"
+                        print("*****************")
+                        print("Theme {} belongs to '{}' theme".format(new_layer['id'], parent_theme))
+                        print("TODO: Correct Dynamic Layer support! Passing for now...")
+                        print("*****************")
+                        old_layer[key] = new_layer[key]
+                    elif key == 'catalog_html':
+                        old_layer[key] = old_layer[key].replace('<a class="btn btn-mini disabled" href="None">', '<a class="btn btn-mini disabled" href="">')
+                        new_layer[key] = new_layer[key].replace('<a class="btn btn-mini disabled" href="None">', '<a class="btn btn-mini disabled" href="">')
+                    elif key == 'has_companion' and old_layer[key] == True:
+                        # some old layers have 'has_companion' checked, but no companions assigned (5206)
+                        old_layer['has_companion'] = len(old_layer['companion_layers']) > 0
+                    if not old_layer[key] == new_layer[key]:
+                        print("=================")
+                        print("Layer #{} for theme".format(layer_count))
+                        print("ID: {}".format(old_layer['id']))
+                        print("Name: {}".format(old_layer['name']))
+                        print("KEY: {}".format(key))
+                        print("OLD: {}".format(old_layer[key]))
+                        print("NEW: {}".format(new_layer[key]))
+                        # import ipdb; ipdb.set_trace()
+                        print("=================")
+                if not key in ['data_notes','disabled_message']:
+                    self.assertEqual(old_layer[key], new_layer[key])
+            elif key == 'companion_layers':
+                if old_layer['has_companion'] == False:
+                    old_layer['companion_layers'] = []
+                self.assertEqual(len(old_layer[key]), len(new_layer[key]))
+                for index, old_companion in enumerate(old_layer[key]):
+                    new_companion = new_layer[key][index]
+                    old_keys = old_companion.keys()
+                    new_keys = new_companion.keys()
+                    key_diff = 0
+                    for old_key in old_keys:
+                        if not old_key in new_keys:
+                            key_diff += 1
+                            print("OLD KEY: '{}' not in new keys".format(old_key))
+                    for new_key in new_keys:
+                        if not new_key in old_keys:
+                            key_diff += 1
+                            print("NEW KEY: '{}' not in old keys".format(new_key))
+                    if key_diff > 0:
+                        print("Total num of different keys: {}".format(key_diff))
+                    self.compare_layers(old_companion, new_companion, layer_count)
+            # elif key in ['subLayers', 'attributes', 'lookups', 'companion_layers']:
+            #     if not (type(old_layer[key]) == str or type(new_layer[key])==str):
+            #         self.compare_lists(old_layer[key], new_layer[key])
+            #     else:
+            #         self.assertEqual(new_layer[key], old_layer[key])

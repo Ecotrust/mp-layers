@@ -1,0 +1,96 @@
+.select2-container .select2-selection--single .select2-selection__rendered.select2-textarea {
+  white-space: normal;
+  text-overflow: unset;
+  height: 100%;
+  overflow: auto;
+  line-height: 20px;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  visibility: hidden;
+}
+
+/* override 'dark mode' printing light text on select2 white background */
+span.select2-results {
+  color: black; 
+}
+
+/*************************************
+ *    Spinner Dialog
+ ************************************/
+.ui-dialog.ui-widget.ui-widget-content {
+  border-radius: 10px;
+  padding: 0
+}
+.ui-dialog.ui-widget.ui-widget-content .ui-dialog-titlebar {
+  border-radius: 9px 9px 0 0;
+}
+
+#spinner-dialog img {
+  display: block;
+  margin: 30px auto;
+}
+
+/*************************************
+ *    Collapse animation support
+ ************************************/
+/* fieldset.late-transition.collapse table,
+fieldset.late-transition.collapse input,
+fieldset.late-transition.collapse div { */
+fieldset.late-transition.collapse * {
+  max-height: 1000px;
+  transition: max-height 0.5s, padding-top 0.5s, padding-bottom 0.5s;
+}
+fieldset.late-transition.collapse *:not(.related-widget-wrapper):not(.related-widget-wrapper *) {
+  height: auto;
+}
+
+fieldset.late-transition.collapse div.argis-details-table-wrapper,
+fieldset.late-transition.collapse div.argis-zoom-table-wrapper {
+  max-height: 500px;
+  overflow-y: auto;
+  max-width: 50vw;
+  float: right;
+  border: 1px solid #888;
+  padding-right: 1rem;
+}
+fieldset.late-transition.collapse div.argis-details-table-wrapper {
+  margin-top: -50px;
+}
+
+fieldset.late-transition.collapse h2 {
+  transition: background 0.5s;
+}
+
+/* fieldset.late-transition.collapse.collapsed table,
+fieldset.late-transition.collapse.collapsed input,
+fieldset.late-transition.collapse.collapsed div { */
+fieldset.late-transition.collapse.collapsed * {
+  max-height: 0;
+  display: block;
+  padding: 0;
+  border: none;
+}
+
+fieldset.late-transition.collapse h2,
+fieldset.late-transition.collapse.collapsed h2 {
+  max-height: 31px;
+  padding: 4px;
+  display: flex;
+}
+
+a.collapse-toggle {
+  display: inline;
+}
+
+
+/*************************************
+ *    Additional Page Layout
+ ************************************/
+.aligned label {
+  padding: unset;
+}
+
+div.form-row>div {
+  margin: 0.2rem;
+}

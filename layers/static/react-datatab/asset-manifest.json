@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/static/css/layer_picker.css",
+    "main.js": "/static/js/layer_picker.js",
+    "static/js/layer_picker.chunk.js": "/static/js/layer_picker.chunk.js",
+    "index.html": "/index.html",
+    "layer_picker.css.map": "/static/css/layer_picker.css.map",
+    "layer_picker.js.map": "/static/js/layer_picker.js.map",
+    "layer_picker.chunk.js.map": "/static/js/layer_picker.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/layer_picker.css",
+    "static/js/layer_picker.js"
+  ]
+}

@@ -1,10 +1,10 @@
-name: Django CI
+name: Tests
 
 on:
   push:
-    branches: [ "main", "ci_testing" ]
+    branches: [ "main", "ci_testing", "Vanilla_layers" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "Vanilla_layers" ]
 
 jobs:
   build:
@@ -13,12 +13,12 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [3.10.12]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install Dependencies
@@ -28,4 +28,32 @@ jobs:
         pip install -r requirements.txt
     - name: Run Tests
       run: |
-        python ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
+        coverage run --source='.' ci_testing/mp_layers_testing/manage.py test layers.tests.test_models
+    - name: Set Coverage
+      id: set_coverage
+      run: |
+        COV=`coverage report --format=total`
+        echo "coverage=$COV" >> $GITHUB_OUTPUT
+    #    echo "$COV%"
+    #    echo "{'coverage':$COV}" > /tmp/coverage_badge.json
+    # - name: Archive test coverage results
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: test-coverage-report_py-${{ matrix.python-version }}
+    #     path: /tmp/coverage_badge.json
+    - name: Create Coverage Badge
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      with:
+        auth: ${{ secrets.COVERAGE_GIST_SECRET }}
+        gistID: 20cd92a8df1c63f3e6447540e67cddfd
+        filename: mpl_coverage.json
+        label: Coverage
+        message: "${{ steps.set_coverage.outputs.coverage }}%"
+        color: green
+    # TODO: Set IF sections to change colors:
+    # >= 95: 'green'
+    # >= 90: 'yellow'
+    # >= 80: 'orange'
+    # <80: 'red'
+    
+

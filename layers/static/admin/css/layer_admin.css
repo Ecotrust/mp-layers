@@ -1,0 +1,8 @@
+.inline-deletelink {
+    display: none !important;
+}
+.parent-div > * {
+    display: block;
+    width: 100%;
+    box-sizing: border-box; /* This ensures padding does not add to the width */
+}

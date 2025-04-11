@@ -1,0 +1,41 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'jquery-ui/jquery-ui.min.css' %}">
+  <link rel="stylesheet" href="{% static 'admin/css/vendor/select2/select2.min.css' %}">
+  <link rel="stylesheet" href="{% static 'admin/layers/css/layer_form.css' %}">
+
+
+  <script type="text/javascript" src="{% static 'jquery/dist/jquery.min.js' %}"></script>
+  <script src="{% static 'jquery-ui/jquery-ui.min.js' %}"></script>
+  <script src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}"></script>
+  <script type="text/javascript" src="{% static 'js/lib/knockout-3.3.0.js' %}"></script>
+  <script type="text/javascript">
+    CATALOG_TECHNOLOGY = '{{ CATALOG_TECHNOLOGY }}';
+    CATALOG_PROXY = '{{ CATALOG_PROXY }}';
+  </script>
+  {% if CATALOG_TECHNOLOGY == 'GeoPortal2' %}
+    <!-- <script type="text/javascript" src="/geoportal/app/etc/ServiceType.js"></script> -->
+  {% endif %}
+  <script type="text/javascript" src="{% static 'layers/js/admin_layer_form.js' %}"></script>
+  {% if CATALOG_TECHNOLOGY != 'default' %}
+    <script type="text/javascript" src="{% static 'layers/js/catalog/'|add:CATALOG_TECHNOLOGY|add:'.js' %}"></script>
+  {% endif %}
+{% endblock %}
+
+{% block field_sets %}
+  {% for fieldset in adminform %}
+    {% include "admin/layers/Layer/LayerFieldset.html" %}
+  {% endfor %}
+{% endblock %}
+
+{% block content %}
+  {{ block.super}}
+  <div id="spinner-dialog" title="Loading..."><img src="{% static 'wagtailadmin/images/spinner.gif' %}" /></div>
+{% endblock %}
+
+{% block after_related_objects %}
+  <!--<h2>{{ test }}</h2>-->
+{% endblock %}
