@@ -2,3 +2,4 @@ djangorestframework
 django-colorfield
 django-autocomplete-light
 django-querysetsequence
+django-import-export
