@@ -33,7 +33,7 @@ jobs:
       id: set_coverage
       run: |
         COV=`coverage report --format=total`
-        echo "::set-output name=coverage::$COV"
+        echo "coverage=$COV" >> $GITHUB_OUTPUT
     #    echo "$COV%"
     #    echo "{'coverage':$COV}" > /tmp/coverage_badge.json
     # - name: Archive test coverage results
