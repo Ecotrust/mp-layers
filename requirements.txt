@@ -1,2 +1,5 @@
 djangorestframework
 django-colorfield
+celery
+django-autocomplete-light
+django-querysetsequence
