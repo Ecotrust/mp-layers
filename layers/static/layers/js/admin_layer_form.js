@@ -160,15 +160,16 @@ get_wms_capabilities = function() {
             $('#id_layerwms_set-0-wms_srs').val(srs_val);
           }
 
-          $('#id_layerwms_set-0-wms_srs').change(function() {
-            if ($('#id_layerwms_set-0-wms_srs').val().toLowerCase() == 'epsg:3857') {
-              $('#id_layerwms_set-0-wms_time_item').prop('disabled', true);
-              $('#id_layerwms_set-0-wms_additional').prop('disabled', false);
-            } else {
-              $('#id_layerwms_set-0-wms_time_item').prop('disabled', false);
-              $('#id_layerwms_set-0-wms_additional').prop('disabled', true);
-            }
-          });
+          // 2025-04-17: What was the point of this? Give it a year and then remove it if you see this message.
+          // $('#id_layerwms_set-0-wms_srs').change(function() {
+          //   if ($('#id_layerwms_set-0-wms_srs').val().toLowerCase() == 'epsg:3857') {
+          //     $('#id_layerwms_set-0-wms_time_item').prop('disabled', true);
+          //     $('#id_layerwms_set-0-wms_additional').prop('disabled', false);
+          //   } else {
+          //     $('#id_layerwms_set-0-wms_time_item').prop('disabled', false);
+          //     $('#id_layerwms_set-0-wms_additional').prop('disabled', true);
+          //   }
+          // });
 
           // Replace Styles
           var style_keys = [];
@@ -181,7 +182,7 @@ get_wms_capabilities = function() {
           } else {
             $('#id_layerwms_set-0-wms_styles').prop('disabled', false);
             var style_val = $('#id_layerwms_set-0-wms_styles').val();
-            var style_html = '<select id="id_layerwms_set-0-wms_styles" name="layerwms_set-0-wms_srs">';
+            var style_html = '<select id="id_layerwms_set-0-wms_styles" name="layerwms_set-0-wms_styles">';
             style_html += '<option value="">Default</option>';
             for (var i = 0; i < style_keys.length; i++) {
               opt_val = style_keys[i];
