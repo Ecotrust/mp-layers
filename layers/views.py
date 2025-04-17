@@ -496,8 +496,16 @@ def wms_get_capabilities(url):
             'formats': available_formats
         }
 
+    try:
+        layers_with_titles = []
+        for key in wms.contents.keys():
+            layers_with_titles.append({"key": key, "title": wms.contents[key].title})
+        available_layers = layers_with_titles
+    except Exception as e:
+        available_layers = list(layers.keys()) 
+
     result = {
-        'layers': list(layers.keys()),
+        'layers': available_layers,
         'formats': wms.getOperationByName('GetMap').formatOptions,
         'version': wms.version,
         'styles':  styles,
