@@ -348,11 +348,16 @@ def get_layer_details(request, layerID):
                 specific_layer_model = layer_type_to_model.get(layer.layer_type)
             # Now, use the specific model class to get the specific layer instance
             if specific_layer_model and specific_layer_model != Layer:
-                specific_layer = specific_layer_model.objects.get(layer=layer)
+                # If admin doesn't touch specific layer form, no specific layer will have been created. This creates the default, 
+                #   which has the same values that would be assumed if it were missing.
+                (specific_layer, created) = specific_layer_model.objects.get_or_create(layer=layer)
             else: 
+                # TODO: why set this to layer? Why not just skil the next 'if' case if there is no specific layer?
+                # specific_layer = False
                 specific_layer = layer
             specific_layer_serializer_class = layer_type_to_serializer.get(layer.layer_type)
             # Instantiate the serializer with the specific layer instance
+            # if specific_layer and specific_layer_serializer_class:
             if specific_layer_serializer_class:
                 specific_layer_serializer = specific_layer_serializer_class(specific_layer)
                 # Now you can use the serializer to get the serialized data
@@ -491,8 +496,16 @@ def wms_get_capabilities(url):
             'formats': available_formats
         }
 
+    try:
+        layers_with_titles = []
+        for key in wms.contents.keys():
+            layers_with_titles.append({"key": key, "title": wms.contents[key].title})
+        available_layers = layers_with_titles
+    except Exception as e:
+        available_layers = list(layers.keys()) 
+
     result = {
-        'layers': list(layers.keys()),
+        'layers': available_layers,
         'formats': wms.getOperationByName('GetMap').formatOptions,
         'version': wms.version,
         'styles':  styles,

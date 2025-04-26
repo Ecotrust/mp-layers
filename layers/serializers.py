@@ -35,8 +35,12 @@ def get_companion_layers(obj):
     # Now, use `layer_instance` to filter Companionship instances
     companionships = Companionship.objects.filter(layer=layer_instance)
     companion_layers = []
-    for companionship in companionships:
-        companion_layers.extend(companionship.companions.all())
+    if layer_instance.has_companion:
+        for companionship in companionships:
+            companion_layers.extend(companionship.companions.all())
+    else:
+        for companionship in layer_instance.companion_to.all():
+            companion_layers.append(companionship.layer)
     return companion_layers
 
 def get_serialized_sublayers(obj):
