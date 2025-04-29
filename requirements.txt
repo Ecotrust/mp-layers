@@ -4,3 +4,4 @@ django-autocomplete-light
 django-querysetsequence
 django-import-export
 django-nested-admin
+celery
