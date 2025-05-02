@@ -79,7 +79,7 @@ const AdminLayerForm = (() => {
       show_spinner();
       var url = $('#id_url').val();
       $.ajax({
-        url: '/data_manager/wms_capabilities/',
+        url: '/layers/wms_capabilities/',
         data: {
           url: url
         },
@@ -88,12 +88,33 @@ const AdminLayerForm = (() => {
           var blank_option = '<option value="">_________</option>';
 
           // Replace WMS Layer Name
+          let layer_name_value = '';
+          let layer_name_title = '';
+          let layer_option_html = ''
           var slug_val = $('#id_layerwms_set-0-wms_slug').val();
           var layer_name_html = '<select id="id_layerwms_set-0-wms_slug" name="layerwms_set-0-wms_slug">';
           layer_name_html += blank_option;
           for (var i = 0; i < data.layers.length; i++) {
             var opt_val = data.layers[i];
-            layer_name_html += '<option value="' + opt_val + '">' + opt_val + '</option>';
+            if (typeof(opt_val) == "object"){
+              if (opt_val.hasOwnProperty('key') && opt_val.hasOwnProperty('title')) {
+                layer_name_value = opt_val['key'];
+                layer_name_title = opt_val['title'];
+              } else {
+                layer_name_value = opt_val['key'];
+                layer_name_title = opt_val['key'];
+              }
+            // } else if (typeof(opt_val) == "string") {
+            } else {
+              layer_name_value = opt_val;
+              layer_name_title = opt_val;
+            }
+            layer_option_html = '<option value="' + layer_name_value + '"';
+            if (slug_val === layer_name_value) {
+              layer_option_html += ' selected';
+            }
+            layer_option_html += '>' + layer_name_title + '</option>';
+            layer_name_html += layer_option_html;
           }
           layer_name_html += '</select>';
           $('#id_layerwms_set-0-wms_slug').replaceWith(layer_name_html);
@@ -141,15 +162,16 @@ const AdminLayerForm = (() => {
             $('#id_layerwms_set-0-wms_srs').val(srs_val);
           }
 
-          $('#id_layerwms_set-0-wms_srs').change(function () {
-            if ($('#id_layerwms_set-0-wms_srs').val().toLowerCase() == 'epsg:3857') {
-              $('#id_layerwms_set-0-wms_time_item').prop('disabled', true);
-              $('#id_layerwms_set-0-wms_additional').prop('disabled', false);
-            } else {
-              $('#id_layerwms_set-0-wms_time_item').prop('disabled', false);
-              $('#id_layerwms_set-0-wms_additional').prop('disabled', true);
-            }
-          });
+          // 2025-04-17: What was the point of this? Give it a year and then remove it if you see this message.
+          // $('#id_layerwms_set-0-wms_srs').change(function() {
+          //   if ($('#id_layerwms_set-0-wms_srs').val().toLowerCase() == 'epsg:3857') {
+          //     $('#id_layerwms_set-0-wms_time_item').prop('disabled', true);
+          //     $('#id_layerwms_set-0-wms_additional').prop('disabled', false);
+          //   } else {
+          //     $('#id_layerwms_set-0-wms_time_item').prop('disabled', false);
+          //     $('#id_layerwms_set-0-wms_additional').prop('disabled', true);
+          //   }
+          // });
 
           // Replace Styles
           var style_keys = [];
@@ -162,7 +184,7 @@ const AdminLayerForm = (() => {
           } else {
             $('#id_layerwms_set-0-wms_styles').prop('disabled', false);
             var style_val = $('#id_layerwms_set-0-wms_styles').val();
-            var style_html = '<select id="id_layerwms_set-0-wms_styles" name="layerwms_set-0-wms_srs">';
+            var style_html = '<select id="id_layerwms_set-0-wms_styles" name="layerwms_set-0-wms_styles">';
             style_html += '<option value="">Default</option>';
             for (var i = 0; i < style_keys.length; i++) {
               opt_val = style_keys[i];
