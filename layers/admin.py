@@ -156,9 +156,15 @@ class ExistingChildInline(admin.TabularInline):
 
 class ParentThemeInlineForm(forms.ModelForm):
     parent_theme = forms.ModelChoiceField(
-        queryset=Theme.all_objects.all(),
+        queryset=None,
         widget=autocomplete.ModelSelect2()
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Enforce query of all Themes every time form is loaded.
+        # Django docs say "It’s evaluated when the form is rendered." <-- This does not seem to be the case in django 3.2
+        self.fields['parent_theme'].queryset = Theme.all_objects.all().order_by('name')
 
     class Meta:
         model = ChildOrder
