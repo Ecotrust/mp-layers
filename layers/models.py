@@ -1008,6 +1008,16 @@ class Layer(models.Model, SiteFlags):
         return layers_dict
     
     def save(self, *args, **kwargs):
+        if 'slug_name' in kwargs.keys():
+            self.slug_name = kwargs['slug_name']
+            kwargs.pop('slug_name', None)
+        else:
+            slug = slugify(self.name)
+            if self.id:
+                self.slug_name = '{}{}'.format(slug, self.id)
+            else:
+                self.slug_name = '{}_new'.format(slug)
+
         content_type = ContentType.objects.get_for_model(self.__class__)
         dirty_cache_keys = [
             'layers_layer_serialized_details_{}'.format(self.pk),
