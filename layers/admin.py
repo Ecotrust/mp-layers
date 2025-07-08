@@ -604,7 +604,7 @@ class LayerResource(resources.ModelResource):
     )
 
 
-    def export_resource(self, obj):
+    def export_resource(self, obj, **kwargs):
         # RDH 2025-03-03: I tried overriding at 'self.export_field', but this required multiple queries per row for the same data.
         # The result was making a 9 second request into a 35 second request just to get 'order' and 'parent_theme' for ChildOrders
         # Doing this once per object, brought that down to 19 seconds.
