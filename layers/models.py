@@ -78,6 +78,7 @@ class Theme(models.Model, SiteFlags):
     dynamic_url = models.TextField(blank=True, null=True, default=None)
 
     # need to add data_source, data_notes, source, (prop) data_url, (prop) catalog_html to match v1 subtheme/parent layer creation
+    metadata_url = models.CharField(max_length=255, blank=True, null=True, verbose_name='Metadata URL', help_text='link to the metadata')
     data_source = models.CharField(max_length=255, blank=True, null=True)
     data_notes = models.TextField(blank=True, null=True, default=None)
     source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
@@ -334,7 +335,9 @@ class Theme(models.Model, SiteFlags):
             "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
         }
         
-        if str(self.pk) in v1_parent_metadata.keys():
+        if self.metadata_url is not None:
+            return self.metadata_url
+        elif str(self.pk) in v1_parent_metadata.keys():
             return v1_parent_metadata[str(self.pk)]
         else:
             return None
