@@ -209,6 +209,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             "fields": (
                 "description",
                 "overview",
+                "metadata_url",
                 "learn_more",
                 "data_notes",
                 "source",
