@@ -212,6 +212,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
                 "metadata_url",
                 "learn_more",
                 "data_notes",
+                "data_source",
                 "source",
                 "disabled_message",
                 "data_download",
