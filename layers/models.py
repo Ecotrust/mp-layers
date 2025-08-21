@@ -79,9 +79,9 @@ class Theme(models.Model, SiteFlags):
 
     # need to add data_source, data_notes, source, (prop) data_url, (prop) catalog_html to match v1 subtheme/parent layer creation
     metadata_url = models.CharField(max_length=255, blank=True, null=True, verbose_name='Metadata URL', help_text='link to the metadata')
-    data_source = models.CharField(max_length=255, blank=True, null=True)
+    data_source = models.CharField(max_length=255, blank=True, null=True, verbose_name='Source Name')
     data_notes = models.TextField(blank=True, null=True, default=None)
-    source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source')
+    source = models.CharField(max_length=255, blank=True, null=True, help_text='link back to the data source', verbose_name='Source URL')
     disabled_message = models.CharField(max_length=255, blank=True, null=True, default=None)
     data_download = models.CharField(max_length=255, blank=True, null=True, help_text='link to download the data')
 
