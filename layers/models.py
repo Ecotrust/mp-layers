@@ -335,7 +335,7 @@ class Theme(models.Model, SiteFlags):
             "5141": "https://www.boem.gov/renewable-energy/state-activities/new-york-bight",
         }
         
-        if not self.metadata_url == None:
+        if self.metadata_url is not None:
             return self.metadata_url
         elif str(self.pk) in v1_parent_metadata.keys():
             return v1_parent_metadata[str(self.pk)]
