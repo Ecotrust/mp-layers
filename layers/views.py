@@ -201,58 +201,23 @@ def get_themes(request):
 
 def get_layer_search_data(request):
     current_site = Site.objects.get_current(request)
-    theme_content_type = ContentType.objects.get_for_model(Theme)
-    layer_content_type = ContentType.objects.get_for_model(Layer)
     search_dict = {}
     for theme in Theme.objects.filter(is_visible=True):
-        # Get child orders for the theme where content_type is Layer
-        child_orders = ChildOrder.objects.filter(
-            parent_theme=theme,
-        )
+        cache_key = 'layers_views_layer_search_data_{}_{}'.format(theme.pk, current_site.id)
+        theme_dict = cache.get(cache_key)
+        if theme_dict is None:
+            theme_dict = {}
+            # Get child orders for the theme where content_type is Layer
+            child_orders = ChildOrder.objects.filter(
+                parent_theme=theme,
+            )
 
-        # Iterate through each child order to access the Layer instances
-        for child_order in child_orders:
-            child = child_order.content_object 
-            if current_site in child.site.all():
-                if child_order.content_type == theme_content_type:
-                    has_sublayers = ChildOrder.objects.filter(parent_theme=child).exists()
-                    # Get all the child orders for this parent theme
-                    sublayers_data = []
-                    if has_sublayers:
-                        sub_child_orders = ChildOrder.objects.filter(parent_theme=child)
-                        for sub_child_order in sub_child_orders:
-                            sub_layer = sub_child_order.content_object
-                            sublayers_data.append({
-                                "name": sub_layer.name,
-                                "id": sub_layer.id
-                            })
-                    search_dict[child.name] = {
-                        'layer': {
-                                'id': child.id,
-                                'name': child.name,
-                                'has_sublayers': has_sublayers,
-                                'sublayers': sublayers_data
-                            },
-                            'theme': {
-                                'id': theme.id,
-                                'name': theme.display_name,
-                                'description': theme.description
-                            }
-                    }
-                else:
-                    search_dict[child.name] = {
-                        'layer': {
-                                'id': child.id,
-                                'name': child.name,
-                                'has_sublayers': False,
-                                'sublayers': []
-                            },
-                            'theme': {
-                                'id': theme.id,
-                                'name': theme.display_name,
-                                'description': theme.description
-                            }
-                    }
+            # Iterate through each child order to access the Layer instances
+            for child_order in child_orders:
+                child = child_order.content_object
+                theme_dict[child.name] = child.get_search_object(current_site.id, theme)
+            cache.set(cache_key, theme_dict, 60*60*24*7)  # Cache for 1 week
+        search_dict.update(theme_dict)
 
     return JsonResponse(search_dict)
 
@@ -336,7 +301,8 @@ def get_layers_for_theme(request, themeID):
 
 
 def get_layer_details(request, layerID):
-    serialized_data = cache.get('layers_layer_serialized_details_{}'.format(layerID))
+    current_site = get_current_site(request)
+    serialized_data = cache.get('layers_layer_serialized_details_{}_{}'.format(layerID, current_site.pk))
     if not serialized_data:
         serialized_data = {}
         try:
@@ -364,7 +330,7 @@ def get_layer_details(request, layerID):
                 serialized_data = specific_layer_serializer.data
             else:
                 serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
-            cache.set('layers_layer_serialized_details_{}'.format(layerID), serialized_data, 60*60*24*7)
+            cache.set('layers_layer_serialized_details_{}_{}'.format(layerID, current_site.pk), serialized_data, 60*60*24*7)
         except ObjectDoesNotExist as e:
             # TODO: Change layer picker logic to use /children/ API call if item is a Theme!
             subtheme = Theme.all_objects.get(pk=layerID)
