@@ -215,7 +215,8 @@ def get_layer_search_data(request):
             # Iterate through each child order to access the Layer instances
             for child_order in child_orders:
                 child = child_order.content_object
-                theme_dict[child.name] = child.get_search_object(current_site.id, theme)
+                if current_site in child.site.all():
+                    theme_dict[child.name] = child.get_search_object(current_site.id, theme)
             cache.set(cache_key, theme_dict, 60*60*24*7)  # Cache for 1 week
         search_dict.update(theme_dict)
 
