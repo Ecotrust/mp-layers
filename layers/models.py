@@ -48,7 +48,43 @@ class SiteFlags(object):#(models.Model):
 class AllObjectsManager(models.Manager):
     use_in_migrations = True
 
-class Theme(models.Model, SiteFlags):
+class ChildType(models.Model):
+    """Abstract base class for all child types."""
+    class Meta:
+        abstract = True
+
+    # return dict formatted for use in bootstrap-3-typeahead 'layer search' widget in 'visualize'
+    def get_search_object(self, site_id, parent_theme):
+        cache_key = 'layers_childtype_search_object_{}_{}_{}'.format(self.__class__.__name__, self.pk, site_id)
+        results = cache.get(cache_key)
+        if not results:
+            results = {
+                'layer': {
+                    'id': self.id,
+                    'name': self.name,
+                    'has_sublayers': False,
+                'sublayers': []
+                },
+                'theme': {
+                    'id': parent_theme.id,
+                    'name': parent_theme.display_name,
+                    'description': parent_theme.description
+                }
+            }
+            cache.set(cache_key, results, 60*60*24*7)
+        return results
+
+    # Clear caching related to bootstrap-3-typeahead 'layer search' logic
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        for site in Site.objects.all():
+            cache_key = 'layers_childtype_search_object_{}_{}_{}'.format(self.__class__.__name__, self.pk, site.id)
+            cache.delete(cache_key)
+            for theme_id in self.ancestor_ids:
+                cache_key = 'layers_views_layer_search_data_{}_{}'.format(theme_id, site.id)
+                cache.delete(cache_key)
+
+class Theme(ChildType, SiteFlags):
     THEME_TYPE_CHOICES = (
     ('radio', 'radio: select 1 layer at a time'),
     ('checkbox', 'checkbox: support simultaneous layers'),
@@ -419,6 +455,28 @@ class Theme(models.Model, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
+    # return dict formatted for use in bootstrap-3-typeahead 'layer search' widget in 'visualize'
+    # overrides ChildType method to include any 'sublayer' information.
+    def get_search_object(self, site_id, parent_theme):
+        cache_key = 'layers_childtype_search_object_{}_{}_{}'.format(self.__class__.__name__, self.pk, site_id)
+        results = cache.get(cache_key)
+        if not results:
+            results = super().get_search_object(site_id, parent_theme)
+            has_sublayers = ChildOrder.objects.filter(parent_theme=self).exists()
+            sublayers_data = []
+            if has_sublayers:
+                sub_child_orders = ChildOrder.objects.filter(parent_theme=self)
+                for sub_child_order in sub_child_orders:
+                    sub_layer = sub_child_order.content_object
+                    sublayers_data.append({
+                        "name": sub_layer.name,
+                        "id": sub_layer.id
+                    })
+            results['layer']['has_sublayers'] = has_sublayers
+            results['layer']['sublayers'] = sublayers_data
+            cache.set(cache_key, results, 60*60*24*7)
+        return results
+
     def shortDict(self, site=None, order=None):
         if site == None:
             site_id = ''
@@ -502,7 +560,7 @@ class Theme(models.Model, SiteFlags):
 
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
-class Layer(models.Model, SiteFlags):
+class Layer(ChildType, SiteFlags):
     LAYER_TYPE_CHOICES = (
         ('XYZ', 'XYZ'),
         ('WMS', 'WMS'),
@@ -1022,12 +1080,11 @@ class Layer(models.Model, SiteFlags):
                 self.slug_name = '{}_new'.format(slug)
 
         content_type = ContentType.objects.get_for_model(self.__class__)
-        dirty_cache_keys = [
-            'layers_layer_serialized_details_{}'.format(self.pk),
-        ]
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
+        dirty_cache_keys = []
         for site_id in [x.pk for x in Site.objects.all()] + ['',]:
+            dirty_cache_keys.append('layers_layer_serialized_details_{}_{}'.format(self.pk, site_id))
             for parent in parent_orders:
                 # clean keys tied to /children/ api
                 dirty_cache_keys.append('layers_childorder_{}_{}'.format(parent.pk, site_id))
