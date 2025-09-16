@@ -302,7 +302,7 @@ def get_layers_for_theme(request, themeID):
 
 
 def get_theme_details(request, themeID):
-    subtheme = Theme.all_objects.get(pk=themeID)
+    subtheme = get_object_or_404(Theme.all_objects, pk=themeID)
     serialized_data = SubThemeSerializer(subtheme).data
     return JsonResponse(serialized_data)
 
