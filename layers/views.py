@@ -301,6 +301,11 @@ def get_layers_for_theme(request, themeID):
     return JsonResponse({'layers': top_level_response})
 
 
+def get_theme_details(request, themeID):
+    subtheme = get_object_or_404(Theme.all_objects, pk=themeID)
+    serialized_data = SubThemeSerializer(subtheme).data
+    return JsonResponse(serialized_data)
+
 def get_layer_details(request, layerID):
     current_site = get_current_site(request)
     serialized_data = cache.get('layers_layer_serialized_details_{}_{}'.format(layerID, current_site.pk))
