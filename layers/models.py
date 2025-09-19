@@ -776,7 +776,7 @@ class Layer(ChildType, SiteFlags):
         
     @property
     def tiles_link(self):
-        if self.is_shareable and self.layer_type in ['XYZ', 'ArcRest', 'WMS', 'slider']:
+        if self.is_shareable and self.layer_type in ['XYZ', 'ArcRest', 'WMS']:
             domain = get_domain(8000)
             return self.slug_name
         return None
