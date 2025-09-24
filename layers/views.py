@@ -506,9 +506,12 @@ def wms_request_capabilities(request):
 
     return JsonResponse(result)
 
-def get_layer_catalog_content(request, objectType, objectID):
+def get_layer_catalog_content(request, objectType, objectID, themeID=None):
     if objectType == 'layer':
         layer = Layer.all_objects.get(pk=objectID)
+        if not themeID is None:
+            theme = Theme.all_objects.get(pk=themeID)
+            return JsonResponse({'html': layer.get_catalog_html(theme=theme)})
         return JsonResponse({'html': layer.catalog_html})
     elif objectType == 'theme':
         theme = Theme.all_objects.get(pk=objectID)

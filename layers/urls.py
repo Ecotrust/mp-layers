@@ -15,6 +15,7 @@ urlpatterns = [
     re_path(r'^get_theme_details/(?P<themeID>\d+)/?$', views.get_theme_details),
     re_path(r'^get_layer_details/(?P<layerID>\d+)/?$', views.get_layer_details),
     re_path(r'^wms_capabilities', views.wms_request_capabilities),
+    re_path(r'^get_layer_catalog_content/(?P<objectType>\w+)/(?P<objectID>\d+)/(?P<themeID>\d+)/?$', views.get_layer_catalog_content),
     path('get_layer_catalog_content/<objectType>/<int:objectID>/', views.get_layer_catalog_content),
     re_path(r'^get_catalog_records/', views.get_catalog_records),
     re_path(r'^migration/layer_status/', views.layer_status),

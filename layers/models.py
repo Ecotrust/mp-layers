@@ -747,7 +747,20 @@ class Layer(ChildType, SiteFlags):
                 "data_catalog/includes/cacheless_layer_info.html",
                 {
                     'layer': self,
-                    # 'sub_layers': self.sublayers.exclude(layer_type="placeholder")
+                    'theme': None,
+                }
+            )
+        except Exception as e:
+            print(e)
+
+    def get_catalog_html(self, theme=None):
+        from django.template.loader import render_to_string
+        try:
+            return render_to_string(
+                "data_catalog/includes/cacheless_layer_info.html",
+                {
+                    'layer': self,
+                    'theme': theme,
                 }
             )
         except Exception as e:
