@@ -1095,7 +1095,7 @@ class Layer(ChildType, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
-        dirty_cache_keys = []
+        dirty_cache_keys = ['all_layers_qs',]
         for site_id in [x.pk for x in Site.objects.all()] + ['',]:
             dirty_cache_keys.append('layers_layer_serialized_details_{}_{}'.format(self.pk, site_id))
             for parent in parent_orders:
