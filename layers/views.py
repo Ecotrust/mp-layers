@@ -302,8 +302,18 @@ def get_layers_for_theme(request, themeID):
 
 
 def get_theme_details(request, themeID):
-    subtheme = get_object_or_404(Theme.all_objects, pk=themeID)
-    serialized_data = SubThemeSerializer(subtheme).data
+    try:
+        subtheme = get_object_or_404(Theme.all_objects, pk=themeID)
+        serialized_data = SubThemeSerializer(subtheme).data
+    except Exception as e:
+        return JsonResponse(
+            {
+                'status': 'false',
+                'message': str(e)
+            },
+            status=404
+        )
+
     return JsonResponse(serialized_data)
 
 def get_layer_details(request, layerID):
