@@ -308,7 +308,7 @@ def get_theme_details(request, themeID):
     except Theme.DoesNotExist as e:
         return JsonResponse(
             {
-                'status': 'false',
+                'status': False,
                 'message': str(e)
             },
             status=404
