@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render
 from django.template import RequestContext
 from django.views.decorators.cache import cache_page
 import json
@@ -302,8 +302,18 @@ def get_layers_for_theme(request, themeID):
 
 
 def get_theme_details(request, themeID):
-    subtheme = get_object_or_404(Theme.all_objects, pk=themeID)
-    serialized_data = SubThemeSerializer(subtheme).data
+    try:
+        subtheme = Theme.all_objects.get(pk=themeID)
+        serialized_data = SubThemeSerializer(subtheme).data
+    except Theme.DoesNotExist as e:
+        return JsonResponse(
+            {
+                'status': False,
+                'message': str(e)
+            },
+            status=404
+        )
+
     return JsonResponse(serialized_data)
 
 def get_layer_details(request, layerID):
