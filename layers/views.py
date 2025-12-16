@@ -9,6 +9,7 @@ from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template import RequestContext
+from django.urls.exceptions import NoReverseMatch
 from django.views.decorators.cache import cache_page
 import json
 import requests
@@ -305,7 +306,7 @@ def get_theme_details(request, themeID):
     try:
         subtheme = Theme.all_objects.get(pk=themeID)
         serialized_data = SubThemeSerializer(subtheme).data
-    except Theme.DoesNotExist as e:
+    except (Theme.DoesNotExist, NoReverseMatch) as e:
         return JsonResponse(
             {
                 'status': False,
@@ -347,16 +348,16 @@ def get_layer_details(request, layerID):
             else:
                 serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
             cache.set('layers_layer_serialized_details_{}_{}'.format(layerID, current_site.pk), serialized_data, 60*60*24*7)
-        except (Layer.DoesNotExist, ObjectDoesNotExist) as e:
+        except (Layer.DoesNotExist, ObjectDoesNotExist, NoReverseMatch) as layer_error:
             # TODO: Change layer picker logic to use /children/ API call if item is a Theme!
             try:
                 subtheme = Theme.all_objects.get(pk=layerID)
                 serialized_data = SubThemeSerializer(subtheme).data
-            except Theme.DoesNotExist as theme_error:
+            except (Theme.DoesNotExist, NoReverseMatch) as theme_error:
                 return JsonResponse(
                     {
                         'status': False,
-                        'message': "; ".join([str(e), str(theme_error)])
+                        'message': "; ".join([str(layer_error), str(theme_error)])
                     },
                     status=404
                 )
