@@ -347,11 +347,20 @@ def get_layer_details(request, layerID):
             else:
                 serialized_data = {"id": layer.id, "name": layer.name, "type": layer.layer_type}
             cache.set('layers_layer_serialized_details_{}_{}'.format(layerID, current_site.pk), serialized_data, 60*60*24*7)
-        except ObjectDoesNotExist as e:
+        except (Layer.DoesNotExist, ObjectDoesNotExist) as e:
             # TODO: Change layer picker logic to use /children/ API call if item is a Theme!
-            subtheme = Theme.all_objects.get(pk=layerID)
-            serialized_data = SubThemeSerializer(subtheme).data
-        
+            try:
+                subtheme = Theme.all_objects.get(pk=layerID)
+                serialized_data = SubThemeSerializer(subtheme).data
+            except Theme.DoesNotExist as e2:
+                return JsonResponse(
+                    {
+                        'status': False,
+                        'message': "; ".join([str(e), str(e2)])
+                    },
+                    status=404
+                )
+            
     return JsonResponse(serialized_data)
 
 def wms_get_capabilities(url):
