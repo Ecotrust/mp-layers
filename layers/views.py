@@ -352,11 +352,11 @@ def get_layer_details(request, layerID):
             try:
                 subtheme = Theme.all_objects.get(pk=layerID)
                 serialized_data = SubThemeSerializer(subtheme).data
-            except Theme.DoesNotExist as e2:
+            except Theme.DoesNotExist as theme_error:
                 return JsonResponse(
                     {
                         'status': False,
-                        'message': "; ".join([str(e), str(e2)])
+                        'message': "; ".join([str(e), str(theme_error)])
                     },
                     status=404
                 )
