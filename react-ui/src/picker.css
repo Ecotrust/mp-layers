@@ -86,7 +86,7 @@ body {
 .link-bar.show {
   display: block;
 }
-ul {
+ul.children-list {
   padding-left: 0;
 }
 .children-item {
