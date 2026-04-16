@@ -22,7 +22,6 @@ class Command(BaseCommand):
     
     def create_theme_or_layer(self, old_layer):
         # Your existing create_or_update_layer function
-        # Replace all print statements with self.stdout.write for command-line output
         new_entity = None 
 
         # RDH 2024-04-30: A layer can be a sublayer in one theme and a 'layer' in another, so really something's only a Theme if type in ['radio', 'checkbox']
@@ -210,9 +209,19 @@ class Command(BaseCommand):
         # for sublayer in old_layer.sublayers.all():
         #     self.create_or_update_layer(sublayer, new_subtheme)  
 
-    def handle(self, *args, **options):
-        # Replace all print statements with self.stdout.write for command-line output
+    def set_top_level_themes(self):
+        for theme in DataManagerTheme.all_objects.all():
+            try:
+                corresponding_theme = LayersTheme.all_objects.get(pk=theme.pk)
+                # if not ChildOrder.objects.filter(parent_theme=corresponding_theme).exists():
+                if corresponding_theme.parent == None and corresponding_theme.name != 'companion':
+                    corresponding_theme.is_top_theme = True
+                    corresponding_theme.save()
+                    self.stdout.write(self.style.SUCCESS(f'Set theme "{corresponding_theme.name}" as top-level theme.'))
+            except LayersTheme.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f'No matching theme found for {theme.name} with UUID {theme.uuid} when setting top-level themes.'))
 
+    def handle(self, *args, **options):
         # Delete all layers and themes first in layers module
         LayersTheme.all_objects.all().delete()
         self.stdout.write(self.style.SUCCESS('All themes deleted successfully.'))
@@ -370,10 +379,10 @@ class Command(BaseCommand):
                 if dm_association.layer:
                     self.stdout.write(self.style.ERROR(f'Layer {dm_association.layer.name} with UUID {dm_association.layer.uuid} not found in Layers module'))
                 else:
-                    print("ERROR: MultiLayer Association {} has no layer.".format(dm_association.pk))
+                    self.stdout.write(self.style.ERROR(f"ERROR: MultiLayer Association {dm_association.pk} has no layer."))
                 continue
             except AttributeError:
-                print("ERROR: MultiLayer Association {} has no layer.".format(dm_association.pk))
+                self.stdout.write(self.style.ERROR(f"ERROR: MultiLayer Association {dm_association.pk} has no layer."))
                 continue
 
             try:
@@ -406,7 +415,7 @@ class Command(BaseCommand):
                 )
                 dimension_values.append(dimension_value)
             except MultilayerDimension.DoesNotExist:
-                print("MultilayerDimension with uuid {} does not exist.".format(dm_value.dimension.uuid))
+                self.stdout.write(self.style.WARNING(f"MultilayerDimension with uuid {dm_value.dimension.uuid} does not exist."))
                 continue
 
         # Bulk create instances
@@ -421,9 +430,15 @@ class Command(BaseCommand):
                         association = MultilayerAssociation.objects.get(uuid=dm_association.uuid)
                         dimension_value.associations.add(association)
                     except MultilayerAssociation.DoesNotExist:
-                        print("MultilayerAssociation with uuid {} does not exist.".format(dm_association.uuid))
-                        pass
+                        self.stdout.write(self.style.WARNING(f"MultilayerAssociation with uuid {dm_association.uuid} does not exist."))
+                        continue
                 self.stdout.write(f'Migrated dimension value: {dm_value.value}')
             except MultilayerDimensionValue.DoesNotExist:
-                print("MultilayerDimensionValue with uuid {} does not exist.".format(dm_value.uuid))
-                pass
+                self.stdout.write(self.style.WARNING(f"MultilayerDimensionValue with uuid {dm_value.uuid} does not exist."))
+                continue
+
+        # Identify and assign Top Level Themes (those that are not children of any other theme)
+        self.set_top_level_themes()
+
+        # Final success message
+        self.stdout.write(self.style.SUCCESS('Migration completed successfully.'))
