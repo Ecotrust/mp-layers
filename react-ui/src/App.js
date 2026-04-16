@@ -10,7 +10,7 @@ const App = () => {
   React.useEffect(() => {
     axios.get('/layers/top_level_themes/')
       .then(response => {
-        setThemes(response.data.top_level_themes);
+        setThemes(response.data.top_level_themes.filter(t => t.is_visible));
       })
       .catch(error => console.error('Error fetching themes:', error));
   }, []);
