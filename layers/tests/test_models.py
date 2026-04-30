@@ -1,7 +1,9 @@
-from django.test import TestCase
+from django.test import TestCase, RequestFactory, override_settings
 from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
 from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer
+from layers.views import get_portal_catalog_map
 from collections.abc import Collection
+import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 # request to get data from live site, mung it and make it into v2
@@ -863,4 +865,302 @@ class MultilayerTest(TestCase):
         self.assertEqual(False, january_data["is_multilayer_parent"])
         self.assertEqual([], january_data["dimensions"])
         self.assertEqual({}, january_data["associated_multilayers"])
+
+
+class ThemeLayersPropertyTest(TestCase):
+    """Tests for Theme.layers and Theme.all_layers model properties."""
+
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+
+        self.top_theme = Theme.objects.create(
+            name="Top Theme",
+            is_top_theme=True,
+            is_visible=True,
+        )
+        self.top_theme.site.add(self.site)
+
+        self.sub_theme = Theme.objects.create(
+            name="Sub Theme",
+            is_visible=True,
+        )
+        self.sub_theme.site.add(self.site)
+
+        self.hidden_sub_theme = Theme.objects.create(
+            name="Hidden Sub Theme",
+            is_visible=False,
+        )
+        self.hidden_sub_theme.site.add(self.site)
+
+        self.direct_layer = Layer.objects.create(
+            name="Direct Layer",
+            layer_type="WMS",
+            catalog_name="direct-catalog",
+        )
+        self.direct_layer.site.add(self.site)
+
+        self.nested_layer = Layer.objects.create(
+            name="Nested Layer",
+            layer_type="WMS",
+            catalog_name="nested-catalog",
+        )
+        self.nested_layer.site.add(self.site)
+
+        self.hidden_nested_layer = Layer.objects.create(
+            name="Hidden Nested Layer",
+            layer_type="WMS",
+            catalog_name="hidden-nested-catalog",
+        )
+        self.hidden_nested_layer.site.add(self.site)
+
+        # top_theme -> direct_layer (direct child)
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.direct_layer,
+            order=1,
+        )
+        # top_theme -> sub_theme -> nested_layer
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.sub_theme,
+            order=2,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.sub_theme,
+            content_object=self.nested_layer,
+            order=1,
+        )
+        # top_theme -> hidden_sub_theme -> hidden_nested_layer
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.hidden_sub_theme,
+            order=3,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.hidden_sub_theme,
+            content_object=self.hidden_nested_layer,
+            order=1,
+        )
+
+    def test_layers_returns_only_direct_layer_children(self):
+        result = self.top_theme.layers
+        self.assertIn(self.direct_layer, result)
+        self.assertNotIn(self.nested_layer, result)
+        self.assertNotIn(self.hidden_nested_layer, result)
+        self.assertNotIn(self.sub_theme, result)
+
+    def test_layers_returns_correct_count(self):
+        # Only direct_layer is a direct Layer child of top_theme
+        self.assertEqual(len(self.top_theme.layers), 1)
+
+    def test_layers_on_sub_theme(self):
+        result = self.sub_theme.layers
+        self.assertIn(self.nested_layer, result)
+        self.assertEqual(len(result), 1)
+
+    def test_layers_empty_when_no_direct_layer_children(self):
+        theme_no_layers = Theme.objects.create(name="No Layers Theme")
+        theme_no_layers.site.add(self.site)
+        ChildOrder.objects.create(
+            parent_theme=theme_no_layers,
+            content_object=self.sub_theme,
+            order=1,
+        )
+        self.assertEqual(theme_no_layers.layers, [])
+
+    def test_all_layers_includes_direct_and_nested(self):
+        result = self.top_theme.all_layers
+        self.assertIn(self.direct_layer, result)
+        self.assertIn(self.nested_layer, result)
+
+    def test_all_layers_excludes_layers_under_hidden_sub_theme(self):
+        # hidden_sub_theme has is_visible=False so its layers must not appear
+        result = self.top_theme.all_layers
+        self.assertNotIn(self.hidden_nested_layer, result)
+
+    def test_all_layers_contains_no_theme_objects(self):
+        result = self.top_theme.all_layers
+        for item in result:
+            self.assertIsInstance(item, Layer)
+
+    def test_all_layers_returns_unique_layers(self):
+        # Add nested_layer as a direct child too to create a duplicate
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.nested_layer,
+            order=4,
+        )
+        result = self.top_theme.all_layers
+        self.assertEqual(len(result), len(set(result)))
+
+    def test_all_layers_on_leaf_theme_equals_layers(self):
+        # sub_theme has no sub-themes, so all_layers == layers
+        self.assertEqual(
+            set(self.sub_theme.all_layers),
+            set(self.sub_theme.layers),
+        )
+
+
+class GetPortalCatalogMapViewTest(TestCase):
+    """Tests for the get_portal_catalog_map view."""
+
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.factory = RequestFactory()
+
+        self.top_theme = Theme.objects.create(
+            name="Catalog Top Theme",
+            is_top_theme=True,
+            is_visible=True,
+        )
+        self.top_theme.site.add(self.site)
+
+        self.sub_theme = Theme.objects.create(
+            name="Catalog Sub Theme",
+            is_visible=True,
+        )
+        self.sub_theme.site.add(self.site)
+
+        self.layer_with_catalog_name = Layer.objects.create(
+            name="Mapped Layer",
+            layer_type="WMS",
+            catalog_name="my-catalog-record",
+        )
+        self.layer_with_catalog_name.site.add(self.site)
+
+        self.layer_no_catalog_name = Layer.objects.create(
+            name="Unmapped Layer",
+            layer_type="WMS",
+            catalog_name=None,
+        )
+        self.layer_no_catalog_name.site.add(self.site)
+
+        self.layer_empty_catalog_name = Layer.objects.create(
+            name="Empty Catalog Layer",
+            layer_type="WMS",
+            catalog_name="",
+        )
+        self.layer_empty_catalog_name.site.add(self.site)
+
+        self.nested_layer = Layer.objects.create(
+            name="Nested Catalog Layer",
+            layer_type="WMS",
+            catalog_name="nested-catalog-record",
+        )
+        self.nested_layer.site.add(self.site)
+
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.layer_with_catalog_name,
+            order=1,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.layer_no_catalog_name,
+            order=2,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.layer_empty_catalog_name,
+            order=3,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.top_theme,
+            content_object=self.sub_theme,
+            order=4,
+        )
+        ChildOrder.objects.create(
+            parent_theme=self.sub_theme,
+            content_object=self.nested_layer,
+            order=1,
+        )
+
+    def _get(self):
+        request = self.factory.get("/layers/get_portal_catalog_map")
+        return get_portal_catalog_map(request)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_returns_200(self):
+        response = self._get()
+        self.assertEqual(response.status_code, 200)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_maps_catalog_name_to_layer_pk(self):
+        response = self._get()
+        data = json.loads(response.content)
+        self.assertIn("my-catalog-record", data)
+        self.assertEqual(data["my-catalog-record"], self.layer_with_catalog_name.pk)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_includes_nested_layer_under_visible_sub_theme(self):
+        response = self._get()
+        data = json.loads(response.content)
+        self.assertIn("nested-catalog-record", data)
+        self.assertEqual(data["nested-catalog-record"], self.nested_layer.pk)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_excludes_layers_without_catalog_name(self):
+        response = self._get()
+        data = json.loads(response.content)
+        # layer_no_catalog_name has catalog_name=None
+        for key in data:
+            self.assertNotEqual(data[key], self.layer_no_catalog_name.pk)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_excludes_layers_with_empty_catalog_name(self):
+        response = self._get()
+        data = json.loads(response.content)
+        self.assertNotIn("", data)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_excludes_layers_from_invisible_top_theme(self):
+        invisible_theme = Theme.objects.create(
+            name="Invisible Top Theme",
+            is_top_theme=True,
+            is_visible=False,
+        )
+        invisible_theme.site.add(self.site)
+        hidden_layer = Layer.objects.create(
+            name="Hidden Layer",
+            layer_type="WMS",
+            catalog_name="should-not-appear",
+        )
+        hidden_layer.site.add(self.site)
+        ChildOrder.objects.create(
+            parent_theme=invisible_theme,
+            content_object=hidden_layer,
+            order=1,
+        )
+        response = self._get()
+        data = json.loads(response.content)
+        self.assertNotIn("should-not-appear", data)
+
+    @override_settings(CATALOG_TECHNOLOGY="GeoPortal2")
+    def test_excludes_layers_from_non_top_level_theme(self):
+        orphan_theme = Theme.objects.create(
+            name="Orphan Theme",
+            is_top_theme=False,
+            is_visible=True,
+        )
+        orphan_theme.site.add(self.site)
+        orphan_layer = Layer.objects.create(
+            name="Orphan Layer",
+            layer_type="WMS",
+            catalog_name="orphan-catalog-record",
+        )
+        orphan_layer.site.add(self.site)
+        ChildOrder.objects.create(
+            parent_theme=orphan_theme,
+            content_object=orphan_layer,
+            order=1,
+        )
+        response = self._get()
+        data = json.loads(response.content)
+        self.assertNotIn("orphan-catalog-record", data)
+
+    @override_settings(CATALOG_TECHNOLOGY="NotGeoPortal2")
+    def test_returns_empty_dict_when_catalog_technology_not_geoportal2(self):
+        response = self._get()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content), {})
 
