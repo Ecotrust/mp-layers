@@ -991,13 +991,13 @@ class ThemeLayersPropertyTest(TestCase):
             order=4,
         )
         result = self.top_theme.all_layers
-        self.assertEqual(len(result), len(set(result)))
+        self.assertEqual(len(result), len(set(layer.pk for layer in result)))
 
     def test_all_layers_on_leaf_theme_equals_layers(self):
         # sub_theme has no sub-themes, so all_layers == layers
         self.assertEqual(
-            set(self.sub_theme.all_layers),
-            set(self.sub_theme.layers),
+            set(layer.pk for layer in self.sub_theme.all_layers),
+            set(layer.pk for layer in self.sub_theme.layers),
         )
 
 
