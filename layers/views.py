@@ -584,6 +584,22 @@ def get_catalog_records(request):
 
     return JsonResponse(data)
 
+# This allows the catalog page to link to 'visualize' layers, which requires knowing the layerID that corresponds to a 
+# given catalog record. Only layers with a catalog_name field will be included in this mapping.
+def get_portal_catalog_map(request):
+    data = {}
+    if settings.CATALOG_TECHNOLOGY == "GeoPortal2":
+        seen_pks = set()
+        for top_theme in Theme.objects.filter(is_top_theme=True).filter(is_visible=True):
+            for layer in top_theme.all_layers:
+                if layer.catalog_name in ["", None]:
+                    continue
+                if layer.pk in seen_pks:
+                    continue
+                seen_pks.add(layer.pk)
+                data[layer.catalog_name] = layer.pk
+    return JsonResponse(data)
+
 def get_sublayers_data(parent_theme):
     sublayers_data = []
     sub_child_orders = ChildOrder.objects.filter(parent_theme=parent_theme).order_by('order')

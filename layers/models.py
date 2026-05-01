@@ -455,6 +455,38 @@ class Theme(ChildType, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
+    # This property gets an array of all of the Layer records that are direct children of this Theme
+    # This is particularly used by the 'get_portal_catalog_map' view to identify 'visualizable' layers
+    # in the catalog.
+    @property
+    def layers(self):
+        content_type = ContentType.objects.get_for_model(Layer)
+        child_orders = ChildOrder.objects.filter(parent_theme=self, content_type=content_type).order_by('order', 'id')
+        layers = [
+            child_order.content_object
+            for child_order in child_orders
+            if child_order.content_object.is_visible
+        ]
+        return layers
+    
+    # This property gets an array of all of the Layer records that are decendats of this Theme
+    # This is particularly used by the 'get_portal_catalog_map' view to identify 'visualizable' layers in the catalog.
+    @property
+    def all_layers(self):
+        content_type = ContentType.objects.get_for_model(Theme)
+        child_theme_orders = ChildOrder.objects.filter(parent_theme=self, content_type=content_type).order_by('order', 'id')
+        layers = self.layers
+        for child_order in child_theme_orders:
+            if child_order.content_object.is_visible:
+                layers = layers + child_order.content_object.all_layers
+
+        unique_layers = []
+        seen_layer_pks = set()
+        for layer in layers:
+            if layer.pk not in seen_layer_pks:
+                seen_layer_pks.add(layer.pk)
+                unique_layers.append(layer)
+        return unique_layers
     # return dict formatted for use in bootstrap-3-typeahead 'layer search' widget in 'visualize'
     # overrides ChildType method to include any 'sublayer' information.
     def get_search_object(self, site_id, parent_theme):
