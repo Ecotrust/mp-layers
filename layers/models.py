@@ -469,7 +469,7 @@ class Theme(ChildType, SiteFlags):
         ]
         return layers
     
-    # This property gets an array of all of the Layer records that are decendats of this Theme
+    # This property gets an array of all of the Layer records that are descendants of this Theme
     # This is particularly used by the 'get_portal_catalog_map' view to identify 'visualizable' layers in the catalog.
     @property
     def all_layers(self):
