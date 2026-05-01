@@ -479,8 +479,14 @@ class Theme(ChildType, SiteFlags):
         for child_order in child_theme_orders:
             if child_order.content_object.is_visible:
                 layers = layers + child_order.content_object.all_layers
-        return list(set(layers))
 
+        unique_layers = []
+        seen_layer_pks = set()
+        for layer in layers:
+            if layer.pk not in seen_layer_pks:
+                seen_layer_pks.add(layer.pk)
+                unique_layers.append(layer)
+        return unique_layers
     # return dict formatted for use in bootstrap-3-typeahead 'layer search' widget in 'visualize'
     # overrides ChildType method to include any 'sublayer' information.
     def get_search_object(self, site_id, parent_theme):
