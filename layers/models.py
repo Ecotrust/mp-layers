@@ -462,7 +462,11 @@ class Theme(ChildType, SiteFlags):
     def layers(self):
         content_type = ContentType.objects.get_for_model(Layer)
         child_orders = ChildOrder.objects.filter(parent_theme=self, content_type=content_type).order_by('order', 'id')
-        layers = [child_order.content_object for child_order in child_orders]
+        layers = [
+            child_order.content_object
+            for child_order in child_orders
+            if child_order.content_object.is_visible
+        ]
         return layers
     
     # This property gets an array of all of the Layer records that are decendats of this Theme
