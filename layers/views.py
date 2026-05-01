@@ -589,12 +589,15 @@ def get_catalog_records(request):
 def get_portal_catalog_map(request):
     data = {}
     if settings.CATALOG_TECHNOLOGY == "GeoPortal2":
-        viable_layers = []
+        seen_pks = set()
         for top_theme in Theme.objects.filter(is_top_theme=True).filter(is_visible=True):
-            viable_layers += [x for x in top_theme.all_layers if x.catalog_name not in ["", None]]
-        viable_layers = list(set(viable_layers))
-        for layer in viable_layers:
-            data[layer.catalog_name] = layer.pk
+            for layer in top_theme.all_layers:
+                if layer.catalog_name in ["", None]:
+                    continue
+                if layer.pk in seen_pks:
+                    continue
+                seen_pks.add(layer.pk)
+                data[layer.catalog_name] = layer.pk
     return JsonResponse(data)
 
 def get_sublayers_data(parent_theme):
