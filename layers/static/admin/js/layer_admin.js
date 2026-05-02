@@ -22,13 +22,6 @@ document.addEventListener("DOMContentLoaded", function() {
         
     });
 
-    const layerTypeField = document.querySelector("#id_layer_type");
-    if (layerTypeField) {
-        layerTypeField.addEventListener("change", updateInlines);
-        updateInlines(); 
-        assign_field_values_from_source_technology();
-    }
-
     assign_field_values_from_source_technology = function() {
         if ($('#id_layer_type').val() == "ArcRest" || $('#id_layer_type').val() == "ArcFeatureServer") {
             var url = $('#id_url').val();
@@ -91,5 +84,14 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
       }
+
+    const layerTypeField = document.querySelector("#id_layer_type");
+    if (layerTypeField) {
+        layerTypeField.addEventListener("change", updateInlines);
+        updateInlines(); 
+        assign_field_values_from_source_technology();
+    }
+
+    
     assign_field_values_from_source_technology()
 });
