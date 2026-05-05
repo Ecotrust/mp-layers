@@ -43,6 +43,11 @@ fieldset.late-transition.collapse * {
 }
 fieldset.late-transition.collapse *:not(.related-widget-wrapper):not(.related-widget-wrapper *) {
   height: auto;
+  max-width: 100%;
+}
+
+fieldset.late-transition.collapse span.select2-selection__rendered:not(.related-widget-wrapper):not(.related-widget-wrapper *) {
+  min-height: 1.5rem;
 }
 
 fieldset.late-transition.collapse div.argis-details-table-wrapper,

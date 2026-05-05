@@ -91,7 +91,4 @@ document.addEventListener("DOMContentLoaded", function() {
         updateInlines(); 
         assign_field_values_from_source_technology();
     }
-
-    
-    assign_field_values_from_source_technology()
 });
