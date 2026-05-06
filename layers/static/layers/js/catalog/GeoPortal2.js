@@ -4,6 +4,12 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+const union = function (array1, array2) {
+    var hash = {}, union_arr = [];
+    $.each($.merge($.merge([], array1), array2), function (index, value) { hash[value] = value; });
+    $.each(hash, function (key, value) { union_arr.push(key); });
+    return union_arr;
+}
 
 var populate_fields_from_catalog = function (catalog_record_data, record_id) {
     if (record_id == null || record_id == "null") {
@@ -25,6 +31,11 @@ var populate_fields_from_catalog = function (catalog_record_data, record_id) {
                 record_json = data._source;
                 record_json.id = data._id;
                 aggregate_catalog_record_values(record_json);
+            },
+            error: function (error) {
+                console.error("Error retrieving catalog record: " + error);
+                // AdminLayerForm.replace_all_select2_with_input();
+                hide_spinner();
             }
         });
     }
