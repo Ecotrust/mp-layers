@@ -455,11 +455,12 @@ class Theme(ChildType, SiteFlags):
         content_type = ContentType.objects.get_for_model(self.__class__)
         return ChildOrder.objects.filter(object_id=self.id, content_type=content_type)
 
-    # This property gets an array of all of the Layer records that are direct children of this Theme
-    # This is particularly used by the 'get_portal_catalog_map' view to identify 'visualizable' layers
-    # in the catalog.
     @property
     def layers(self):
+        """
+        Returns an array of all of the Layer records that are direct children of this Theme.
+        Helps 'get_portal_catalog_map' view identify 'visualizable' layers in the catalog
+        """
         content_type = ContentType.objects.get_for_model(Layer)
         child_orders = ChildOrder.objects.filter(parent_theme=self, content_type=content_type).order_by('order', 'id')
         layers = [
@@ -469,10 +470,12 @@ class Theme(ChildType, SiteFlags):
         ]
         return layers
     
-    # This property gets an array of all of the Layer records that are descendants of this Theme
-    # This is particularly used by the 'get_portal_catalog_map' view to identify 'visualizable' layers in the catalog.
     @property
     def all_layers(self):
+        """
+        Returns an array of all of the Layer records that are descendants of this Theme.
+        Helps the 'get_portal_catalog_map' view to identify 'visualizable' layers in the catalog.
+        """
         content_type = ContentType.objects.get_for_model(Theme)
         child_theme_orders = ChildOrder.objects.filter(parent_theme=self, content_type=content_type).order_by('order', 'id')
         layers = self.layers

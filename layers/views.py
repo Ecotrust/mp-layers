@@ -584,9 +584,10 @@ def get_catalog_records(request):
 
     return JsonResponse(data)
 
-# This allows the catalog page to link to 'visualize' layers, which requires knowing the layerID that corresponds to a 
-# given catalog record. Only layers with a catalog_name field will be included in this mapping.
 def get_portal_catalog_map(request):
+    """
+    Returns a mapping of catalog_name to layerID for all layers with a catalog_name, which allows the portal to link from a catalog record to the appropriate layer in the portal, if it exists. Only relevant if using GeoPortal2 as the catalog technology, but will return an empty dict otherwise.
+    """
     data = {}
     if settings.CATALOG_TECHNOLOGY == "GeoPortal2":
         seen_pks = set()
