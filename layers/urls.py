@@ -18,6 +18,7 @@ urlpatterns = [
     re_path(r'^get_layer_catalog_content/(?P<objectType>\w+)/(?P<objectID>\d+)/(?P<themeID>\d+)/?$', views.get_layer_catalog_content),
     path('get_layer_catalog_content/<objectType>/<int:objectID>/', views.get_layer_catalog_content),
     re_path(r'^get_catalog_records/', views.get_catalog_records),
+    re_path(r'^get_portal_catalog_map', views.get_portal_catalog_map), # This allows the catalog page to link to 'visualize' layers
     re_path(r'^migration/layer_status/', views.layer_status),
     re_path(r'^migration/layer_details/', views.migration_layer_details),
     re_path(r'^picker/', views.get_picker),
