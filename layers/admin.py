@@ -21,6 +21,20 @@ from queryset_sequence import QuerySetSequence
 import requests
 from .models import *
 
+# MP-Layers is meant to fully replace MP-Data-Manager, but several pieces are still
+#   needed for backward compatibility.
+# For now, we will just unregister the duplicate models.
+try:
+    from data_manager.models import Theme as DMTheme
+    admin.site.unregister(DMTheme)
+except Exception as e:
+    pass
+try:
+    from data_manager.models import Layer as DMLayer
+    admin.site.unregister(DMLayer)
+except Exception as e:
+    pass
+
 # Register your models here.
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
