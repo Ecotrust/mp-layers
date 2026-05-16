@@ -41,8 +41,17 @@ class Command(BaseCommand):
 
         if not settings.NATIVE_LAND_API_KEY == None:
 
-            NLD_DATA_DIR = os.path.join(settings.MEDIA_ROOT, 'data_manager', 'nativeland')
+            DATA_MANAGER_DATA_DIR = os.path.join(settings.MEDIA_ROOT, 'data_manager')
+            if not os.path.exists(DATA_MANAGER_DATA_DIR):
+                os.makedirs(DATA_MANAGER_DATA_DIR)
+
+            NLD_DATA_DIR = os.path.join(DATA_MANAGER_DATA_DIR, 'nativeland')
+
+            if not os.path.exists(NLD_DATA_DIR):
+                os.makedirs(NLD_DATA_DIR)
             NLD_BACKUP_DIR = os.path.join(NLD_DATA_DIR, 'backups')
+            if not os.path.exists(NLD_BACKUP_DIR):
+                os.makedirs(NLD_BACKUP_DIR)
 
             api_prefix = 'https://native-land.ca/api/polygons/geojson/'
             api_postfix = '?key={}'.format(settings.NATIVE_LAND_API_KEY)
