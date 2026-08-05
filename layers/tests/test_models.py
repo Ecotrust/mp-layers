@@ -1,6 +1,8 @@
 from django.test import TestCase, RequestFactory, override_settings
+from django.utils import timezone
+from datetime import date
 from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
@@ -209,6 +211,91 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
         self.assertIn(key, serialized_data)
         self.assertEqual(serialized_data[key], expected_value, f"This is the key: {key}")
        
+class LayerExportSerializerTest(TestCase):
+    def test_layer_export_contains_expected_fields_with_appropriate_types(self):
+
+        expected_export_data = {
+            'name': 'Export Test Layer',
+            'layer_type': 'WMS',
+            'url': 'https://example.com/layer',
+            'last_success_status': str(timezone.now()),
+            'last_http_status': '200',
+            'opacity': 0.75,
+            'is_disabled': True,
+            'disabled_message': 'temporarily disabled',
+            'is_visible': False,
+            'search_query': True,
+            'geoportal_id': 'geo-123',
+            'catalog_name': 'Catalog Name',
+            'catalog_id': 'catalog-123',
+            'proxy_url': True,
+            'shareable_url': False,
+            'utfurl': 'utfurl-value',
+            'show_legend': False,
+            'legend': 'https://example.com/legend.png',
+            'legend_title': 'Legend title',
+            'legend_subtitle': 'Legend subtitle',
+            'description': 'Layer description',
+            'overview': 'Layer overview',
+            'data_source': 'Source',
+            'data_notes': 'Notes',
+            'data_publish_date': str(date(2024, 1, 2)),
+            'metadata': 'https://example.com/metadata',
+            'source': 'https://example.com/source',
+            'bookmark': 'https://example.com/bookmark',
+            'kml': 'https://example.com/kml',
+            'data_download': 'https://example.com/data',
+            'learn_more': 'https://example.com/learn',
+            'map_tiles': 'https://example.com/tiles',
+            'label_field': 'name',
+            'attribute_event': 'mouseover',
+            'annotated': True,
+            'compress_display': True,
+            'mouseover_field': 'hover_field',
+            'espis_enabled': True,
+            'espis_search': 'search term',
+            'espis_region': 'Mid Atlantic',
+            'minZoom': 3.5,
+            'maxZoom': 8.25,
+        }
+
+        create_data = {
+            field_name: (
+                date.fromisoformat(value)
+                if field_name == 'data_publish_date' and isinstance(value, str)
+                else value
+            )
+            for field_name, value in expected_export_data.items()
+            if field_name not in {'uuid', 'date_created', 'date_modified'}
+        }
+
+        layer = Layer.objects.create(**create_data)
+        # layer = Layer.objects.create(**expected_export_data)
+
+        serializer_data = LayerExportSerializer(layer).data
+        model_data = layer.to_export_dict()
+
+        expected_keys = set(expected_export_data.keys())
+        for assigned_key in ['uuid', 'date_created', 'date_modified', 'slug_name']:
+            if assigned_key in serializer_data:
+                expected_keys.add(assigned_key)
+
+        self.assertEqual(len(serializer_data), len(expected_keys))
+        self.assertEqual(set(serializer_data.keys()), expected_keys)
+
+        # for field_name, expected_value in expected_export_data.items():
+        for field_name in expected_keys:
+            self.assertIn(field_name, serializer_data)
+            if field_name in {'uuid', 'date_created', 'date_modified', 'slug_name'}:
+                self.assertIsInstance(serializer_data[field_name], str)
+            else:
+                expected_value = expected_export_data[field_name]
+                self.assertEqual(serializer_data[field_name], expected_value)
+                self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
+
+        self.assertEqual(serializer_data, model_data)
+
+
 class CompanionLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)

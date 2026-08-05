@@ -1117,63 +1117,17 @@ class Layer(ChildType, SiteFlags):
         return layers_dict
     
     def to_export_dict(self):
-        export_dict = {
-            'name': self.name,
-            'uuid': str(self.uuid),
-            'slug_name': self.slug_name,
-            'layer_type': self.layer_type,
-            'url': self.url,
-            # 'site_ids': [site.pk for site in self.site.all()],
-            'last_success_status': str(self.last_success_status) if self.last_success_status else None,
-            'last_http_status': self.last_http_status,
-            'opacity': self.opacity,
-            'is_disabled': self.is_disabled,
-            'disabled_message': self.disabled_message,
-            'is_visible': self.is_visible,
-            'search_query': self.search_query,
-            'geoportal_id': self.geoportal_id,
-            'catalog_name': self.catalog_name,
-            'catalog_id': self.catalog_id,
-            'proxy_url': self.proxy_url,
-            'shareable_url': self.shareable_url,
-            'utfurl': self.utfurl,
-            'show_legend': self.show_legend,
-            'legend': self.legend,
-            'legend_title': self.legend_title,
-            'legend_subtitle': self.legend_subtitle,
-            'description': self.description,
-            'overview': self.overview,
-            'data_source': self.data_source,
-            'data_notes': self.data_notes,
-            'data_publish_date': str(self.data_publish_date) if self.data_publish_date else None,
-            'metadata': self.metadata,
-            'source': self.source,
-            'bookmark': self.bookmark,
-            'kml': self.kml,
-            'data_download': self.data_download,
-            'learn_more': self.learn_more,
-            'map_tiles': self.map_tiles,
-            'label_field': self.label_field,
-            'attribute_event': self.attribute_event,
-            # 'attribute_fields': [attr.to_export_dict() for attr in self.attribute_fields.all()],
-            'annotated': self.annotated,
-            'compress_display': self.compress_display,
-            'mouseover_field': self.mouseover_field,
-            'espis_enabled': self.espis_enabled,
-            'espis_search': self.espis_search,
-            'espis_region': self.espis_region,
-            'date_created': str(self.date_created) if self.date_created else None,
-            'date_modified': str(self.date_modified) if self.date_modified else None,
-            'minZoom': self.minZoom,
-            'maxZoom': self.maxZoom,
-        }
-        # serialized_data = LayerExportSerializer(self).data
-        return export_dict
+        from layers.serializers import LayerExportSerializer
+
+        serializer = LayerExportSerializer(self)
+        return serializer.data
 
     def save(self, *args, **kwargs):
-        if 'slug_name' in kwargs.keys():
-            self.slug_name = kwargs['slug_name']
-            kwargs.pop('slug_name', None)
+        provided_slug_name = kwargs.pop('slug_name', None)
+        is_new = self._state.adding
+
+        if provided_slug_name is not None:
+            self.slug_name = provided_slug_name
         else:
             slug = slugify(self.name)
             if self.id:
@@ -1201,6 +1155,9 @@ class Layer(ChildType, SiteFlags):
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
+                if is_new and self.id and provided_slug_name is None:
+                    self.slug_name = '{}{}'.format(slugify(self.name), self.id)
+                    super(Layer, self).save(update_fields=['slug_name'])
         except IntegrityError as e:
             if 'duplicate key value violates unique constraint' in str(e):
                 model = type(self)

@@ -25,6 +25,59 @@ raster_type_fields = ["query_by_point"]
 
 library_fields = []
 
+class LayerExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'name': instance.name,
+            'uuid': str(instance.uuid),
+            'slug_name': instance.slug_name,
+            'layer_type': instance.layer_type,
+            'url': instance.url,
+            'last_success_status': str(instance.last_success_status) if instance.last_success_status else None,
+            'last_http_status': instance.last_http_status,
+            'opacity': instance.opacity,
+            'is_disabled': instance.is_disabled,
+            'disabled_message': instance.disabled_message,
+            'is_visible': instance.is_visible,
+            'search_query': instance.search_query,
+            'geoportal_id': instance.geoportal_id,
+            'catalog_name': instance.catalog_name,
+            'catalog_id': instance.catalog_id,
+            'proxy_url': instance.proxy_url,
+            'shareable_url': instance.shareable_url,
+            'utfurl': instance.utfurl,
+            'show_legend': instance.show_legend,
+            'legend': instance.legend,
+            'legend_title': instance.legend_title,
+            'legend_subtitle': instance.legend_subtitle,
+            'description': instance.description,
+            'overview': instance.overview,
+            'data_source': instance.data_source,
+            'data_notes': instance.data_notes,
+            'data_publish_date': str(instance.data_publish_date) if instance.data_publish_date else None,
+            'metadata': instance.metadata,
+            'source': instance.source,
+            'bookmark': instance.bookmark,
+            'kml': instance.kml,
+            'data_download': instance.data_download,
+            'learn_more': instance.learn_more,
+            'map_tiles': instance.map_tiles,
+            'label_field': instance.label_field,
+            'attribute_event': instance.attribute_event,
+            # 'attribute_fields': instance.attribute_fields,
+            'annotated': instance.annotated,
+            'compress_display': instance.compress_display,
+            'mouseover_field': instance.mouseover_field,
+            'espis_enabled': instance.espis_enabled,
+            'espis_search': instance.espis_search,
+            'espis_region': instance.espis_region,
+            'date_created': str(instance.date_created) if instance.date_created else None,
+            'date_modified': str(instance.date_modified) if instance.date_modified else None,
+            'minZoom': instance.minZoom,
+            'maxZoom': instance.maxZoom,
+        }
+
+
 def get_companion_layers(obj):
     if hasattr(obj, 'layer'):
         layer_instance = obj.layer
