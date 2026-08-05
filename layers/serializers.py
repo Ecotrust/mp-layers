@@ -329,8 +329,6 @@ def get_specific_layer_instance(layer):
             pass
     return None
 
-
-
 def get_serialized_layer(instance):
     specific_layer_instance = None
     if isinstance(instance, Layer):
@@ -430,7 +428,6 @@ class ChildOrderSerializer(serializers.ModelSerializer):
         model = ChildOrder
         fields = []
 
-
 # use this serializer for only the top level themes
 # create a new serializer for subthemes, so that it matches the layer format
 class ThemeSerializer(serializers.ModelSerializer):
@@ -481,7 +478,6 @@ class ThemeSerializer(serializers.ModelSerializer):
     def get_queryable(self, obj):
         return False
     
-
 class ShortThemeSerializer(serializers.ModelSerializer):
     class Meta:
             model = Theme
@@ -598,10 +594,6 @@ class SubThemeSerializer(serializers.ModelSerializer):
         return None
     def get_queryable(self, obj):
         return False
-    
-
-
-
 
 class CompanionLayerSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
@@ -725,7 +717,6 @@ def check_is_sublayer(obj):
     else:
         return True
     
-
 class SubLayerSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
     is_sublayer = serializers.SerializerMethodField()

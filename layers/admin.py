@@ -860,6 +860,26 @@ class LayerResource(resources.ModelResource):
 
         export_order = fields
 
+@admin.action(description="Export layer(s) for migration")
+def export_layer_details(self, request, queryset):
+    import json
+    from django.http import HttpResponse
+
+    if queryset.count() != 1:
+        self.message_user(request, "Please select exactly one layer to export.")
+        return
+
+    layer_id_list = []
+    for layer in queryset:
+        layer_data = layer.to_export_dict()
+        layer_id_list.append(layer.id)
+    layer_ids = "_".join(str(id) for id in layer_id_list)
+    response = HttpResponse(json.dumps(layer_data), content_type='application/geo+json')
+    filename = f"layers_{layer_ids}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
@@ -907,6 +927,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     exclude = ('slug_name', "is_sublayer", "sublayers")
     form = LayerForm
     resource_classes = [LayerResource]
+    actions = [export_layer_details]
     
 
     if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
