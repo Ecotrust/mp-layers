@@ -2,7 +2,7 @@ from django.test import TestCase, RequestFactory, override_settings
 from django.utils import timezone
 from datetime import date
 from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo, LookupInfo
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LookupInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
@@ -438,6 +438,51 @@ class AttributeInfoExportSerializerTest(TestCase):
 
         attribute_info = AttributeInfo.objects.create(**expected_export_data)
         serializer_data = AttributeInfoExportSerializer(attribute_info).data
+
+        expected_keys = set(expected_export_data.keys())
+        expected_keys.add('uuid')
+
+        self.assertEqual(len(serializer_data), len(expected_keys))
+        self.assertEqual(set(serializer_data.keys()), expected_keys)
+
+        for field_name in expected_keys:
+            self.assertIn(field_name, serializer_data)
+            if field_name == 'uuid':
+                self.assertIsInstance(serializer_data[field_name], str)
+            else:
+                expected_value = expected_export_data[field_name]
+                self.assertEqual(serializer_data[field_name], expected_value)
+                self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
+
+
+class LookupInfoExportSerializerTest(TestCase):
+
+    def test_lookup_info_export_contains_expected_fields_with_appropriate_types(self):
+        lookup_info = LookupInfo.objects.create(
+            value='open',
+            description='Open area',
+            color='#112233',
+            stroke_color='#445566',
+            stroke_width=3,
+            dashstyle='dash',
+            fill=True,
+            graphic='https://example.com/marker.png',
+            graphic_scale=1.25,
+        )
+
+        expected_export_data = {
+            'value': lookup_info.value,
+            'description': lookup_info.description,
+            'color': lookup_info.color,
+            'stroke_color': lookup_info.stroke_color,
+            'stroke_width': lookup_info.stroke_width,
+            'dashstyle': lookup_info.dashstyle,
+            'fill': lookup_info.fill,
+            'graphic': lookup_info.graphic,
+            'graphic_scale': lookup_info.graphic_scale,
+        }
+
+        serializer_data = LookupInfoExportSerializer(lookup_info).data
 
         expected_keys = set(expected_export_data.keys())
         expected_keys.add('uuid')

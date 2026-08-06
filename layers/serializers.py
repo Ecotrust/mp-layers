@@ -98,6 +98,22 @@ class AttributeInfoExportSerializer(serializers.Serializer):
         }
 
 
+class LookupInfoExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'uuid': str(instance.uuid),
+            'value': instance.value,
+            'description': instance.description,
+            'color': instance.color,
+            'stroke_color': instance.stroke_color,
+            'stroke_width': instance.stroke_width,
+            'dashstyle': instance.dashstyle,
+            'fill': instance.fill,
+            'graphic': instance.graphic,
+            'graphic_scale': instance.graphic_scale,
+        }
+
+
 class LayerTypeExportSerializer(serializers.Serializer):
     def to_representation(self, instance):
         return {
