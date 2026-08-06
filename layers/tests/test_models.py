@@ -307,7 +307,6 @@ class LayerExportSerializerTest(TestCase):
         ]
 
         serializer_data = LayerExportSerializer(layer).data
-        fixture_data = layer.to_export_dict()
 
         expected_keys = set(expected_export_data.keys())
         for assigned_key in ['uuid', 'date_created', 'date_modified', 'slug_name']:
@@ -326,6 +325,78 @@ class LayerExportSerializerTest(TestCase):
                 expected_value = expected_export_data[field_name]
                 self.assertEqual(serializer_data[field_name], expected_value)
                 self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
+
+
+class LayerExportFixtureSerializerTest(TestCase):
+    def test_layer_export_fixture_contains_attribute_infos_followed_by_layer(self):
+
+        create_data = {
+            'name': 'Export Fixture Layer',
+            'layer_type': 'WMS',
+            'url': 'https://example.com/layer',
+            'last_success_status': timezone.now(),
+            'last_http_status': '200',
+            'opacity': 0.75,
+            'is_disabled': True,
+            'disabled_message': 'temporarily disabled',
+            'is_visible': False,
+            'search_query': True,
+            'geoportal_id': 'geo-123',
+            'catalog_name': 'Catalog Name',
+            'catalog_id': 'catalog-123',
+            'proxy_url': True,
+            'shareable_url': False,
+            'utfurl': 'utfurl-value',
+            'show_legend': False,
+            'legend': 'https://example.com/legend.png',
+            'legend_title': 'Legend title',
+            'legend_subtitle': 'Legend subtitle',
+            'description': 'Layer description',
+            'overview': 'Layer overview',
+            'data_source': 'Source',
+            'data_notes': 'Notes',
+            'data_publish_date': date(2024, 1, 2),
+            'metadata': 'https://example.com/metadata',
+            'source': 'https://example.com/source',
+            'bookmark': 'https://example.com/bookmark',
+            'kml': 'https://example.com/kml',
+            'data_download': 'https://example.com/data',
+            'learn_more': 'https://example.com/learn',
+            'map_tiles': 'https://example.com/tiles',
+            'label_field': 'name',
+            'attribute_event': 'mouseover',
+            'annotated': True,
+            'compress_display': True,
+            'mouseover_field': 'hover_field',
+            'espis_enabled': True,
+            'espis_search': 'search term',
+            'espis_region': 'Mid Atlantic',
+            'minZoom': 3.5,
+            'maxZoom': 8.25,
+        }
+
+        attribute_info_records = [
+            AttributeInfo.objects.create(
+                display_name='Depth',
+                field_name='depth_m',
+                precision=3,
+                order=2,
+                preserve_format=True,
+            ),
+            AttributeInfo.objects.create(
+                display_name='Temperature',
+                field_name='temp_c',
+                precision=1,
+                order=1,
+                preserve_format=False,
+            ),
+        ]
+
+        layer = Layer.objects.create(**create_data)
+        layer.attribute_fields.set(attribute_info_records)
+
+        serializer_data = LayerExportSerializer(layer).data
+        fixture_data = layer.to_export_dict()
 
         expected_attribute_infos_for_fixture = sorted(
             attribute_info_records,
