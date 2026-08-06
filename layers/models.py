@@ -1117,10 +1117,10 @@ class Layer(ChildType, SiteFlags):
         return layers_dict
     
     def to_export_dict(self):
-        from layers.serializers import LayerExportSerializer
+        from layers.serializers import LayerExportFixtureSerializer
 
-        serializer = LayerExportSerializer(self)
-        return serializer.data
+        serializer = LayerExportFixtureSerializer(self)
+        return serializer.to_representation(self)
 
     def save(self, *args, **kwargs):
         provided_slug_name = kwargs.pop('slug_name', None)

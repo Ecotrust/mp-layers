@@ -98,6 +98,30 @@ class AttributeInfoExportSerializer(serializers.Serializer):
         }
 
 
+class LayerExportFixtureSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        attribute_infos = list(instance.attribute_fields.all().order_by('order', 'display_name', 'pk'))
+
+        fixture_rows = []
+        for attribute_info in attribute_infos:
+            fixture_rows.append({
+                'model': 'layers.attributeinfo',
+                'pk': attribute_info.pk,
+                'fields': AttributeInfoExportSerializer(attribute_info).data,
+            })
+
+        layer_fields = LayerExportSerializer(instance).data
+        layer_fields['attribute_fields'] = [attribute_info.pk for attribute_info in attribute_infos]
+
+        fixture_rows.append({
+            'model': 'layers.layer',
+            'pk': instance.pk,
+            'fields': layer_fields,
+        })
+
+        return fixture_rows
+
+
 def get_companion_layers(obj):
     if hasattr(obj, 'layer'):
         layer_instance = obj.layer

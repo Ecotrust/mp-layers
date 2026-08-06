@@ -294,17 +294,20 @@ class LayerExportSerializerTest(TestCase):
         layer = Layer.objects.create(**create_data)
         layer.attribute_fields.set(attribute_info_records)
 
+        expected_attribute_infos_for_serializer = sorted(
+            attribute_info_records,
+            key=lambda x: x.order,
+        )
         expected_export_data['attribute_fields'] = [
             {
                 'pk': attribute_info.pk,
                 'uuid': str(attribute_info.uuid),
             }
-            for attribute_info in sorted(attribute_info_records, key=lambda x: x.order)
+            for attribute_info in expected_attribute_infos_for_serializer
         ]
-        # layer = Layer.objects.create(**expected_export_data)
 
         serializer_data = LayerExportSerializer(layer).data
-        model_data = layer.to_export_dict()
+        fixture_data = layer.to_export_dict()
 
         expected_keys = set(expected_export_data.keys())
         for assigned_key in ['uuid', 'date_created', 'date_modified', 'slug_name']:
@@ -324,7 +327,32 @@ class LayerExportSerializerTest(TestCase):
                 self.assertEqual(serializer_data[field_name], expected_value)
                 self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
 
-        self.assertEqual(serializer_data, model_data)
+        expected_attribute_infos_for_fixture = sorted(
+            attribute_info_records,
+            key=lambda x: (x.order, x.display_name, x.pk),
+        )
+        expected_attribute_pk_list = [x.pk for x in expected_attribute_infos_for_fixture]
+
+        self.assertIsInstance(fixture_data, list)
+        self.assertEqual(len(fixture_data), len(expected_attribute_infos_for_fixture) + 1)
+
+        for fixture_row, expected_attribute_info in zip(
+            fixture_data[:-1],
+            expected_attribute_infos_for_fixture,
+        ):
+            self.assertEqual(fixture_row['model'], 'layers.attributeinfo')
+            self.assertEqual(fixture_row['pk'], expected_attribute_info.pk)
+            self.assertEqual(
+                fixture_row['fields'],
+                AttributeInfoExportSerializer(expected_attribute_info).data,
+            )
+
+        expected_layer_fields = dict(serializer_data)
+        expected_layer_fields['attribute_fields'] = expected_attribute_pk_list
+
+        self.assertEqual(fixture_data[-1]['model'], 'layers.layer')
+        self.assertEqual(fixture_data[-1]['pk'], layer.pk)
+        self.assertEqual(fixture_data[-1]['fields'], expected_layer_fields)
 
 class AttributeInfoExportSerializerTest(TestCase):
 
