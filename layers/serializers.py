@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
-from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
+from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
@@ -75,6 +75,18 @@ class LayerExportSerializer(serializers.Serializer):
             'date_modified': str(instance.date_modified) if instance.date_modified else None,
             'minZoom': instance.minZoom,
             'maxZoom': instance.maxZoom,
+        }
+
+
+class AttributeInfoExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'uuid': str(instance.uuid),
+            'display_name': instance.display_name,
+            'field_name': instance.field_name,
+            'precision': instance.precision,
+            'order': instance.order,
+            'preserve_format': instance.preserve_format,
         }
 
 

@@ -1,13 +1,14 @@
 from django.test import TestCase, RequestFactory, override_settings
 from django.utils import timezone
 from datetime import date
-from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer
+from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
+from rest_framework import serializers
 # request to get data from live site, mung it and make it into v2
 class ThemeTest(TestCase):
     def setUp(self):
@@ -294,6 +295,37 @@ class LayerExportSerializerTest(TestCase):
                 self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
 
         self.assertEqual(serializer_data, model_data)
+
+class AttributeInfoExportSerializerTest(TestCase):
+
+    def test_attribute_info_export_contains_expected_fields_with_appropriate_types(self):
+        expected_export_data = {
+            'display_name': 'Depth',
+            'field_name': 'depth_m',
+            'precision': 3,
+            'order': 7,
+            'preserve_format': True,
+        }
+
+        attribute_info = AttributeInfo.objects.create(**expected_export_data)
+        serializer_data = AttributeInfoExportSerializer(attribute_info).data
+
+        expected_keys = set(expected_export_data.keys())
+        expected_keys.add('uuid')
+
+        self.assertEqual(len(serializer_data), len(expected_keys))
+        self.assertEqual(set(serializer_data.keys()), expected_keys)
+
+        for field_name in expected_keys:
+            self.assertIn(field_name, serializer_data)
+            if field_name == 'uuid':
+                self.assertIsInstance(serializer_data[field_name], str)
+            else:
+                expected_value = expected_export_data[field_name]
+                self.assertEqual(serializer_data[field_name], expected_value)
+                self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
+
+
 
 
 class CompanionLayerTest(TestCase):
