@@ -250,6 +250,22 @@ class LayerExportSerializerTest(TestCase):
             'map_tiles': 'https://example.com/tiles',
             'label_field': 'name',
             'attribute_event': 'mouseover',
+            'attribute_fields': [
+                {
+                    'display_name': 'Depth',
+                    'field_name': 'depth_m',
+                    'precision': 3,
+                    'order': 2,
+                    'preserve_format': True,
+                },
+                {
+                    'display_name': 'Temperature',
+                    'field_name': 'temp_c',
+                    'precision': 1,
+                    'order': 1,
+                    'preserve_format': False,
+                },
+            ],
             'annotated': True,
             'compress_display': True,
             'mouseover_field': 'hover_field',
@@ -267,10 +283,24 @@ class LayerExportSerializerTest(TestCase):
                 else value
             )
             for field_name, value in expected_export_data.items()
-            if field_name not in {'uuid', 'date_created', 'date_modified'}
+            if field_name not in {'uuid', 'date_created', 'date_modified', 'attribute_fields'}
         }
 
+        attribute_info_records = [
+            AttributeInfo.objects.create(**field_data)
+            for field_data in expected_export_data['attribute_fields']
+        ]
+
         layer = Layer.objects.create(**create_data)
+        layer.attribute_fields.set(attribute_info_records)
+
+        expected_export_data['attribute_fields'] = [
+            {
+                'pk': attribute_info.pk,
+                'uuid': str(attribute_info.uuid),
+            }
+            for attribute_info in sorted(attribute_info_records, key=lambda x: x.order)
+        ]
         # layer = Layer.objects.create(**expected_export_data)
 
         serializer_data = LayerExportSerializer(layer).data

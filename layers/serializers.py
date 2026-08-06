@@ -27,6 +27,14 @@ library_fields = []
 
 class LayerExportSerializer(serializers.Serializer):
     def to_representation(self, instance):
+        attribute_field_refs = [
+            {
+                'pk': attribute_info.pk,
+                'uuid': str(attribute_info.uuid),
+            }
+            for attribute_info in instance.attribute_fields.all().order_by('order')
+        ]
+
         return {
             'name': instance.name,
             'uuid': str(instance.uuid),
@@ -64,7 +72,7 @@ class LayerExportSerializer(serializers.Serializer):
             'map_tiles': instance.map_tiles,
             'label_field': instance.label_field,
             'attribute_event': instance.attribute_event,
-            # 'attribute_fields': instance.attribute_fields,
+            'attribute_fields': attribute_field_refs,
             'annotated': instance.annotated,
             'compress_display': instance.compress_display,
             'mouseover_field': instance.mouseover_field,
