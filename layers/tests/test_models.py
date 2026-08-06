@@ -1,8 +1,8 @@
 from django.test import TestCase, RequestFactory, override_settings
 from django.utils import timezone
 from datetime import date
-from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer
+from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo, LookupInfo
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
@@ -453,6 +453,163 @@ class AttributeInfoExportSerializerTest(TestCase):
                 expected_value = expected_export_data[field_name]
                 self.assertEqual(serializer_data[field_name], expected_value)
                 self.assertIsInstance(serializer_data[field_name], type(expected_value) if expected_value is not None else type(None))
+
+
+class SpecificInstanceExportSerializerTest(TestCase):
+    def _create_base_layer(self, name, layer_type):
+        return Layer.objects.create(name=name, layer_type=layer_type)
+
+    def test_layer_wms_export_serializer(self):
+        layer = self._create_base_layer('WMS Export Layer', 'WMS')
+        instance = LayerWMS.objects.create(
+            layer=layer,
+            query_by_point=True,
+            wms_help=True,
+            wms_slug='wms-slug',
+            wms_version='1.3.0',
+            wms_format='image/png',
+            wms_srs='EPSG:3857',
+            wms_timing='2024-01-01',
+            wms_time_item='TIME',
+            wms_styles='default',
+            wms_additional='&token=abc',
+            wms_info=True,
+            wms_info_format='application/json',
+        )
+
+        serializer_data = LayerWMSExportSerializer(instance).data
+        expected = {
+            'layer': layer.pk,
+            'query_by_point': True,
+            'wms_help': True,
+            'wms_slug': 'wms-slug',
+            'wms_version': '1.3.0',
+            'wms_format': 'image/png',
+            'wms_srs': 'EPSG:3857',
+            'wms_timing': '2024-01-01',
+            'wms_time_item': 'TIME',
+            'wms_styles': 'default',
+            'wms_additional': '&token=abc',
+            'wms_info': True,
+            'wms_info_format': 'application/json',
+        }
+
+        self.assertEqual(serializer_data, expected)
+
+    def test_layer_arc_rest_export_serializer(self):
+        layer = self._create_base_layer('ArcREST Export Layer', 'ArcRest')
+        instance = LayerArcREST.objects.create(
+            layer=layer,
+            arcgis_layers='0,1,2',
+            password_protected=True,
+            disable_arcgis_attributes=True,
+            query_by_point=False,
+        )
+
+        serializer_data = LayerArcRESTExportSerializer(instance).data
+        expected = {
+            'layer': layer.pk,
+            'arcgis_layers': '0,1,2',
+            'password_protected': True,
+            'disable_arcgis_attributes': True,
+            'query_by_point': False,
+        }
+
+        self.assertEqual(serializer_data, expected)
+
+    def test_layer_vector_export_serializer(self):
+        layer = self._create_base_layer('Vector Export Layer', 'Vector')
+        lookup_a = LookupInfo.objects.create(value='A')
+        lookup_b = LookupInfo.objects.create(value='B')
+        instance = LayerVector.objects.create(
+            layer=layer,
+            custom_style='color',
+            outline_width=3,
+            outline_color='#112233',
+            outline_opacity=0.6,
+            fill_opacity=0.4,
+            color='#445566',
+            point_radius=9,
+            graphic='https://example.com/icon.png',
+            graphic_scale=1.5,
+            lookup_field='status',
+        )
+        instance.lookup_table.set([lookup_b, lookup_a])
+
+        serializer_data = LayerVectorExportSerializer(instance).data
+        expected = {
+            'layer': layer.pk,
+            'custom_style': 'color',
+            'outline_width': 3,
+            'outline_color': '#112233',
+            'outline_opacity': 0.6,
+            'fill_opacity': 0.4,
+            'color': '#445566',
+            'point_radius': 9,
+            'graphic': 'https://example.com/icon.png',
+            'graphic_scale': 1.5,
+            'lookup_field': 'status',
+            'lookup_table': sorted([lookup_a.pk, lookup_b.pk]),
+        }
+
+        self.assertEqual(serializer_data, expected)
+
+    def test_layer_arc_feature_service_export_serializer(self):
+        layer = self._create_base_layer('ArcFeature Export Layer', 'ArcFeatureServer')
+        lookup = LookupInfo.objects.create(value='open')
+        instance = LayerArcFeatureService.objects.create(
+            layer=layer,
+            arcgis_layers='3,4',
+            password_protected=False,
+            disable_arcgis_attributes=True,
+            custom_style='random',
+            outline_width=2,
+            outline_color='#778899',
+            outline_opacity=0.5,
+            fill_opacity=0.25,
+            color='#AA5500',
+            point_radius=5,
+            graphic='https://example.com/feature-icon.png',
+            graphic_scale=2.0,
+            lookup_field='state',
+        )
+        instance.lookup_table.set([lookup])
+
+        serializer_data = LayerArcFeatureServiceExportSerializer(instance).data
+        expected = {
+            'layer': layer.pk,
+            'arcgis_layers': '3,4',
+            'password_protected': False,
+            'disable_arcgis_attributes': True,
+            'custom_style': 'random',
+            'outline_width': 2,
+            'outline_color': '#778899',
+            'outline_opacity': 0.5,
+            'fill_opacity': 0.25,
+            'color': '#AA5500',
+            'point_radius': 5,
+            'graphic': 'https://example.com/feature-icon.png',
+            'graphic_scale': 2.0,
+            'lookup_field': 'state',
+            'lookup_table': [lookup.pk],
+        }
+
+        self.assertEqual(serializer_data, expected)
+
+    def test_layer_xyz_export_serializer(self):
+        layer = self._create_base_layer('XYZ Export Layer', 'XYZ')
+        instance = LayerXYZ.objects.create(
+            layer=layer,
+            query_by_point=True,
+        )
+
+        serializer_data = LayerXYZExportSerializer(instance).data
+        expected = {
+            'layer': layer.pk,
+            'query_by_point': True,
+        }
+
+        self.assertEqual(serializer_data, expected)
 
 
 

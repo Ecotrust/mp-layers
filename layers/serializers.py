@@ -98,6 +98,97 @@ class AttributeInfoExportSerializer(serializers.Serializer):
         }
 
 
+class LayerTypeExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'layer': instance.layer.pk,
+        }
+
+
+class RasterTypeExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'query_by_point': instance.query_by_point,
+        })
+        return data
+
+
+class ArcServerExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'arcgis_layers': instance.arcgis_layers,
+            'password_protected': instance.password_protected,
+            'disable_arcgis_attributes': instance.disable_arcgis_attributes,
+        })
+        return data
+
+
+class VectorTypeExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'custom_style': instance.custom_style,
+            'outline_width': instance.outline_width,
+            'outline_color': instance.outline_color,
+            'outline_opacity': instance.outline_opacity,
+            'fill_opacity': instance.fill_opacity,
+            'color': instance.color,
+            'point_radius': instance.point_radius,
+            'graphic': instance.graphic,
+            'graphic_scale': instance.graphic_scale,
+            'lookup_field': instance.lookup_field,
+            'lookup_table': [lookup.pk for lookup in instance.lookup_table.all().order_by('pk')],
+        })
+        return data
+
+
+class LayerWMSExportSerializer(RasterTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'wms_help': instance.wms_help,
+            'wms_slug': instance.wms_slug,
+            'wms_version': instance.wms_version,
+            'wms_format': instance.wms_format,
+            'wms_srs': instance.wms_srs,
+            'wms_timing': instance.wms_timing,
+            'wms_time_item': instance.wms_time_item,
+            'wms_styles': instance.wms_styles,
+            'wms_additional': instance.wms_additional,
+            'wms_info': instance.wms_info,
+            'wms_info_format': instance.wms_info_format,
+        })
+        return data
+
+
+class LayerArcRESTExportSerializer(ArcServerExportSerializer, RasterTypeExportSerializer):
+    def to_representation(self, instance):
+        data = ArcServerExportSerializer.to_representation(self, instance)
+        raster_data = RasterTypeExportSerializer.to_representation(self, instance)
+        raster_data.pop('layer', None)
+        data.update(raster_data)
+        return data
+
+
+class LayerArcFeatureServiceExportSerializer(ArcServerExportSerializer, VectorTypeExportSerializer):
+    def to_representation(self, instance):
+        data = ArcServerExportSerializer.to_representation(self, instance)
+        vector_data = VectorTypeExportSerializer.to_representation(self, instance)
+        vector_data.pop('layer', None)
+        data.update(vector_data)
+        return data
+
+
+class LayerVectorExportSerializer(VectorTypeExportSerializer):
+    pass
+
+
+class LayerXYZExportSerializer(RasterTypeExportSerializer):
+    pass
+
+
 class LayerExportFixtureSerializer(serializers.Serializer):
     def to_representation(self, instance):
         attribute_infos = list(instance.attribute_fields.all().order_by('order', 'display_name', 'pk'))
