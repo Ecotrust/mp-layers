@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
-from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo
+from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
@@ -206,25 +206,80 @@ class LayerXYZExportSerializer(RasterTypeExportSerializer):
 
 
 class LayerExportFixtureSerializer(serializers.Serializer):
+    def _to_ref(self, instance):
+        uuid_value = getattr(instance, 'uuid', None)
+        return {
+            'model': instance._meta.label_lower,
+            'source_pk': instance.pk,
+            'uuid': str(uuid_value) if uuid_value else None,
+        }
+
+    def _to_row(self, instance, fields, relations=None):
+        row = self._to_ref(instance)
+        row['fields'] = fields
+        row['relations'] = relations or {}
+        return row
+
     def to_representation(self, instance):
         attribute_infos = list(instance.attribute_fields.all().order_by('order', 'display_name', 'pk'))
+        specific_instance = instance.specific_instance
+
+        lookup_infos = []
+        if specific_instance is not None and hasattr(specific_instance, 'lookup_table'):
+            lookup_infos = list(specific_instance.lookup_table.all().order_by('pk'))
 
         fixture_rows = []
+        for lookup_info in lookup_infos:
+            fixture_rows.append(self._to_row(
+                lookup_info,
+                LookupInfoExportSerializer(lookup_info).data,
+            ))
+
         for attribute_info in attribute_infos:
-            fixture_rows.append({
-                'model': 'layers.attributeinfo',
-                'pk': attribute_info.pk,
-                'fields': AttributeInfoExportSerializer(attribute_info).data,
-            })
+            fixture_rows.append(self._to_row(
+                attribute_info,
+                AttributeInfoExportSerializer(attribute_info).data,
+            ))
 
         layer_fields = LayerExportSerializer(instance).data
-        layer_fields['attribute_fields'] = [attribute_info.pk for attribute_info in attribute_infos]
+        layer_fields.pop('attribute_fields', None)
+        layer_relations = {
+            'attribute_fields': [self._to_ref(attribute_info) for attribute_info in attribute_infos],
+        }
 
-        fixture_rows.append({
-            'model': 'layers.layer',
-            'pk': instance.pk,
-            'fields': layer_fields,
-        })
+        fixture_rows.append(self._to_row(
+            instance,
+            layer_fields,
+            layer_relations,
+        ))
+
+        if specific_instance is not None:
+            specific_exporters = {
+                LayerWMS: LayerWMSExportSerializer,
+                LayerArcREST: LayerArcRESTExportSerializer,
+                LayerArcFeatureService: LayerArcFeatureServiceExportSerializer,
+                LayerVector: LayerVectorExportSerializer,
+                LayerXYZ: LayerXYZExportSerializer,
+            }
+
+            exporter_class = specific_exporters.get(type(specific_instance))
+            if exporter_class:
+                specific_data = dict(exporter_class(specific_instance).data)
+                specific_data.pop('layer', None)
+                specific_data.pop('lookup_table', None)
+
+                specific_relations = {
+                    'layer': self._to_ref(instance),
+                }
+
+                if hasattr(specific_instance, 'lookup_table'):
+                    specific_relations['lookup_table'] = [self._to_ref(lookup_info) for lookup_info in lookup_infos]
+
+                fixture_rows.append(self._to_row(
+                    specific_instance,
+                    specific_data,
+                    specific_relations,
+                ))
 
         return fixture_rows
 

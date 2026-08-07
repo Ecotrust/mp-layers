@@ -402,7 +402,14 @@ class LayerExportFixtureSerializerTest(TestCase):
             attribute_info_records,
             key=lambda x: (x.order, x.display_name, x.pk),
         )
-        expected_attribute_pk_list = [x.pk for x in expected_attribute_infos_for_fixture]
+        expected_attribute_refs = [
+            {
+                'model': 'layers.attributeinfo',
+                'source_pk': x.pk,
+                'uuid': str(x.uuid),
+            }
+            for x in expected_attribute_infos_for_fixture
+        ]
 
         self.assertIsInstance(fixture_data, list)
         self.assertEqual(len(fixture_data), len(expected_attribute_infos_for_fixture) + 1)
@@ -412,18 +419,83 @@ class LayerExportFixtureSerializerTest(TestCase):
             expected_attribute_infos_for_fixture,
         ):
             self.assertEqual(fixture_row['model'], 'layers.attributeinfo')
-            self.assertEqual(fixture_row['pk'], expected_attribute_info.pk)
+            self.assertEqual(fixture_row['source_pk'], expected_attribute_info.pk)
+            self.assertEqual(fixture_row['uuid'], str(expected_attribute_info.uuid))
             self.assertEqual(
                 fixture_row['fields'],
                 AttributeInfoExportSerializer(expected_attribute_info).data,
             )
+            self.assertEqual(fixture_row['relations'], {})
 
         expected_layer_fields = dict(serializer_data)
-        expected_layer_fields['attribute_fields'] = expected_attribute_pk_list
+        expected_layer_fields.pop('attribute_fields', None)
 
         self.assertEqual(fixture_data[-1]['model'], 'layers.layer')
-        self.assertEqual(fixture_data[-1]['pk'], layer.pk)
+        self.assertEqual(fixture_data[-1]['source_pk'], layer.pk)
+        self.assertEqual(fixture_data[-1]['uuid'], str(layer.uuid))
         self.assertEqual(fixture_data[-1]['fields'], expected_layer_fields)
+        self.assertEqual(
+            fixture_data[-1]['relations'],
+            {
+                'attribute_fields': expected_attribute_refs,
+            },
+        )
+
+    def test_layer_export_fixture_includes_lookup_and_specific_instance_rows_for_vector_layer(self):
+        layer = Layer.objects.create(
+            name='Vector Fixture Layer',
+            layer_type='Vector',
+        )
+        lookup_b = LookupInfo.objects.create(value='B')
+        lookup_a = LookupInfo.objects.create(value='A')
+        vector = LayerVector.objects.create(
+            layer=layer,
+            lookup_field='status',
+            custom_style='color',
+        )
+        vector.lookup_table.set([lookup_b, lookup_a])
+
+        fixture_data = layer.to_export_dict()
+
+        self.assertEqual(len(fixture_data), 4)
+
+        expected_lookup_infos = sorted([lookup_a, lookup_b], key=lambda x: x.pk)
+        for fixture_row, expected_lookup in zip(fixture_data[:2], expected_lookup_infos):
+            self.assertEqual(fixture_row['model'], 'layers.lookupinfo')
+            self.assertEqual(fixture_row['source_pk'], expected_lookup.pk)
+            self.assertEqual(fixture_row['uuid'], str(expected_lookup.uuid))
+            self.assertEqual(fixture_row['fields'], LookupInfoExportSerializer(expected_lookup).data)
+            self.assertEqual(fixture_row['relations'], {})
+
+        layer_row = fixture_data[2]
+        self.assertEqual(layer_row['model'], 'layers.layer')
+        self.assertEqual(layer_row['source_pk'], layer.pk)
+        self.assertEqual(layer_row['uuid'], str(layer.uuid))
+        self.assertEqual(layer_row['relations']['attribute_fields'], [])
+
+        vector_row = fixture_data[3]
+        self.assertEqual(vector_row['model'], 'layers.layervector')
+        self.assertEqual(vector_row['source_pk'], vector.pk)
+        self.assertIsNone(vector_row['uuid'])
+        self.assertEqual(
+            vector_row['relations']['layer'],
+            {
+                'model': 'layers.layer',
+                'source_pk': layer.pk,
+                'uuid': str(layer.uuid),
+            },
+        )
+        self.assertEqual(
+            vector_row['relations']['lookup_table'],
+            [
+                {
+                    'model': 'layers.lookupinfo',
+                    'source_pk': lookup.pk,
+                    'uuid': str(lookup.uuid),
+                }
+                for lookup in expected_lookup_infos
+            ],
+        )
 
 class AttributeInfoExportSerializerTest(TestCase):
 
