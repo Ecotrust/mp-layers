@@ -3,6 +3,11 @@ from uuid import uuid4
 from django.test import SimpleTestCase
 
 from layers.fixture_contract import (
+    NODE_FIELDS_KEY,
+    NODE_MODEL_KEY,
+    NODE_RELATIONS_KEY,
+    NODE_SOURCE_PK_KEY,
+    NODE_UUID_KEY,
     build_node,
     build_ref,
     node_sort_key,
@@ -44,59 +49,59 @@ class FixtureContractTest(SimpleTestCase):
         instance = _InstanceWithUUID()
         ref_obj = build_ref(instance=instance)
 
-        self.assertEqual(ref_obj["model"], "layers.layer")
-        self.assertEqual(ref_obj["source_pk"], 42)
-        self.assertEqual(ref_obj["uuid"], str(instance.uuid))
+        self.assertEqual(ref_obj[NODE_MODEL_KEY], "layers.layer")
+        self.assertEqual(ref_obj[NODE_SOURCE_PK_KEY], 42)
+        self.assertEqual(ref_obj[NODE_UUID_KEY], str(instance.uuid))
 
     def test_build_ref_from_instance_without_uuid(self):
         instance = _InstanceWithoutUUID()
         ref_obj = build_ref(instance=instance)
 
-        self.assertEqual(ref_obj["model"], "layers.layer")
-        self.assertEqual(ref_obj["source_pk"], 84)
-        self.assertIsNone(ref_obj["uuid"])
+        self.assertEqual(ref_obj[NODE_MODEL_KEY], "layers.layer")
+        self.assertEqual(ref_obj[NODE_SOURCE_PK_KEY], 84)
+        self.assertIsNone(ref_obj[NODE_UUID_KEY])
 
     def test_build_node_defaults_fields_and_relations_to_empty_objects(self):
         node_obj = build_node("layers.layer", 1, None)
 
-        self.assertEqual(node_obj["fields"], {})
-        self.assertEqual(node_obj["relations"], {})
+        self.assertEqual(node_obj[NODE_FIELDS_KEY], {})
+        self.assertEqual(node_obj[NODE_RELATIONS_KEY], {})
 
     def test_validate_ref_shape_accepts_valid_ref(self):
         validate_ref_shape({
-            "model": "layers.layer",
-            "source_pk": 1,
-            "uuid": str(uuid4()),
+            NODE_MODEL_KEY: "layers.layer",
+            NODE_SOURCE_PK_KEY: 1,
+            NODE_UUID_KEY: str(uuid4()),
         })
 
     def test_validate_ref_shape_rejects_missing_model(self):
         with self.assertRaises(ValueError):
             validate_ref_shape({
-                "source_pk": 1,
-                "uuid": str(uuid4()),
+                NODE_SOURCE_PK_KEY: 1,
+                NODE_UUID_KEY: str(uuid4()),
             })
 
     def test_validate_node_shape_accepts_valid_node(self):
         validate_node_shape({
-            "model": "layers.layer",
-            "source_pk": 1,
-            "uuid": str(uuid4()),
-            "fields": {"name": "Layer"},
-            "relations": {},
+            NODE_MODEL_KEY: "layers.layer",
+            NODE_SOURCE_PK_KEY: 1,
+            NODE_UUID_KEY: str(uuid4()),
+            NODE_FIELDS_KEY: {"name": "Layer"},
+            NODE_RELATIONS_KEY: {},
         })
 
     def test_validate_node_shape_rejects_missing_relations(self):
         with self.assertRaises(ValueError):
             validate_node_shape({
-                "model": "layers.layer",
-                "source_pk": 1,
-                "uuid": str(uuid4()),
-                "fields": {},
+                NODE_MODEL_KEY: "layers.layer",
+                NODE_SOURCE_PK_KEY: 1,
+                NODE_UUID_KEY: str(uuid4()),
+                NODE_FIELDS_KEY: {},
             })
 
     def test_ref_sort_key_is_stable(self):
-        ref_one = {"model": "layers.lookupinfo", "source_pk": 2, "uuid": "b"}
-        ref_two = {"model": "layers.lookupinfo", "source_pk": 1, "uuid": "a"}
+        ref_one = {NODE_MODEL_KEY: "layers.lookupinfo", NODE_SOURCE_PK_KEY: 2, NODE_UUID_KEY: "b"}
+        ref_two = {NODE_MODEL_KEY: "layers.lookupinfo", NODE_SOURCE_PK_KEY: 1, NODE_UUID_KEY: "a"}
 
         sorted_refs = sorted([ref_one, ref_two], key=ref_sort_key)
 
@@ -104,18 +109,18 @@ class FixtureContractTest(SimpleTestCase):
 
     def test_node_sort_key_is_stable(self):
         node_one = {
-            "model": "layers.layer",
-            "source_pk": 2,
-            "uuid": "b",
-            "fields": {},
-            "relations": {},
+            NODE_MODEL_KEY: "layers.layer",
+            NODE_SOURCE_PK_KEY: 2,
+            NODE_UUID_KEY: "b",
+            NODE_FIELDS_KEY: {},
+            NODE_RELATIONS_KEY: {},
         }
         node_two = {
-            "model": "layers.layer",
-            "source_pk": 1,
-            "uuid": "a",
-            "fields": {},
-            "relations": {},
+            NODE_MODEL_KEY: "layers.layer",
+            NODE_SOURCE_PK_KEY: 1,
+            NODE_UUID_KEY: "a",
+            NODE_FIELDS_KEY: {},
+            NODE_RELATIONS_KEY: {},
         }
 
         sorted_nodes = sorted([node_one, node_two], key=node_sort_key)
