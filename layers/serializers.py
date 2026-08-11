@@ -3,6 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
+from layers.fixture_contract import build_node, build_ref
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
@@ -207,18 +208,17 @@ class LayerXYZExportSerializer(RasterTypeExportSerializer):
 
 class LayerExportFixtureSerializer(serializers.Serializer):
     def _to_ref(self, instance):
-        uuid_value = getattr(instance, 'uuid', None)
-        return {
-            'model': instance._meta.label_lower,
-            'source_pk': instance.pk,
-            'uuid': str(uuid_value) if uuid_value else None,
-        }
+        return build_ref(instance=instance)
 
     def _to_row(self, instance, fields, relations=None):
-        row = self._to_ref(instance)
-        row['fields'] = fields
-        row['relations'] = relations or {}
-        return row
+        uuid_value = getattr(instance, 'uuid', None)
+        return build_node(
+            model=instance._meta.label_lower,
+            source_pk=instance.pk,
+            uuid_value=uuid_value,
+            fields=fields,
+            relations=relations,
+        )
 
     def to_representation(self, instance):
         attribute_infos = list(instance.attribute_fields.all().order_by('order', 'display_name', 'pk'))
