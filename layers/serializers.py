@@ -210,6 +210,12 @@ class LayerExportFixtureSerializer(serializers.Serializer):
     def _to_ref(self, instance):
         return build_ref(instance=instance)
 
+    def _get_outgoing_companion_layers(self, companionship):
+        companion_layer_ids = companionship.companions.through.objects.filter(
+            companionship_id=companionship.pk,
+        ).values_list('layer_id', flat=True)
+        return list(Layer.all_objects.filter(pk__in=companion_layer_ids).order_by('pk'))
+
     def _to_row(self, instance, fields, relations=None):
         uuid_value = getattr(instance, 'uuid', None)
         return build_node(
@@ -221,65 +227,122 @@ class LayerExportFixtureSerializer(serializers.Serializer):
         )
 
     def to_representation(self, instance):
-        attribute_infos = list(instance.attribute_fields.all().order_by('order', 'display_name', 'pk'))
-        specific_instance = instance.specific_instance
-
-        lookup_infos = []
-        if specific_instance is not None and hasattr(specific_instance, 'lookup_table'):
-            lookup_infos = list(specific_instance.lookup_table.all().order_by('pk'))
-
+        # Export is built as a traversal pipeline so we can keep output
+        # deterministic while collecting related rows only once.
         fixture_rows = []
-        for lookup_info in lookup_infos:
-            fixture_rows.append(self._to_row(
-                lookup_info,
-                LookupInfoExportSerializer(lookup_info).data,
-            ))
+        seen_lookup_info_pks = set()
+        seen_attribute_info_pks = set()
+        seen_specific_instances = set()
+        seen_companionship_pks = set()
+        seen_layer_pks = set()
+        enqueued_layer_pks = {instance.pk}
+        layer_queue = [instance]
 
-        for attribute_info in attribute_infos:
-            fixture_rows.append(self._to_row(
-                attribute_info,
-                AttributeInfoExportSerializer(attribute_info).data,
-            ))
-
-        layer_fields = LayerExportSerializer(instance).data
-        layer_fields.pop('attribute_fields', None)
-        layer_relations = {
-            'attribute_fields': [self._to_ref(attribute_info) for attribute_info in attribute_infos],
+        specific_exporters = {
+            LayerWMS: LayerWMSExportSerializer,
+            LayerArcREST: LayerArcRESTExportSerializer,
+            LayerArcFeatureService: LayerArcFeatureServiceExportSerializer,
+            LayerVector: LayerVectorExportSerializer,
+            LayerXYZ: LayerXYZExportSerializer,
         }
 
-        fixture_rows.append(self._to_row(
-            instance,
-            layer_fields,
-            layer_relations,
-        ))
+        while layer_queue:
+            layer_obj = layer_queue.pop(0)
+            if layer_obj.pk in seen_layer_pks:
+                continue
+            seen_layer_pks.add(layer_obj.pk)
 
-        if specific_instance is not None:
-            specific_exporters = {
-                LayerWMS: LayerWMSExportSerializer,
-                LayerArcREST: LayerArcRESTExportSerializer,
-                LayerArcFeatureService: LayerArcFeatureServiceExportSerializer,
-                LayerVector: LayerVectorExportSerializer,
-                LayerXYZ: LayerXYZExportSerializer,
-            }
-
-            exporter_class = specific_exporters.get(type(specific_instance))
-            if exporter_class:
-                specific_data = dict(exporter_class(specific_instance).data)
-                specific_data.pop('layer', None)
-                specific_data.pop('lookup_table', None)
-
-                specific_relations = {
-                    'layer': self._to_ref(instance),
-                }
-
-                if hasattr(specific_instance, 'lookup_table'):
-                    specific_relations['lookup_table'] = [self._to_ref(lookup_info) for lookup_info in lookup_infos]
-
+            # Emit attribute rows before the owning layer row so downstream
+            # relation refs can point at a complete set of dependency rows.
+            attribute_infos = list(layer_obj.attribute_fields.all().order_by('order', 'display_name', 'pk'))
+            for attribute_info in attribute_infos:
+                if attribute_info.pk in seen_attribute_info_pks:
+                    continue
+                seen_attribute_info_pks.add(attribute_info.pk)
                 fixture_rows.append(self._to_row(
-                    specific_instance,
-                    specific_data,
-                    specific_relations,
+                    attribute_info,
+                    AttributeInfoExportSerializer(attribute_info).data,
                 ))
+
+            specific_instance = layer_obj.specific_instance
+            lookup_infos = []
+            if specific_instance is not None and hasattr(specific_instance, 'lookup_table'):
+                lookup_infos = list(specific_instance.lookup_table.all().order_by('pk'))
+
+            # Lookup rows are exported before the owning layer row for the same
+            # reason as attributes: the row graph stays self-contained.
+            for lookup_info in lookup_infos:
+                if lookup_info.pk in seen_lookup_info_pks:
+                    continue
+                seen_lookup_info_pks.add(lookup_info.pk)
+                fixture_rows.append(self._to_row(
+                    lookup_info,
+                    LookupInfoExportSerializer(lookup_info).data,
+                ))
+
+            outgoing_companionships = list(layer_obj.companionships.all().order_by('pk'))
+            layer_fields = LayerExportSerializer(layer_obj).data
+            layer_fields.pop('attribute_fields', None)
+            layer_relations = {
+                'attribute_fields': [self._to_ref(attribute_info) for attribute_info in attribute_infos],
+            }
+            if outgoing_companionships:
+                layer_relations['companionships'] = [self._to_ref(companionship) for companionship in outgoing_companionships]
+
+            # The base layer row carries refs to its attributes and outgoing
+            # companionships, but does not inline related objects.
+            fixture_rows.append(self._to_row(
+                layer_obj,
+                layer_fields,
+                layer_relations,
+            ))
+
+            # Specific layer-type rows are exported separately so the import
+            # side can rehydrate the polymorphic layer subtype independently.
+            if specific_instance is not None:
+                specific_key = (specific_instance._meta.label_lower, specific_instance.pk)
+                if specific_key not in seen_specific_instances:
+                    seen_specific_instances.add(specific_key)
+                    exporter_class = specific_exporters.get(type(specific_instance))
+                    if exporter_class:
+                        specific_data = dict(exporter_class(specific_instance).data)
+                        specific_data.pop('layer', None)
+                        specific_data.pop('lookup_table', None)
+
+                        specific_relations = {
+                            'layer': self._to_ref(layer_obj),
+                        }
+
+                        if hasattr(specific_instance, 'lookup_table'):
+                            specific_relations['lookup_table'] = [self._to_ref(lookup_info) for lookup_info in lookup_infos]
+
+                        fixture_rows.append(self._to_row(
+                            specific_instance,
+                            specific_data,
+                            specific_relations,
+                        ))
+
+            # Traverse companionships one-way: only follow outgoing links from
+            # the current layer, enqueue newly discovered companion layers, and
+            # export each companionship row once.
+            for companionship in outgoing_companionships:
+                companions = self._get_outgoing_companion_layers(companionship)
+                if companionship.pk not in seen_companionship_pks:
+                    seen_companionship_pks.add(companionship.pk)
+                    fixture_rows.append(self._to_row(
+                        companionship,
+                        {},
+                        {
+                            'layer': self._to_ref(companionship.layer),
+                            'companions': [self._to_ref(companion_layer) for companion_layer in companions],
+                        },
+                    ))
+
+                for companion_layer in companions:
+                    if companion_layer.pk in seen_layer_pks or companion_layer.pk in enqueued_layer_pks:
+                        continue
+                    enqueued_layer_pks.add(companion_layer.pk)
+                    layer_queue.append(companion_layer)
 
         return fixture_rows
 
