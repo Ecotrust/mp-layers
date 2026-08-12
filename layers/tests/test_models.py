@@ -8,6 +8,7 @@ from collections.abc import Collection
 import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
+from layers.fixture_contract import NODE_FIELDS_KEY, NODE_MODEL_KEY, NODE_RELATIONS_KEY, NODE_SOURCE_PK_KEY, NODE_UUID_KEY
 from rest_framework import serializers
 # request to get data from live site, mung it and make it into v2
 class ThemeTest(TestCase):
@@ -404,9 +405,9 @@ class LayerExportFixtureSerializerTest(TestCase):
         )
         expected_attribute_refs = [
             {
-                'model': 'layers.attributeinfo',
-                'source_pk': x.pk,
-                'uuid': str(x.uuid),
+                NODE_MODEL_KEY: 'layers.attributeinfo',
+                NODE_SOURCE_PK_KEY: x.pk,
+                NODE_UUID_KEY: str(x.uuid),
             }
             for x in expected_attribute_infos_for_fixture
         ]
@@ -418,24 +419,24 @@ class LayerExportFixtureSerializerTest(TestCase):
             fixture_data[:-1],
             expected_attribute_infos_for_fixture,
         ):
-            self.assertEqual(fixture_row['model'], 'layers.attributeinfo')
-            self.assertEqual(fixture_row['source_pk'], expected_attribute_info.pk)
-            self.assertEqual(fixture_row['uuid'], str(expected_attribute_info.uuid))
+            self.assertEqual(fixture_row[NODE_MODEL_KEY], 'layers.attributeinfo')
+            self.assertEqual(fixture_row[NODE_SOURCE_PK_KEY], expected_attribute_info.pk)
+            self.assertEqual(fixture_row[NODE_UUID_KEY], str(expected_attribute_info.uuid))
             self.assertEqual(
-                fixture_row['fields'],
+                fixture_row[NODE_FIELDS_KEY],
                 AttributeInfoExportSerializer(expected_attribute_info).data,
             )
-            self.assertEqual(fixture_row['relations'], {})
+            self.assertEqual(fixture_row[NODE_RELATIONS_KEY], {})
 
         expected_layer_fields = dict(serializer_data)
         expected_layer_fields.pop('attribute_fields', None)
 
-        self.assertEqual(fixture_data[-1]['model'], 'layers.layer')
-        self.assertEqual(fixture_data[-1]['source_pk'], layer.pk)
-        self.assertEqual(fixture_data[-1]['uuid'], str(layer.uuid))
-        self.assertEqual(fixture_data[-1]['fields'], expected_layer_fields)
+        self.assertEqual(fixture_data[-1][NODE_MODEL_KEY], 'layers.layer')
+        self.assertEqual(fixture_data[-1][NODE_SOURCE_PK_KEY], layer.pk)
+        self.assertEqual(fixture_data[-1][NODE_UUID_KEY], str(layer.uuid))
+        self.assertEqual(fixture_data[-1][NODE_FIELDS_KEY], expected_layer_fields)
         self.assertEqual(
-            fixture_data[-1]['relations'],
+            fixture_data[-1][NODE_RELATIONS_KEY],
             {
                 'attribute_fields': expected_attribute_refs,
             },
@@ -461,37 +462,37 @@ class LayerExportFixtureSerializerTest(TestCase):
 
         expected_lookup_infos = sorted([lookup_a, lookup_b], key=lambda x: x.pk)
         for fixture_row, expected_lookup in zip(fixture_data[:2], expected_lookup_infos):
-            self.assertEqual(fixture_row['model'], 'layers.lookupinfo')
-            self.assertEqual(fixture_row['source_pk'], expected_lookup.pk)
-            self.assertEqual(fixture_row['uuid'], str(expected_lookup.uuid))
-            self.assertEqual(fixture_row['fields'], LookupInfoExportSerializer(expected_lookup).data)
-            self.assertEqual(fixture_row['relations'], {})
+            self.assertEqual(fixture_row[NODE_MODEL_KEY], 'layers.lookupinfo')
+            self.assertEqual(fixture_row[NODE_SOURCE_PK_KEY], expected_lookup.pk)
+            self.assertEqual(fixture_row[NODE_UUID_KEY], str(expected_lookup.uuid))
+            self.assertEqual(fixture_row[NODE_FIELDS_KEY], LookupInfoExportSerializer(expected_lookup).data)
+            self.assertEqual(fixture_row[NODE_RELATIONS_KEY], {})
 
         layer_row = fixture_data[2]
-        self.assertEqual(layer_row['model'], 'layers.layer')
-        self.assertEqual(layer_row['source_pk'], layer.pk)
-        self.assertEqual(layer_row['uuid'], str(layer.uuid))
-        self.assertEqual(layer_row['relations']['attribute_fields'], [])
+        self.assertEqual(layer_row[NODE_MODEL_KEY], 'layers.layer')
+        self.assertEqual(layer_row[NODE_SOURCE_PK_KEY], layer.pk)
+        self.assertEqual(layer_row[NODE_UUID_KEY], str(layer.uuid))
+        self.assertEqual(layer_row[NODE_RELATIONS_KEY]['attribute_fields'], [])
 
         vector_row = fixture_data[3]
-        self.assertEqual(vector_row['model'], 'layers.layervector')
-        self.assertEqual(vector_row['source_pk'], vector.pk)
-        self.assertIsNone(vector_row['uuid'])
+        self.assertEqual(vector_row[NODE_MODEL_KEY], 'layers.layervector')
+        self.assertEqual(vector_row[NODE_SOURCE_PK_KEY], vector.pk)
+        self.assertIsNone(vector_row[NODE_UUID_KEY])
         self.assertEqual(
-            vector_row['relations']['layer'],
+            vector_row[NODE_RELATIONS_KEY]['layer'],
             {
-                'model': 'layers.layer',
-                'source_pk': layer.pk,
-                'uuid': str(layer.uuid),
+                NODE_MODEL_KEY: 'layers.layer',
+                NODE_SOURCE_PK_KEY: layer.pk,
+                NODE_UUID_KEY: str(layer.uuid),
             },
         )
         self.assertEqual(
-            vector_row['relations']['lookup_table'],
+            vector_row[NODE_RELATIONS_KEY]['lookup_table'],
             [
                 {
-                    'model': 'layers.lookupinfo',
-                    'source_pk': lookup.pk,
-                    'uuid': str(lookup.uuid),
+                    NODE_MODEL_KEY: 'layers.lookupinfo',
+                    NODE_SOURCE_PK_KEY: lookup.pk,
+                    NODE_UUID_KEY: str(lookup.uuid),
                 }
                 for lookup in expected_lookup_infos
             ],
