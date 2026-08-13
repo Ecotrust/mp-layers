@@ -4,7 +4,7 @@ from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
 from layers.fixture_contract import build_node, build_ref
-from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo
+from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo, MultilayerDimension, MultilayerDimensionValue, MultilayerAssociation
 from rest_framework import serializers
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
@@ -229,11 +229,15 @@ class LayerExportFixtureSerializer(serializers.Serializer):
     def to_representation(self, instance):
         # Export is built as a traversal pipeline so we can keep output
         # deterministic while collecting related rows only once.
+        root_layer_pk = instance.pk
         fixture_rows = []
         seen_lookup_info_pks = set()
         seen_attribute_info_pks = set()
         seen_specific_instances = set()
         seen_companionship_pks = set()
+        seen_multilayer_dimension_pks = set()
+        seen_multilayer_value_pks = set()
+        seen_multilayer_association_pks = set()
         seen_layer_pks = set()
         enqueued_layer_pks = {instance.pk}
         layer_queue = [instance]
@@ -343,6 +347,82 @@ class LayerExportFixtureSerializer(serializers.Serializer):
                         continue
                     enqueued_layer_pks.add(companion_layer.pk)
                     layer_queue.append(companion_layer)
+
+            # PR04 scope: export multilayer rows only for the root layer.
+            if layer_obj.pk == root_layer_pk:
+                dimensions = list(
+                    MultilayerDimension.objects.filter(layer=layer_obj).order_by('order', 'pk')
+                )
+                for dimension in dimensions:
+                    values = list(
+                        MultilayerDimensionValue.objects.filter(dimension=dimension).order_by('order', 'pk')
+                    )
+
+                    scoped_associations_by_value = {}
+                    for value in values:
+                        scoped_associations_by_value[value.pk] = list(
+                            value.associations.filter(parentLayer=layer_obj)
+                            .exclude(layer__isnull=True)
+                            .exclude(layer=layer_obj)
+                            .select_related('layer')
+                            .order_by('pk')
+                        )
+
+                    if dimension.pk not in seen_multilayer_dimension_pks:
+                        seen_multilayer_dimension_pks.add(dimension.pk)
+                        fixture_rows.append(self._to_row(
+                            dimension,
+                            {
+                                'name': dimension.name,
+                                'label': dimension.label,
+                                'order': dimension.order,
+                                'animated': dimension.animated,
+                                'angle_labels': dimension.angle_labels,
+                            },
+                            {
+                                'layer': self._to_ref(layer_obj),
+                                'multilayerdimensionvalue_set': [self._to_ref(value) for value in values],
+                            },
+                        ))
+
+                    for value in values:
+                        scoped_associations = scoped_associations_by_value[value.pk]
+
+                        if value.pk not in seen_multilayer_value_pks:
+                            seen_multilayer_value_pks.add(value.pk)
+                            fixture_rows.append(self._to_row(
+                                value,
+                                {
+                                    'value': value.value,
+                                    'label': value.label,
+                                    'order': value.order,
+                                },
+                                {
+                                    'dimension': self._to_ref(dimension),
+                                    'associations': [self._to_ref(association) for association in scoped_associations],
+                                },
+                            ))
+
+                        for association in scoped_associations:
+                            target_layer = association.layer
+                            if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
+                                enqueued_layer_pks.add(target_layer.pk)
+                                layer_queue.append(target_layer)
+
+                            if association.pk in seen_multilayer_association_pks:
+                                continue
+
+                            seen_multilayer_association_pks.add(association.pk)
+                            fixture_rows.append(self._to_row(
+                                association,
+                                {
+                                    'name': association.name,
+                                },
+                                {
+                                    'parentLayer': self._to_ref(layer_obj),
+                                    'layer': self._to_ref(target_layer),
+                                },
+                            ))
 
         return fixture_rows
 
