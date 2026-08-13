@@ -8,6 +8,11 @@ from layers.models import (
     AttributeInfo,
     Companionship,
     Layer,
+    LayerArcFeatureService,
+    LayerArcREST,
+    LayerVector,
+    LayerWMS,
+    LayerXYZ,
     LookupInfo,
     MultilayerAssociation,
 )
@@ -417,6 +422,180 @@ class LayerFixtureImportPR06Test(TestCase):
 
         with self.assertRaises(ValueError):
             import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+    def test_second_pass_resolves_specific_layer_rows_by_layer_uuid(self):
+        self._require_importer()
+
+        wms_uuid = uuid4()
+        arcrest_uuid = uuid4()
+        xyz_uuid = uuid4()
+        afs_uuid = uuid4()
+        vector_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9601,
+                uuid_value=wms_uuid,
+                fields={**self._layer_fields("WMS Layer"), "layer_type": "WMS"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9602,
+                uuid_value=arcrest_uuid,
+                fields={**self._layer_fields("ArcREST Layer"), "layer_type": "ArcRest"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9603,
+                uuid_value=xyz_uuid,
+                fields={**self._layer_fields("XYZ Layer"), "layer_type": "XYZ"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9604,
+                uuid_value=afs_uuid,
+                fields={
+                    **self._layer_fields("ArcFeature Layer"),
+                    "layer_type": "ArcFeatureServer",
+                },
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9605,
+                uuid_value=vector_uuid,
+                fields={**self._layer_fields("Vector Layer"), "layer_type": "Vector"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layerwms",
+                source_pk=9701,
+                uuid_value=None,
+                fields={"wms_slug": "sample:layer", "wms_version": "1.1.1"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19901,
+                        uuid_value=wms_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerarcrest",
+                source_pk=9702,
+                uuid_value=None,
+                fields={"arcgis_layers": "0,1"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19902,
+                        uuid_value=arcrest_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerxyz",
+                source_pk=9703,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19903,
+                        uuid_value=xyz_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerarcfeatureservice",
+                source_pk=9704,
+                uuid_value=None,
+                fields={"arcgis_layers": "2"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19904,
+                        uuid_value=afs_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layervector",
+                source_pk=9705,
+                uuid_value=None,
+                fields={"lookup_field": "kind"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19905,
+                        uuid_value=vector_uuid,
+                    )
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertTrue(LayerWMS.objects.filter(layer__uuid=wms_uuid).exists())
+        self.assertTrue(LayerArcREST.objects.filter(layer__uuid=arcrest_uuid).exists())
+        self.assertTrue(LayerXYZ.objects.filter(layer__uuid=xyz_uuid).exists())
+        self.assertTrue(
+            LayerArcFeatureService.objects.filter(layer__uuid=afs_uuid).exists()
+        )
+        self.assertTrue(LayerVector.objects.filter(layer__uuid=vector_uuid).exists())
+
+    def test_vector_lookup_table_relations_resolve_by_lookup_uuid(self):
+        self._require_importer()
+
+        vector_uuid = uuid4()
+        lookup_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9801,
+                uuid_value=vector_uuid,
+                fields={**self._layer_fields("Vector + Lookup"), "layer_type": "Vector"},
+                relations={},
+            ),
+            build_node(
+                model="layers.lookupinfo",
+                source_pk=9802,
+                uuid_value=lookup_uuid,
+                fields={"value": "1", "description": "one", "dashstyle": "solid"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layervector",
+                source_pk=9803,
+                uuid_value=None,
+                fields={"lookup_field": "class"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=29901,
+                        uuid_value=vector_uuid,
+                    ),
+                    "lookup_table": [
+                        build_ref(
+                            model="layers.lookupinfo",
+                            source_pk=29902,
+                            uuid_value=lookup_uuid,
+                        )
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        vector_row = LayerVector.objects.get(layer__uuid=vector_uuid)
+        self.assertEqual(vector_row.lookup_table.count(), 1)
+        self.assertEqual(vector_row.lookup_table.first().uuid, lookup_uuid)
 
     def test_missing_relation_uuid_raises_error_under_strict_policy(self):
         """Raise ValueError if required relations are missing from the fixture."""
