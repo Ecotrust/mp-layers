@@ -230,12 +230,21 @@ def import_fixture_rows(
             )
 
             Companionship = apps.get_model(COMPANIONSHIP_MODEL)
-            companionship = Companionship.objects.filter(layer=owner_layer).first()
+            companionship = Companionship.objects.filter(layer=owner_layer).order_by("pk").first()
             if companionship is None:
                 companionship = Companionship(layer=owner_layer)
                 companionship.save()
 
-            companionship.companions.set(companion_layers)
+            existing_companion_ids = set(
+                companionship.companions.values_list("pk", flat=True)
+            )
+            companions_to_add = [
+                companion
+                for companion in companion_layers
+                if companion.pk not in existing_companion_ids
+            ]
+            if companions_to_add:
+                companionship.companions.add(*companions_to_add)
 
         # Second pass: specific layer subtype rows keyed by resolved base layer relation.
         for row in rows:

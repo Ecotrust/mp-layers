@@ -397,6 +397,114 @@ class LayerFixtureImportPR06Test(TestCase):
         )
         self.assertEqual(companion_uuids, {companion_a_uuid, companion_b_uuid})
 
+    def test_multiple_companionship_rows_for_same_owner_merge_into_first_record(self):
+        self._require_importer()
+
+        owner_uuid = uuid4()
+        companion_a_uuid = uuid4()
+        companion_b_uuid = uuid4()
+        companion_c_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9411,
+                uuid_value=owner_uuid,
+                fields=self._layer_fields("Owner Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9412,
+                uuid_value=companion_a_uuid,
+                fields=self._layer_fields("Companion A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9413,
+                uuid_value=companion_b_uuid,
+                fields=self._layer_fields("Companion B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9414,
+                uuid_value=companion_c_uuid,
+                fields=self._layer_fields("Companion C"),
+                relations={},
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9415,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55601,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55602,
+                            uuid_value=companion_a_uuid,
+                        ),
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55603,
+                            uuid_value=companion_b_uuid,
+                        ),
+                    ],
+                },
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9416,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55611,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55612,
+                            uuid_value=companion_c_uuid,
+                        ),
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_owner = Layer.objects.get(uuid=owner_uuid)
+        companionship_rows = Companionship.objects.filter(layer=imported_owner)
+        self.assertEqual(companionship_rows.count(), 1)
+
+        companionship = companionship_rows.first()
+        companion_set = set(companionship.companions.values_list("uuid", flat=True))
+        self.assertEqual(
+            companion_set,
+            {companion_a_uuid, companion_b_uuid, companion_c_uuid},
+        )
+
+        # Importing the same fixture again should not duplicate identical rows.
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+        self.assertEqual(Companionship.objects.filter(layer=imported_owner).count(), 1)
+        companion_set = set(
+            Companionship.objects.get(layer=imported_owner).companions.values_list("uuid", flat=True)
+        )
+        self.assertEqual(
+            companion_set,
+            {companion_a_uuid, companion_b_uuid, companion_c_uuid},
+        )
+
     def test_missing_attribute_relation_uuid_raises_error_under_strict_policy(self):
         self._require_importer()
 
