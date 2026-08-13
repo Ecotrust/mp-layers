@@ -105,10 +105,10 @@ class LayerMultilayerFixtureExportTest(TestCase):
         self.assertEqual(exported_value_pks, {root_value_a.pk, root_value_b.pk})
         self.assertEqual(exported_association_pks, {included_association.pk})
 
-    def test_export_multilayer_two_by_three_includes_unique_name_associations_and_seven_layers(self):
+    def test_export_multilayer_two_by_three_includes_reused_unique_associations_and_seven_layers(self):
         """PR04 multilayer semantics:
-        - Association names are first-letter-capitalized tokens by dimension order.
-        - The same association name across dimension values maps to the same target layer.
+        - Association names should round-trip as-is and do not require spaces.
+        - The same association is reused across dimension values, not duplicated.
         - Association target layer must never be the exported parent layer.
         - For 2x3 values, export parent + 6 associated layers (7 total).
         """
@@ -169,9 +169,10 @@ class LayerMultilayerFixtureExportTest(TestCase):
         ]
 
         combo_to_target_layer = {}
+        combo_to_association = {}
         for dim_one_value in dim_one_values:
             for dim_two_value in dim_two_values:
-                association_name = '{} {}'.format(
+                association_name = '{}{}'.format(
                     _cap_first_token(dim_one_value.value),
                     _cap_first_token(dim_two_value.value),
                 )
@@ -187,6 +188,7 @@ class LayerMultilayerFixtureExportTest(TestCase):
                 dim_one_value.associations.add(association)
                 dim_two_value.associations.add(association)
                 combo_to_target_layer[association_name] = target_layer
+                combo_to_association[association_name] = association
 
         fixture_data = export_layer.to_export_dict()
 
@@ -217,6 +219,7 @@ class LayerMultilayerFixtureExportTest(TestCase):
             for row in association_rows
         }
         self.assertEqual(exported_association_names, set(combo_to_target_layer.keys()))
+        self.assertEqual(len(association_rows), 6)
 
         exported_association_name_to_layer_pk = {
             row[NODE_FIELDS_KEY]['name']: row[NODE_RELATIONS_KEY]['layer'][NODE_SOURCE_PK_KEY]
@@ -247,10 +250,117 @@ class LayerMultilayerFixtureExportTest(TestCase):
             for ref in value_by_value_field['val-2b'][NODE_RELATIONS_KEY]['associations']
         }
 
-        association_pk_for_val_1a_val_2b = next(
-            row[NODE_SOURCE_PK_KEY]
-            for row in association_rows
-            if row[NODE_FIELDS_KEY]['name'] == 'Val-1a Val-2b'
-        )
+        association_pk_for_val_1a_val_2b = combo_to_association['Val-1aVal-2b'].pk
         self.assertIn(association_pk_for_val_1a_val_2b, associations_for_val_1a)
         self.assertIn(association_pk_for_val_1a_val_2b, associations_for_val_2b)
+
+    def test_export_multilayer_two_by_two_reuses_four_unique_associations(self):
+        def _cap_first_token(value):
+            if not value:
+                return value
+            return '{}{}'.format(value[0].upper(), value[1:])
+
+        export_layer = Layer.objects.create(name='Layer 2x2 Parent', layer_type='WMS')
+
+        dim_one = MultilayerDimension.objects.create(
+            layer=export_layer,
+            name='dim-1',
+            label='Dim 1',
+            order=1,
+        )
+        dim_two = MultilayerDimension.objects.create(
+            layer=export_layer,
+            name='dim-2',
+            label='Dim 2',
+            order=2,
+        )
+
+        dim_one_values = [
+            MultilayerDimensionValue.objects.create(
+                dimension=dim_one,
+                value='val-1a',
+                label='Val 1a',
+                order=1,
+            ),
+            MultilayerDimensionValue.objects.create(
+                dimension=dim_one,
+                value='val-1b',
+                label='Val 1b',
+                order=2,
+            ),
+        ]
+        dim_two_values = [
+            MultilayerDimensionValue.objects.create(
+                dimension=dim_two,
+                value='val-2a',
+                label='Val 2a',
+                order=1,
+            ),
+            MultilayerDimensionValue.objects.create(
+                dimension=dim_two,
+                value='val-2b',
+                label='Val 2b',
+                order=2,
+            ),
+        ]
+
+        associations = {}
+        for dim_one_value in dim_one_values:
+            for dim_two_value in dim_two_values:
+                association_name = '{}{}'.format(
+                    _cap_first_token(dim_one_value.value),
+                    _cap_first_token(dim_two_value.value),
+                )
+                target_layer = Layer.objects.create(
+                    name='Target {}'.format(association_name),
+                    layer_type='WMS',
+                )
+                association = MultilayerAssociation.objects.create(
+                    parentLayer=export_layer,
+                    layer=target_layer,
+                    name=association_name,
+                )
+                dim_one_value.associations.add(association)
+                dim_two_value.associations.add(association)
+                associations[association_name] = association
+
+        fixture_data = export_layer.to_export_dict()
+
+        association_rows = [
+            row for row in fixture_data if row[NODE_MODEL_KEY] == 'layers.multilayerassociation'
+        ]
+        value_rows = {
+            row[NODE_FIELDS_KEY]['value']: row
+            for row in fixture_data
+            if row[NODE_MODEL_KEY] == 'layers.multilayerdimensionvalue'
+        }
+
+        self.assertEqual(len(association_rows), 4)
+        self.assertEqual(
+            {row[NODE_SOURCE_PK_KEY] for row in association_rows},
+            {association.pk for association in associations.values()},
+        )
+        self.assertEqual(
+            len(value_rows['val-1a'][NODE_RELATIONS_KEY]['associations']),
+            2,
+        )
+        self.assertEqual(
+            len(value_rows['val-2b'][NODE_RELATIONS_KEY]['associations']),
+            2,
+        )
+
+        shared_association_pk = associations['Val-1aVal-2b'].pk
+        self.assertIn(
+            shared_association_pk,
+            {
+                ref[NODE_SOURCE_PK_KEY]
+                for ref in value_rows['val-1a'][NODE_RELATIONS_KEY]['associations']
+            },
+        )
+        self.assertIn(
+            shared_association_pk,
+            {
+                ref[NODE_SOURCE_PK_KEY]
+                for ref in value_rows['val-2b'][NODE_RELATIONS_KEY]['associations']
+            },
+        )
