@@ -4,7 +4,13 @@ from django.contrib.sites.models import Site
 from django.test import TestCase
 
 from layers.fixture_contract import build_node, build_ref
-from layers.models import Layer, MultilayerAssociation
+from layers.models import (
+    AttributeInfo,
+    Companionship,
+    Layer,
+    LookupInfo,
+    MultilayerAssociation,
+)
 
 try:
     from layers.fixture_import import import_fixture_rows
@@ -190,6 +196,223 @@ class LayerFixtureImportPR05Test(TestCase):
                 fields=self._layer_fields("Name B"),
                 relations={},
             ),
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+
+class LayerFixtureImportPR06Test(TestCase):
+    """PR06 contract tests for associated model import behavior."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def _layer_fields(self, name):
+        return {
+            "name": name,
+            "layer_type": "WMS",
+            "slug_name": None,
+            "url": None,
+        }
+
+    def test_attributeinfo_uuid_match_updates_existing_even_when_source_pk_differs(self):
+        self._require_importer()
+
+        attribute_uuid = uuid4()
+        existing_attr = AttributeInfo.objects.create(
+            uuid=attribute_uuid,
+            display_name="Original Label",
+            field_name="old_field",
+            order=1,
+        )
+
+        fixture_rows = [
+            build_node(
+                model="layers.attributeinfo",
+                source_pk=8801,
+                uuid_value=attribute_uuid,
+                fields={
+                    "display_name": "Updated Label",
+                    "field_name": "new_field",
+                    "order": 7,
+                },
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        existing_attr.refresh_from_db()
+        self.assertEqual(existing_attr.display_name, "Updated Label")
+        self.assertEqual(existing_attr.field_name, "new_field")
+        self.assertEqual(AttributeInfo.objects.filter(uuid=attribute_uuid).count(), 1)
+
+    def test_lookupinfo_source_pk_collision_with_different_uuid_creates_new_record(self):
+        self._require_importer()
+
+        existing_lookup = LookupInfo.objects.create(value="A", description="existing")
+        new_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.lookupinfo",
+                source_pk=existing_lookup.pk,
+                uuid_value=new_uuid,
+                fields={
+                    "value": "B",
+                    "description": "imported",
+                    "dashstyle": "solid",
+                },
+                relations={},
+            )
+        ]
+
+        before_count = LookupInfo.objects.count()
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertEqual(LookupInfo.objects.count(), before_count + 1)
+        self.assertTrue(LookupInfo.objects.filter(uuid=new_uuid).exists())
+
+    def test_second_pass_resolves_layer_attribute_fields_by_uuid(self):
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        attr_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.attributeinfo",
+                source_pk=9301,
+                uuid_value=attr_uuid,
+                fields={
+                    "display_name": "Area",
+                    "field_name": "area_sqkm",
+                    "order": 2,
+                },
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9302,
+                uuid_value=layer_uuid,
+                fields=self._layer_fields("Layer With Attributes"),
+                relations={
+                    "attribute_fields": [
+                        build_ref(
+                            model="layers.attributeinfo",
+                            source_pk=77701,
+                            uuid_value=attr_uuid,
+                        )
+                    ]
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.objects.get(uuid=layer_uuid)
+        imported_attr = AttributeInfo.objects.get(uuid=attr_uuid)
+        self.assertEqual(imported_layer.attribute_fields.count(), 1)
+        self.assertEqual(imported_layer.attribute_fields.first().pk, imported_attr.pk)
+
+    def test_second_pass_resolves_companionship_layer_and_companions_by_uuid(self):
+        self._require_importer()
+
+        owner_uuid = uuid4()
+        companion_a_uuid = uuid4()
+        companion_b_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9401,
+                uuid_value=owner_uuid,
+                fields=self._layer_fields("Owner Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9402,
+                uuid_value=companion_a_uuid,
+                fields=self._layer_fields("Companion A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9403,
+                uuid_value=companion_b_uuid,
+                fields=self._layer_fields("Companion B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9404,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55501,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55502,
+                            uuid_value=companion_a_uuid,
+                        ),
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55503,
+                            uuid_value=companion_b_uuid,
+                        ),
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_owner = Layer.objects.get(uuid=owner_uuid)
+        companionship = Companionship.objects.get(layer=imported_owner)
+        companion_uuids = set(
+            companionship.companions.values_list("uuid", flat=True)
+        )
+        self.assertEqual(companion_uuids, {companion_a_uuid, companion_b_uuid})
+
+    def test_missing_attribute_relation_uuid_raises_error_under_strict_policy(self):
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        missing_attr_uuid = uuid4()
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9501,
+                uuid_value=layer_uuid,
+                fields=self._layer_fields("Layer Missing Attribute Ref"),
+                relations={
+                    "attribute_fields": [
+                        build_ref(
+                            model="layers.attributeinfo",
+                            source_pk=88801,
+                            uuid_value=missing_attr_uuid,
+                        )
+                    ]
+                },
+            )
         ]
 
         with self.assertRaises(ValueError):
