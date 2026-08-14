@@ -22,6 +22,8 @@ from .fixture_contract import (
 
 LAYER_MODEL = "layers.layer"
 MULTILAYER_ASSOCIATION_MODEL = "layers.multilayerassociation"
+MULTILAYER_DIMENSION_MODEL = "layers.multilayerdimension"
+MULTILAYER_DIMENSION_VALUE_MODEL = "layers.multilayerdimensionvalue"
 ATTRIBUTE_INFO_MODEL = "layers.attributeinfo"
 LOOKUP_INFO_MODEL = "layers.lookupinfo"
 COMPANIONSHIP_MODEL = "layers.companionship"
@@ -137,8 +139,12 @@ def import_fixture_rows(
 
     Layer = apps.get_model(LAYER_MODEL)
     MultilayerAssociation = apps.get_model(MULTILAYER_ASSOCIATION_MODEL)
+    MultilayerDimension = apps.get_model(MULTILAYER_DIMENSION_MODEL)
+    MultilayerDimensionValue = apps.get_model(MULTILAYER_DIMENSION_VALUE_MODEL)
     layer_manager = _model_manager(Layer)
     association_manager = _model_manager(MultilayerAssociation)
+    dimension_manager = _model_manager(MultilayerDimension)
+    dimension_value_manager = _model_manager(MultilayerDimensionValue)
 
     def _execute_import():
         # First pass: upsert UUID-keyed rows that do not require relation remaps.
@@ -212,6 +218,59 @@ def import_fixture_rows(
             assoc_obj.parentLayer = parent_layer_obj
             assoc_obj.layer = layer_obj
             assoc_obj.save()
+
+        # Second pass: upsert multilayer dimensions and resolve owning layer by UUID.
+        for row in rows:
+            if row.get(NODE_MODEL_KEY) != MULTILAYER_DIMENSION_MODEL:
+                continue
+
+            dimension_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
+            if not dimension_uuid:
+                raise ValueError("MultilayerDimension row missing UUID")
+
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            layer_ref = relations.get("layer")
+            if not layer_ref:
+                raise ValueError("Missing layer relation for MultilayerDimension")
+
+            owner_layer = _resolve_ref_instance(layer_ref, missing_ref_policy)
+
+            dimension_obj = dimension_manager.filter(uuid=dimension_uuid).first()
+            if dimension_obj is None:
+                dimension_obj = MultilayerDimension(uuid=dimension_uuid)
+
+            _apply_fields(dimension_obj, row.get(NODE_FIELDS_KEY, {}))
+            dimension_obj.layer = owner_layer
+            dimension_obj.save()
+
+        # Second pass: upsert multilayer dimension values and resolve relations by UUID.
+        for row in rows:
+            if row.get(NODE_MODEL_KEY) != MULTILAYER_DIMENSION_VALUE_MODEL:
+                continue
+
+            value_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
+            if not value_uuid:
+                raise ValueError("MultilayerDimensionValue row missing UUID")
+
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            dimension_ref = relations.get("dimension")
+            if not dimension_ref:
+                raise ValueError("Missing dimension relation for MultilayerDimensionValue")
+
+            dimension_obj = _resolve_ref_instance(dimension_ref, missing_ref_policy)
+            resolved_associations = _resolve_ref_list(
+                relations.get("associations") or [],
+                missing_ref_policy,
+            )
+
+            value_obj = dimension_value_manager.filter(uuid=value_uuid).first()
+            if value_obj is None:
+                value_obj = MultilayerDimensionValue(uuid=value_uuid)
+
+            _apply_fields(value_obj, row.get(NODE_FIELDS_KEY, {}))
+            value_obj.dimension = dimension_obj
+            value_obj.save()
+            value_obj.associations.set(resolved_associations)
 
         # Second pass: companionship relation rows (non-UUID identity).
         for row in rows:
@@ -318,7 +377,13 @@ def import_multilayer_rows(
     multilayer_rows = [
         row
         for row in (rows or [])
-        if row.get(NODE_MODEL_KEY) in {LAYER_MODEL, MULTILAYER_ASSOCIATION_MODEL}
+        if row.get(NODE_MODEL_KEY)
+        in {
+            LAYER_MODEL,
+            MULTILAYER_ASSOCIATION_MODEL,
+            MULTILAYER_DIMENSION_MODEL,
+            MULTILAYER_DIMENSION_VALUE_MODEL,
+        }
     ]
     return import_fixture_rows(
         multilayer_rows,

@@ -15,6 +15,8 @@ from layers.models import (
     LayerXYZ,
     LookupInfo,
     MultilayerAssociation,
+    MultilayerDimension,
+    MultilayerDimensionValue,
 )
 
 try:
@@ -524,6 +526,225 @@ class LayerFixtureImportPR06Test(TestCase):
                             uuid_value=missing_attr_uuid,
                         )
                     ]
+                },
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+
+class LayerFixtureImportPR07Test(TestCase):
+    """PR07 contract tests for multilayer import graph integrity."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def _layer_fields(self, name, layer_type="WMS"):
+        return {
+            "name": name,
+            "layer_type": layer_type,
+            "slug_name": None,
+            "url": None,
+        }
+
+    def test_multilayer_dimension_value_association_graph_resolves_by_uuid(self):
+        self._require_importer()
+
+        parent_uuid = uuid4()
+        target_a_uuid = uuid4()
+        target_b_uuid = uuid4()
+        dimension_uuid = uuid4()
+        association_a_uuid = uuid4()
+        association_b_uuid = uuid4()
+        value_1_uuid = uuid4()
+        value_2_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=1001,
+                uuid_value=parent_uuid,
+                fields=self._layer_fields("Parent Slider Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=1002,
+                uuid_value=target_a_uuid,
+                fields=self._layer_fields("Target A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=1003,
+                uuid_value=target_b_uuid,
+                fields=self._layer_fields("Target B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.multilayerdimension",
+                source_pk=1101,
+                uuid_value=dimension_uuid,
+                fields={
+                    "name": "Year",
+                    "label": "Year",
+                    "order": 10,
+                    "animated": True,
+                    "angle_labels": False,
+                },
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50101,
+                        uuid_value=parent_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=1201,
+                uuid_value=association_a_uuid,
+                fields={"name": "A"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50201,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50202,
+                        uuid_value=target_a_uuid,
+                    ),
+                },
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=1202,
+                uuid_value=association_b_uuid,
+                fields={"name": "B"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50301,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50302,
+                        uuid_value=target_b_uuid,
+                    ),
+                },
+            ),
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1301,
+                uuid_value=value_1_uuid,
+                fields={"value": "2020", "label": "2020", "order": 1},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=50401,
+                        uuid_value=dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50402,
+                            uuid_value=association_a_uuid,
+                        )
+                    ],
+                },
+            ),
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1302,
+                uuid_value=value_2_uuid,
+                fields={"value": "2021", "label": "2021", "order": 2},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=50501,
+                        uuid_value=dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50502,
+                            uuid_value=association_b_uuid,
+                        )
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_parent = Layer.objects.get(uuid=parent_uuid)
+        imported_target_a = Layer.objects.get(uuid=target_a_uuid)
+        imported_target_b = Layer.objects.get(uuid=target_b_uuid)
+
+        imported_dimension = MultilayerDimension.objects.get(uuid=dimension_uuid)
+        self.assertEqual(imported_dimension.layer_id, imported_parent.pk)
+
+        association_a = MultilayerAssociation.objects.get(uuid=association_a_uuid)
+        association_b = MultilayerAssociation.objects.get(uuid=association_b_uuid)
+        self.assertEqual(association_a.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_b.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_a.layer_id, imported_target_a.pk)
+        self.assertEqual(association_b.layer_id, imported_target_b.pk)
+
+        value_1 = MultilayerDimensionValue.objects.get(uuid=value_1_uuid)
+        value_2 = MultilayerDimensionValue.objects.get(uuid=value_2_uuid)
+        self.assertEqual(value_1.dimension_id, imported_dimension.pk)
+        self.assertEqual(value_2.dimension_id, imported_dimension.pk)
+        self.assertEqual(
+            set(value_1.associations.values_list("uuid", flat=True)),
+            {association_a_uuid},
+        )
+        self.assertEqual(
+            set(value_2.associations.values_list("uuid", flat=True)),
+            {association_b_uuid},
+        )
+
+    def test_missing_dimension_or_association_reference_raises_in_strict_mode(self):
+        self._require_importer()
+
+        value_uuid = uuid4()
+        missing_dimension_uuid = uuid4()
+        missing_association_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1401,
+                uuid_value=value_uuid,
+                fields={"value": "X", "label": "X", "order": 1},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=60101,
+                        uuid_value=missing_dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=60102,
+                            uuid_value=missing_association_uuid,
+                        )
+                    ],
                 },
             )
         ]
