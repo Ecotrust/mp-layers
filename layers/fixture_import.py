@@ -22,6 +22,16 @@ from .fixture_contract import (
 
 LAYER_MODEL = "layers.layer"
 MULTILAYER_ASSOCIATION_MODEL = "layers.multilayerassociation"
+ATTRIBUTE_INFO_MODEL = "layers.attributeinfo"
+LOOKUP_INFO_MODEL = "layers.lookupinfo"
+COMPANIONSHIP_MODEL = "layers.companionship"
+SPECIFIC_LAYER_MODELS = {
+    "layers.layerwms",
+    "layers.layerarcrest",
+    "layers.layerxyz",
+    "layers.layerarcfeatureservice",
+    "layers.layervector",
+}
 
 
 def _model_manager(model_class):
@@ -93,6 +103,13 @@ def _resolve_ref_instance(ref_obj, missing_ref_policy):
         return None
 
 
+def _resolve_ref_list(ref_list, missing_ref_policy):
+    resolved = []
+    for ref_obj in ref_list or []:
+        resolved.append(_resolve_ref_instance(ref_obj, missing_ref_policy))
+    return resolved
+
+
 def import_fixture_rows(
     rows,
     dry_run=False,
@@ -124,26 +141,47 @@ def import_fixture_rows(
     association_manager = _model_manager(MultilayerAssociation)
 
     def _execute_import():
-        # First pass: upsert layer rows by UUID.
+        # First pass: upsert UUID-keyed rows that do not require relation remaps.
+        for row in rows:
+            model_label = row.get(NODE_MODEL_KEY)
+            if model_label not in {LAYER_MODEL, ATTRIBUTE_INFO_MODEL, LOOKUP_INFO_MODEL}:
+                continue
+
+            row_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
+            if not row_uuid:
+                raise ValueError("%s row missing UUID" % model_label)
+
+            model_class = apps.get_model(model_label)
+            model_manager = _model_manager(model_class)
+            row_fields = dict(row.get(NODE_FIELDS_KEY, {}))
+            row_obj = model_manager.filter(uuid=row_uuid).first()
+            is_new = row_obj is None
+            if is_new:
+                row_obj = model_class(uuid=row_uuid)
+
+            _apply_fields(row_obj, row_fields)
+            row_obj.save()
+
+            if model_label == LAYER_MODEL and associate_all_sites:
+                row_obj.site.set(Site.objects.all())
+
+        # Second pass: resolve layer m2m attribute refs by UUID.
         for row in rows:
             if row.get(NODE_MODEL_KEY) != LAYER_MODEL:
                 continue
 
             layer_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
-            if not layer_uuid:
-                raise ValueError("Layer row missing UUID")
-
-            layer_fields = dict(row.get(NODE_FIELDS_KEY, {}))
             layer_obj = layer_manager.filter(uuid=layer_uuid).first()
-            is_new = layer_obj is None
-            if is_new:
-                layer_obj = Layer(uuid=layer_uuid)
+            if layer_obj is None:
+                raise ValueError("Missing layer object for UUID %s" % layer_uuid)
 
-            _apply_fields(layer_obj, layer_fields)
-            layer_obj.save()
-
-            if associate_all_sites:
-                layer_obj.site.set(Site.objects.all())
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            if "attribute_fields" in relations:
+                resolved_attributes = _resolve_ref_list(
+                    relations.get("attribute_fields") or [],
+                    missing_ref_policy,
+                )
+                layer_obj.attribute_fields.set(resolved_attributes)
 
         # Second pass: upsert multilayer associations and resolve FKs by UUID refs.
         for row in rows:
@@ -174,6 +212,67 @@ def import_fixture_rows(
             assoc_obj.parentLayer = parent_layer_obj
             assoc_obj.layer = layer_obj
             assoc_obj.save()
+
+        # Second pass: companionship relation rows (non-UUID identity).
+        for row in rows:
+            if row.get(NODE_MODEL_KEY) != COMPANIONSHIP_MODEL:
+                continue
+
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            owner_ref = relations.get("layer")
+            if not owner_ref:
+                raise ValueError("Missing layer relation for Companionship")
+
+            owner_layer = _resolve_ref_instance(owner_ref, missing_ref_policy)
+            companion_layers = _resolve_ref_list(
+                relations.get("companions") or [],
+                missing_ref_policy,
+            )
+
+            Companionship = apps.get_model(COMPANIONSHIP_MODEL)
+            companionship = Companionship.objects.filter(layer=owner_layer).order_by("pk").first()
+            if companionship is None:
+                companionship = Companionship(layer=owner_layer)
+                companionship.save()
+
+            existing_companion_ids = set(
+                companionship.companions.values_list("pk", flat=True)
+            )
+            companions_to_add = [
+                companion
+                for companion in companion_layers
+                if companion.pk not in existing_companion_ids
+            ]
+            if companions_to_add:
+                companionship.companions.add(*companions_to_add)
+
+        # Second pass: specific layer subtype rows keyed by resolved base layer relation.
+        for row in rows:
+            model_label = row.get(NODE_MODEL_KEY)
+            if model_label not in SPECIFIC_LAYER_MODELS:
+                continue
+
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            layer_ref = relations.get("layer")
+            if not layer_ref:
+                raise ValueError("Missing layer relation for %s" % model_label)
+
+            layer_obj = _resolve_ref_instance(layer_ref, missing_ref_policy)
+            model_class = apps.get_model(model_label)
+
+            specific_obj = model_class.objects.filter(layer=layer_obj).first()
+            if specific_obj is None:
+                specific_obj = model_class(layer=layer_obj)
+
+            _apply_fields(specific_obj, row.get(NODE_FIELDS_KEY, {}))
+            specific_obj.save()
+
+            if "lookup_table" in relations and hasattr(specific_obj, "lookup_table"):
+                resolved_lookup_refs = _resolve_ref_list(
+                    relations.get("lookup_table") or [],
+                    missing_ref_policy,
+                )
+                specific_obj.lookup_table.set(resolved_lookup_refs)
 
     if dry_run:
         with transaction.atomic():
