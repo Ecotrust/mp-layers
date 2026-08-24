@@ -34,6 +34,11 @@ try:
     admin.site.unregister(DMLayer)
 except Exception as e:
     pass
+try:
+    from data_manager.models import AttributeInfo as DMAttributeInfo
+    admin.site.unregister(DMAttributeInfo)
+except Exception as e:
+    pass
 
 # Register your models here.
 
@@ -1250,7 +1255,11 @@ class LookupInfoAdmin(admin.ModelAdmin):
 #     list_display = ('parent_theme', 'content_type', 'object_id', 'order')
 #     form = ChildOrderForm
 
+class AttributeInfoAdmin(admin.ModelAdmin):
+    list_display = ('field_name', 'display_name', 'precision', 'order', 'preserve_format')
+
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)
 admin.site.register(LookupInfo, LookupInfoAdmin)
+admin.site.register(AttributeInfo, AttributeInfoAdmin)
 # admin.site.register(ChildOrder, ChildOrderAdmin)
