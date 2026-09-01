@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <h1>{{ title }}</h1>
+
+    {% if error %}
+      <p class="errornote">{{ error }}</p>
+    {% endif %}
+
+    {% if fixture_rows %}
+      <p>Validated {{ fixture_rows|length }} fixture row{{ fixture_rows|length|pluralize }}.</p>
+      <ul>
+        {% for row in fixture_rows %}
+          <li>{{ row.model }}: {{ row.fields.name|default:row.uuid }}</li>
+        {% endfor %}
+      </ul>
+      <form method="post">
+        {% csrf_token %}
+        <input type="submit" name="confirm" value="Confirm">
+        <input type="submit" name="cancel" value="Cancel">
+      </form>
+    {% else %}
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <p>
+          <label for="id_fixture_file">Layer fixture JSON</label>
+          <input id="id_fixture_file" name="fixture_file" type="file" accept="application/json,.json" required>
+        </p>
+        <input type="submit" value="Preview import">
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
