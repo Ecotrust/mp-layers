@@ -1298,7 +1298,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             rows = request.session.get(self.fixture_import_session_key)
             if rows is None:
                 context['error'] = 'No validated fixture is available to import.'
-                return render(request, 'admin/layers/Layer/import_fixture.html', context)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
             try:
                 result = import_fixture_rows(
@@ -1312,7 +1312,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
                 context['error'] = str(error)
                 context['fixture_rows'] = rows
                 context['preview_rows'] = self._fixture_preview_rows(rows)
-                return render(request, 'admin/layers/Layer/import_fixture.html', context)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
             request.session.pop(self.fixture_import_session_key, None)
             self.message_user(request, 'Imported {} fixture rows.'.format(result['imported']))
@@ -1322,7 +1322,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             fixture_file = request.FILES.get('fixture_file')
             if fixture_file is None:
                 context['error'] = 'Choose a fixture JSON file to import.'
-                return render(request, 'admin/layers/Layer/import_fixture.html', context)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
             try:
                 rows = json.loads(fixture_file.read().decode('utf-8'))
@@ -1332,7 +1332,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
                     validate_node_shape(row)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
                 context['error'] = 'Upload valid JSON fixture data: {}'.format(error)
-                return render(request, 'admin/layers/Layer/import_fixture.html', context)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
             try:
                 result = import_fixture_rows(
@@ -1344,14 +1344,14 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
                 )
             except ValueError as error:
                 context['error'] = str(error)
-                return render(request, 'admin/layers/Layer/import_fixture.html', context)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
             request.session[self.fixture_import_session_key] = rows
             context['fixture_rows'] = rows
             context['preview_result'] = result
             context['preview_rows'] = self._fixture_preview_rows(rows)
 
-        return render(request, 'admin/layers/Layer/import_fixture.html', context)
+        return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
     def http_status(self, obj):
         return format_html(

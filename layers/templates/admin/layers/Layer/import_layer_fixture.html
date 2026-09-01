@@ -1,6 +1,6 @@
-{% extends "admin/base_site.html" %}
+{% extends "admin/layers/import_fixture.html" %}
 
-{% block content %}
+{% block fixture_import_content %}
   <div id="content-main">
     <h1>{{ title }}</h1>
 
@@ -41,8 +41,10 @@
       {% endfor %}
       <form method="post">
         {% csrf_token %}
-        <input type="submit" name="confirm" value="Confirm">
-        <input type="submit" name="cancel" value="Cancel" style="background-color: red; color: white;">
+        <div class="submit-row">
+          <input type="submit" name="confirm" value="Confirm">
+          <input class="cancel-button" type="submit" name="cancel" value="Cancel">
+        </div>
       </form>
     {% else %}
       <form method="post" enctype="multipart/form-data">
