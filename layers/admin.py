@@ -2,6 +2,7 @@ from collections import OrderedDict
 import json
 from dal import autocomplete
 from django.contrib import admin
+from django.apps import apps
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
@@ -893,6 +894,54 @@ def export_layer_details(self, request, queryset):
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
 
+    def values_match(self, current_value, new_value):
+        from datetime import datetime
+        if current_value == new_value:
+            return True
+        if isinstance(current_value, datetime):
+            new_time = datetime.fromisoformat(new_value)
+            return current_value == new_time
+        if isinstance(current_value, uuid.UUID):
+            return current_value == uuid.UUID(new_value)
+        return False
+
+    def _fixture_preview_rows(self, rows):
+        preview_rows = []
+        for row in rows:
+            model_label = row['model']
+            uuid_value = row['uuid']
+            existing_record = None
+            if uuid_value:
+                model = apps.get_model(model_label)
+                manager = getattr(model, 'all_objects', model._base_manager)
+                existing_record = manager.filter(uuid=uuid_value).first()
+
+            changes = []
+            if existing_record is not None:
+                for field_name, new_value in row['fields'].items():
+                    current_value = getattr(existing_record, field_name)
+                    if not self.values_match(current_value, new_value):
+                        changes.append({
+                            'name': field_name,
+                            'current_value': current_value,
+                            'new_value': new_value,
+                        })
+
+            if existing_record is not None:
+                action = f'Update existing record: "{existing_record}"'
+            elif uuid_value:
+                action = 'Create new record'
+            else:
+                action = 'Create or merge relationship record'
+
+            preview_rows.append({
+                'model': model_label,
+                'uuid': uuid_value,
+                'action': action,
+                'changes': changes,
+            })
+        return preview_rows
+
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
@@ -1262,6 +1311,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             except ValueError as error:
                 context['error'] = str(error)
                 context['fixture_rows'] = rows
+                context['preview_rows'] = self._fixture_preview_rows(rows)
                 return render(request, 'admin/layers/Layer/import_fixture.html', context)
 
             request.session.pop(self.fixture_import_session_key, None)
@@ -1299,6 +1349,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             request.session[self.fixture_import_session_key] = rows
             context['fixture_rows'] = rows
             context['preview_result'] = result
+            context['preview_rows'] = self._fixture_preview_rows(rows)
 
         return render(request, 'admin/layers/Layer/import_fixture.html', context)
 

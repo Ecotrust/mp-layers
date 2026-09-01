@@ -81,6 +81,47 @@ class LayerFixtureImportAdminTest(TestCase):
         self.assertEqual(Layer.all_objects.count(), 0)
 
     @patch("layers.admin.import_fixture_rows")
+    def test_preview_reports_uuid_matched_updates_and_changed_field_values(
+        self,
+        import_fixture_rows,
+    ):
+        self.client.force_login(self.superuser)
+        existing_layer = Layer.all_objects.create(
+            name="Current Layer Name",
+            layer_type="WMS",
+            url="https://current.example.test/wms",
+        )
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=1001,
+                uuid_value=existing_layer.uuid,
+                fields={
+                    "name": "Imported Layer Name",
+                    "layer_type": "WMS",
+                    "slug_name": None,
+                    "url": "https://imported.example.test/wms",
+                },
+                relations={},
+            )
+        ]
+        import_fixture_rows.return_value = {"imported": 1, "dry_run": True}
+
+        response = self.client.post(
+            self.upload_url,
+            {"fixture_file": self._fixture_file(fixture_rows)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Update existing record")
+        self.assertContains(response, "name")
+        self.assertContains(response, "Current Layer Name")
+        self.assertContains(response, "Imported Layer Name")
+        self.assertContains(response, "url")
+        self.assertContains(response, "https://current.example.test/wms")
+        self.assertContains(response, "https://imported.example.test/wms")
+
+    @patch("layers.admin.import_fixture_rows")
     def test_invalid_json_displays_error_without_import(self, import_fixture_rows):
         self.client.force_login(self.superuser)
         invalid_file = SimpleUploadedFile(

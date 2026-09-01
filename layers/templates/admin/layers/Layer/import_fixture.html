@@ -10,11 +10,35 @@
 
     {% if fixture_rows %}
       <p>Validated {{ fixture_rows|length }} fixture row{{ fixture_rows|length|pluralize }}.</p>
-      <ul>
-        {% for row in fixture_rows %}
-          <li>{{ row.model }}: {{ row.fields.name|default:row.uuid }}</li>
-        {% endfor %}
-      </ul>
+      {% for row in preview_rows %}
+        <section>
+          <h2>{{ row.model }}</h2>
+          <p>{{ row.action }}</p>
+          {% if row.changes %}
+            <table>
+              <tbody>
+                <tr>
+                  {% for change in row.changes %}
+                    <th scope="col">{{ change.name }}</th>
+                  {% endfor %}
+                </tr>
+                <tr>
+                  {% for change in row.changes %}
+                    <td>{{ change.current_value }}</td>
+                  {% endfor %}
+                </tr>
+                <tr>
+                  {% for change in row.changes %}
+                    <td>{{ change.new_value }}</td>
+                  {% endfor %}
+                </tr>
+              </tbody>
+            </table>
+          {% else %}
+            <p>No changes.</p>
+          {% endif %}
+        </section>
+      {% endfor %}
       <form method="post">
         {% csrf_token %}
         <input type="submit" name="confirm" value="Confirm">
