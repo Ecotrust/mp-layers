@@ -1,0 +1,60 @@
+{% extends "admin/layers/import_fixture.html" %}
+
+{% block fixture_import_content %}
+  <div id="content-main">
+    <h1>{{ title }}</h1>
+
+    {% if error %}
+      <p class="errornote">{{ error }}</p>
+    {% endif %}
+
+    {% if fixture_rows %}
+      <p>Validated {{ fixture_rows|length }} fixture row{{ fixture_rows|length|pluralize }}.</p>
+      {% for row in preview_rows %}
+        <section>
+          <h2>{{ row.model }}</h2>
+          <p>{{ row.action }}</p>
+          {% if row.changes %}
+            <table>
+              <tbody>
+                <tr>
+                  {% for change in row.changes %}
+                    <th scope="col">{{ change.name }}</th>
+                  {% endfor %}
+                </tr>
+                <tr>
+                  {% for change in row.changes %}
+                    <td>{{ change.current_value }}</td>
+                  {% endfor %}
+                </tr>
+                <tr>
+                  {% for change in row.changes %}
+                    <td>{{ change.new_value }}</td>
+                  {% endfor %}
+                </tr>
+              </tbody>
+            </table>
+          {% else %}
+            <p>No changes.</p>
+          {% endif %}
+        </section>
+      {% endfor %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="submit-row">
+          <input type="submit" name="confirm" value="Confirm">
+          <input class="cancel-button" type="submit" name="cancel" value="Cancel">
+        </div>
+      </form>
+    {% else %}
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <p>
+          <label for="id_fixture_file">Layer fixture JSON</label>
+          <input id="id_fixture_file" name="fixture_file" type="file" accept="application/json,.json" required>
+        </p>
+        <input type="submit" value="Preview import">
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
