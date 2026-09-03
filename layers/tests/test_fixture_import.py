@@ -103,6 +103,26 @@ class LayerFixtureImportPR05Test(TestCase):
         existing_layer.refresh_from_db()
         self.assertEqual(existing_layer.name, "Existing")
 
+    def test_unused_source_pk_is_preserved_when_creating_record(self):
+        self._require_importer()
+
+        new_uuid = uuid4()
+        source_pk = 999999
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=source_pk,
+                uuid_value=new_uuid,
+                fields=self._layer_fields("Preserved Source PK"),
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.all_objects.get(uuid=new_uuid)
+        self.assertEqual(imported_layer.pk, source_pk)
+
     def test_second_pass_resolves_relations_by_uuid_not_source_pk(self):
         """As name suggests - ensure 2nd pass uses UUIDs for reference, not just PK or 'id'."""
         self._require_importer()

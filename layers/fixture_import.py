@@ -15,6 +15,7 @@ from .fixture_contract import (
     NODE_FIELDS_KEY,
     NODE_MODEL_KEY,
     NODE_RELATIONS_KEY,
+    NODE_SOURCE_PK_KEY,
     NODE_UUID_KEY,
     normalize_uuid,
 )
@@ -163,7 +164,11 @@ def import_fixture_rows(
             row_obj = model_manager.filter(uuid=row_uuid).first()
             is_new = row_obj is None
             if is_new:
-                row_obj = model_class(uuid=row_uuid)
+                source_pk = row.get(NODE_SOURCE_PK_KEY)
+                create_kwargs = {"uuid": row_uuid}
+                if source_pk is not None and not model_manager.filter(pk=source_pk).exists():
+                    create_kwargs["pk"] = source_pk
+                row_obj = model_class(**create_kwargs)
 
             _apply_fields(row_obj, row_fields)
             row_obj.save()
