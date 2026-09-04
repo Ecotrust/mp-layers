@@ -2,14 +2,14 @@ from django.test import TestCase, RequestFactory, override_settings
 from django.utils import timezone
 from datetime import date
 from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo, LookupInfo
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LookupInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
+from layers.serializers import ThemeSerializer, ThemeExportFixtureSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LookupInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 from layers.fixture_contract import NODE_FIELDS_KEY, NODE_MODEL_KEY, NODE_RELATIONS_KEY, NODE_SOURCE_PK_KEY, NODE_UUID_KEY
-from layers.admin import export_layer_details
+from layers.admin import export_layer_details, export_theme_details
 from rest_framework import serializers
 from unittest.mock import Mock
 # request to get data from live site, mung it and make it into v2
@@ -365,7 +365,7 @@ class LayerExportFixtureSerializerTest(TestCase):
         self.assertEqual(len(shared_companion_rows), 1)
 
     def test_layer_export_fixture_contains_attribute_infos_followed_by_layer(self):
-
+    
         create_data = {
             'name': 'Export Fixture Layer',
             'layer_type': 'WMS',
@@ -532,6 +532,186 @@ class LayerExportFixtureSerializerTest(TestCase):
                 for lookup in expected_lookup_infos
             ],
         )
+
+
+class ThemeExportFixtureSerializerTest(TestCase):
+    def _rows_for_model(self, fixture_data, model_label):
+        return [row for row in fixture_data if row[NODE_MODEL_KEY] == model_label]
+
+    def _assert_refers_to(self, relation, instance):
+        self.assertEqual(
+            relation,
+            {
+                NODE_MODEL_KEY: instance._meta.label_lower,
+                NODE_SOURCE_PK_KEY: instance.pk,
+                NODE_UUID_KEY: str(instance.uuid),
+            },
+        )
+
+    def test_theme_export_single_theme(self):
+        parent_theme = Theme.objects.create(name='Parent Theme', display_name='Parent Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        layer_a = Layer.objects.create(name='Layer A', layer_type='WMS')
+        layer_b = Layer.objects.create(name='Layer B', layer_type='WMS')
+
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=child_theme, order=2)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_b, order=2)
+
+        response = export_theme_details(Mock(), Mock(), Theme.all_objects.filter(pk=parent_theme.pk))
+        fixture_data = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 2)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.childorder')), 4)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 2)
+
+    def test_theme_export_concurrent_themes(self):
+        parent_theme = Theme.objects.create(name='Parent Theme', display_name='Parent Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        third_theme = Theme.objects.create(name='Third Theme', display_name='Third Theme')
+        layer_a = Layer.objects.create(name='Layer A', layer_type='WMS')
+        layer_b = Layer.objects.create(name='Layer B', layer_type='WMS')
+        layer_c = Layer.objects.create(name='Layer C', layer_type='WMS')
+
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=child_theme, order=2)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_b, order=2)
+        ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_c, order=2)
+
+        selected_themes = Theme.all_objects.filter(
+            pk__in=[parent_theme.pk, child_theme.pk, third_theme.pk],
+        ).order_by('pk')
+        response = export_theme_details(Mock(), Mock(), selected_themes)
+        fixture_data = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 3)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.childorder')), 6)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 3)
+
+    def test_theme_export_fixture_serializes_recursive_children_and_deduplicates(self):
+        root_theme = Theme.objects.create(name='Root Theme', display_name='Root Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        shared_layer = Layer.objects.create(name='Shared Layer', layer_type='WMS')
+
+        root_child_theme_order = ChildOrder.objects.create(
+            parent_theme=root_theme,
+            content_object=child_theme,
+            order=1,
+        )
+        root_layer_order = ChildOrder.objects.create(
+            parent_theme=root_theme,
+            content_object=shared_layer,
+            order=2,
+        )
+        child_layer_order = ChildOrder.objects.create(
+            parent_theme=child_theme,
+            content_object=shared_layer,
+            order=1,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(root_theme).data
+        theme_rows = self._rows_for_model(fixture_data, 'layers.theme')
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        layer_rows = self._rows_for_model(fixture_data, 'layers.layer')
+
+        self.assertEqual(len(theme_rows), 2)
+        self.assertEqual(len(child_order_rows), 3)
+        self.assertEqual(len(layer_rows), 1)
+        self.assertEqual(
+            set(theme_rows[0][NODE_FIELDS_KEY]),
+            {
+                field.name
+                for field in Theme._meta.concrete_fields
+                if field.name not in {'id', 'site'}
+            },
+        )
+        self.assertNotIn('site', theme_rows[0][NODE_FIELDS_KEY])
+
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
+            root_theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
+            child_theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[1][NODE_RELATIONS_KEY]['content_object'],
+            shared_layer,
+        )
+        self._assert_refers_to(
+            child_order_rows[2][NODE_RELATIONS_KEY]['content_object'],
+            shared_layer,
+        )
+        self.assertEqual(
+            child_order_rows[0][NODE_FIELDS_KEY]['order'],
+            root_child_theme_order.order,
+        )
+        self.assertEqual(
+            child_order_rows[1][NODE_FIELDS_KEY]['order'],
+            root_layer_order.order,
+        )
+        self.assertEqual(
+            child_order_rows[2][NODE_FIELDS_KEY]['order'],
+            child_layer_order.order,
+        )
+
+    def test_theme_export_fixture_stops_at_self_referential_child_order(self):
+        theme = Theme.objects.create(name='Self Referencing Theme', display_name='Self Referencing Theme')
+        child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=theme,
+            order=1,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(theme).data
+
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        self.assertEqual(len(child_order_rows), 1)
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
+            theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
+            theme,
+        )
+        self.assertEqual(child_order_rows[0][NODE_FIELDS_KEY]['order'], child_order.order)
+
+    def test_theme_export_fixture_deduplicates_layer_with_multiple_child_orders(self):
+        theme = Theme.objects.create(name='Repeated Layer Theme', display_name='Repeated Layer Theme')
+        layer = Layer.objects.create(name='Repeated Layer', layer_type='WMS')
+        first_child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=layer,
+            order=1,
+        )
+        second_child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=layer,
+            order=2,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(theme).data
+
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 1)
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        self.assertEqual(len(child_order_rows), 2)
+        self.assertEqual(
+            [row[NODE_FIELDS_KEY]['order'] for row in child_order_rows],
+            [first_child_order.order, second_child_order.order],
+        )
+        for row in child_order_rows:
+            self._assert_refers_to(row[NODE_RELATIONS_KEY]['content_object'], layer)
+
+    
 
 class AttributeInfoExportSerializerTest(TestCase):
 

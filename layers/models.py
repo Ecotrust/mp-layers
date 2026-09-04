@@ -552,6 +552,12 @@ class Theme(ChildType, SiteFlags):
             cache.set(cache_label, layers_dict, 60*60*24*7)
         return layers_dict
 
+    def to_export_dict(self):
+        from layers.serializers import ThemeExportFixtureSerializer
+
+        serializer = ThemeExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def __str__(self):
         return "{} [T-{}]".format(self.name, self.pk)
 
