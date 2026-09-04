@@ -8,6 +8,7 @@ one graph, whether exported from one layer or multiple selected layers.
 from __future__ import annotations
 
 from django.apps import apps
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
 from django.db import transaction
 
@@ -22,6 +23,8 @@ from .fixture_contract import (
 
 
 LAYER_MODEL = "layers.layer"
+THEME_MODEL = "layers.theme"
+CHILD_ORDER_MODEL = "layers.childorder"
 MULTILAYER_ASSOCIATION_MODEL = "layers.multilayerassociation"
 MULTILAYER_DIMENSION_MODEL = "layers.multilayerdimension"
 MULTILAYER_DIMENSION_VALUE_MODEL = "layers.multilayerdimensionvalue"
@@ -151,7 +154,7 @@ def import_fixture_rows(
         # First pass: upsert UUID-keyed rows that do not require relation remaps.
         for row in rows:
             model_label = row.get(NODE_MODEL_KEY)
-            if model_label not in {LAYER_MODEL, ATTRIBUTE_INFO_MODEL, LOOKUP_INFO_MODEL}:
+            if model_label not in {LAYER_MODEL, THEME_MODEL, ATTRIBUTE_INFO_MODEL, LOOKUP_INFO_MODEL}:
                 continue
 
             row_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
@@ -175,6 +178,38 @@ def import_fixture_rows(
 
             if model_label == LAYER_MODEL and associate_all_sites:
                 row_obj.site.set(Site.objects.all())
+            elif model_label == THEME_MODEL and associate_all_sites:
+                row_obj.site.set(Site.objects.all())
+
+        # Second pass: resolve theme child-order relations by UUID.
+        for row in rows:
+            if row.get(NODE_MODEL_KEY) != CHILD_ORDER_MODEL:
+                continue
+
+            relations = row.get(NODE_RELATIONS_KEY, {})
+            parent_theme = _resolve_ref_instance(
+                relations.get("parent_theme"),
+                missing_ref_policy,
+            )
+            content_object = _resolve_ref_instance(
+                relations.get("content_object"),
+                missing_ref_policy,
+            )
+            ChildOrder = apps.get_model(CHILD_ORDER_MODEL)
+            content_type = ContentType.objects.get_for_model(content_object)
+            child_order = ChildOrder.objects.filter(
+                parent_theme=parent_theme,
+                content_type=content_type,
+                object_id=content_object.pk,
+            ).first()
+            if child_order is None:
+                child_order = ChildOrder(
+                    parent_theme=parent_theme,
+                    content_type=content_type,
+                    object_id=content_object.pk,
+                )
+            _apply_fields(child_order, row.get(NODE_FIELDS_KEY, {}))
+            child_order.save()
 
         # Second pass: resolve layer m2m attribute refs by UUID.
         for row in rows:

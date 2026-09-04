@@ -237,6 +237,7 @@ def export_theme_details(self, request, queryset):
 
 
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
+    fixture_import_session_key = "layers.theme_fixture_import_rows"
     list_display = ('display_name', 'name', 'order', 'date_modified', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
@@ -308,6 +309,132 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
         js = ['theme_admin.js',]
         
     change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_form.html')
+    change_list_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_list.html')
+
+    def _fixture_preview_rows(self, rows):
+        preview_rows = []
+        for row in rows:
+            model_label = row['model']
+            uuid_value = row['uuid']
+            existing_record = None
+            if uuid_value:
+                model = apps.get_model(model_label)
+                if any(field.name == 'uuid' for field in model._meta.fields):
+                    manager = getattr(model, 'all_objects', model._base_manager)
+                    existing_record = manager.filter(uuid=uuid_value).first()
+
+            changes = []
+            if existing_record is not None:
+                for field_name, new_value in row['fields'].items():
+                    current_value = getattr(existing_record, field_name)
+                    if current_value != new_value:
+                        changes.append({
+                            'name': field_name,
+                            'current_value': current_value,
+                            'new_value': new_value,
+                        })
+
+            if existing_record is not None:
+                action = f'Update existing record: "{existing_record}"'
+            elif uuid_value:
+                action = 'Create new record'
+            else:
+                action = 'Create or merge relationship record'
+
+            preview_rows.append({
+                'model': model_label,
+                'uuid': uuid_value,
+                'action': action,
+                'fields': row['fields'],
+                'changes': changes,
+            })
+        return preview_rows
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                'import-fixture/',
+                self.admin_site.admin_view(self.import_fixture),
+                name='layers_theme_import_fixture',
+            ),
+        ]
+        return custom_urls + urls
+
+    def import_fixture(self, request):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        changelist_url = reverse('admin:layers_theme_changelist')
+        context = {
+            **self.admin_site.each_context(request),
+            'opts': self.model._meta,
+            'title': 'Import theme fixture',
+            'changelist_url': changelist_url,
+        }
+
+        if request.method == 'POST' and 'cancel' in request.POST:
+            request.session.pop(self.fixture_import_session_key, None)
+            return redirect(changelist_url)
+
+        if request.method == 'POST' and 'confirm' in request.POST:
+            rows = request.session.get(self.fixture_import_session_key)
+            if rows is None:
+                context['error'] = 'No validated fixture is available to import.'
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=False,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                context['fixture_rows'] = rows
+                context['preview_rows'] = self._fixture_preview_rows(rows)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            request.session.pop(self.fixture_import_session_key, None)
+            self.message_user(request, 'Imported {} fixture rows.'.format(result['imported']))
+            return redirect(changelist_url)
+
+        if request.method == 'POST':
+            fixture_file = request.FILES.get('fixture_file')
+            if fixture_file is None:
+                context['error'] = 'Choose a fixture JSON file to import.'
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                rows = json.loads(fixture_file.read().decode('utf-8'))
+                if not isinstance(rows, list):
+                    raise ValueError('Fixture JSON must contain a list of rows.')
+                for row in rows:
+                    validate_node_shape(row)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+                context['error'] = 'Upload valid JSON fixture data: {}'.format(error)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=True,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            request.session[self.fixture_import_session_key] = rows
+            context['fixture_rows'] = rows
+            context['preview_result'] = result
+            context['preview_rows'] = self._fixture_preview_rows(rows)
+
+        return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
 
 
     def get_queryset(self, request):
@@ -946,8 +1073,9 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             existing_record = None
             if uuid_value:
                 model = apps.get_model(model_label)
-                manager = getattr(model, 'all_objects', model._base_manager)
-                existing_record = manager.filter(uuid=uuid_value).first()
+                if any(field.name == 'uuid' for field in model._meta.fields):
+                    manager = getattr(model, 'all_objects', model._base_manager)
+                    existing_record = manager.filter(uuid=uuid_value).first()
 
             changes = []
             if existing_record is not None:
