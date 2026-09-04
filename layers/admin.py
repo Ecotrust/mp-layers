@@ -210,6 +210,32 @@ class ThemeParentInline(GenericTabularInline):
             pass
         return formset
 
+@admin.action(description="Export Theme(s) for migration")
+def export_theme_details(self, request, queryset):
+    from django.http import HttpResponse
+
+    if not queryset.exists():
+        self.message_user(request, "Please select at least one theme to export.")
+        return
+
+    theme_id_list = []
+    fixture_rows = []
+    seen_rows = set()
+    for theme in queryset:
+        theme_id_list.append(theme.id)
+        for row in theme.to_export_dict():
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_rows:
+                seen_rows.add(row_key)
+                fixture_rows.append(row)
+
+    theme_ids = "_".join(str(id) for id in theme_id_list)
+    response = HttpResponse(json.dumps(fixture_rows), content_type='application/geo+json')
+    filename = f"themes_{theme_ids}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     list_display = ('display_name', 'name', 'order', 'date_modified', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]

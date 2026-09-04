@@ -559,7 +559,7 @@ class ThemeExportFixtureSerializerTest(TestCase):
         ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_a, order=1)
         ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_b, order=2)
 
-        response = export_theme_details(Mock(), Mock(), Theme.objects.filter(pk=parent_theme.pk))
+        response = export_theme_details(Mock(), Mock(), Theme.all_objects.filter(pk=parent_theme.pk))
         fixture_data = json.loads(response.content)
 
         self.assertEqual(response.status_code, 200)
@@ -582,7 +582,7 @@ class ThemeExportFixtureSerializerTest(TestCase):
         ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_a, order=1)
         ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_c, order=2)
 
-        selected_themes = Theme.objects.filter(
+        selected_themes = Theme.all_objects.filter(
             pk__in=[parent_theme.pk, child_theme.pk, third_theme.pk],
         ).order_by('pk')
         response = export_theme_details(Mock(), Mock(), selected_themes)
