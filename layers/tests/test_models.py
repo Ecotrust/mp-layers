@@ -364,141 +364,8 @@ class LayerExportFixtureSerializerTest(TestCase):
         ]
         self.assertEqual(len(shared_companion_rows), 1)
 
-
-class ThemeExportFixtureSerializerTest(TestCase):
-    def _rows_for_model(self, fixture_data, model_label):
-        return [row for row in fixture_data if row[NODE_MODEL_KEY] == model_label]
-
-    def _assert_refers_to(self, relation, instance):
-        self.assertEqual(
-            relation,
-            {
-                NODE_MODEL_KEY: instance._meta.label_lower,
-                NODE_SOURCE_PK_KEY: instance.pk,
-                NODE_UUID_KEY: str(instance.uuid),
-            },
-        )
-
-    def test_theme_export_fixture_serializes_recursive_children_and_deduplicates(self):
-        root_theme = Theme.objects.create(name='Root Theme', display_name='Root Theme')
-        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
-        shared_layer = Layer.objects.create(name='Shared Layer', layer_type='WMS')
-
-        root_child_theme_order = ChildOrder.objects.create(
-            parent_theme=root_theme,
-            content_object=child_theme,
-            order=1,
-        )
-        root_layer_order = ChildOrder.objects.create(
-            parent_theme=root_theme,
-            content_object=shared_layer,
-            order=2,
-        )
-        child_layer_order = ChildOrder.objects.create(
-            parent_theme=child_theme,
-            content_object=shared_layer,
-            order=1,
-        )
-
-        fixture_data = ThemeExportFixtureSerializer(root_theme).data
-        theme_rows = self._rows_for_model(fixture_data, 'layers.theme')
-        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
-        layer_rows = self._rows_for_model(fixture_data, 'layers.layer')
-
-        self.assertEqual(len(theme_rows), 2)
-        self.assertEqual(len(child_order_rows), 3)
-        self.assertEqual(len(layer_rows), 1)
-        self.assertEqual(
-            set(theme_rows[0][NODE_FIELDS_KEY]),
-            {
-                field.name
-                for field in Theme._meta.concrete_fields
-                if field.name not in {'id', 'site'}
-            },
-        )
-        self.assertNotIn('site', theme_rows[0][NODE_FIELDS_KEY])
-
-        self._assert_refers_to(
-            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
-            root_theme,
-        )
-        self._assert_refers_to(
-            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
-            child_theme,
-        )
-        self._assert_refers_to(
-            child_order_rows[1][NODE_RELATIONS_KEY]['content_object'],
-            shared_layer,
-        )
-        self._assert_refers_to(
-            child_order_rows[2][NODE_RELATIONS_KEY]['content_object'],
-            shared_layer,
-        )
-        self.assertEqual(
-            child_order_rows[0][NODE_FIELDS_KEY]['order'],
-            root_child_theme_order.order,
-        )
-        self.assertEqual(
-            child_order_rows[1][NODE_FIELDS_KEY]['order'],
-            root_layer_order.order,
-        )
-        self.assertEqual(
-            child_order_rows[2][NODE_FIELDS_KEY]['order'],
-            child_layer_order.order,
-        )
-
-    def test_theme_export_fixture_stops_at_self_referential_child_order(self):
-        theme = Theme.objects.create(name='Self Referencing Theme', display_name='Self Referencing Theme')
-        child_order = ChildOrder.objects.create(
-            parent_theme=theme,
-            content_object=theme,
-            order=1,
-        )
-
-        fixture_data = ThemeExportFixtureSerializer(theme).data
-
-        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
-        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
-        self.assertEqual(len(child_order_rows), 1)
-        self._assert_refers_to(
-            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
-            theme,
-        )
-        self._assert_refers_to(
-            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
-            theme,
-        )
-        self.assertEqual(child_order_rows[0][NODE_FIELDS_KEY]['order'], child_order.order)
-
-    def test_theme_export_fixture_deduplicates_layer_with_multiple_child_orders(self):
-        theme = Theme.objects.create(name='Repeated Layer Theme', display_name='Repeated Layer Theme')
-        layer = Layer.objects.create(name='Repeated Layer', layer_type='WMS')
-        first_child_order = ChildOrder.objects.create(
-            parent_theme=theme,
-            content_object=layer,
-            order=1,
-        )
-        second_child_order = ChildOrder.objects.create(
-            parent_theme=theme,
-            content_object=layer,
-            order=2,
-        )
-
-        fixture_data = ThemeExportFixtureSerializer(theme).data
-
-        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
-        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 1)
-        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
-        self.assertEqual(len(child_order_rows), 2)
-        self.assertEqual(
-            [row[NODE_FIELDS_KEY]['order'] for row in child_order_rows],
-            [first_child_order.order, second_child_order.order],
-        )
-        for row in child_order_rows:
-            self._assert_refers_to(row[NODE_RELATIONS_KEY]['content_object'], layer)
-
     def test_layer_export_fixture_contains_attribute_infos_followed_by_layer(self):
-
+    
         create_data = {
             'name': 'Export Fixture Layer',
             'layer_type': 'WMS',
@@ -665,6 +532,141 @@ class ThemeExportFixtureSerializerTest(TestCase):
                 for lookup in expected_lookup_infos
             ],
         )
+
+
+class ThemeExportFixtureSerializerTest(TestCase):
+    def _rows_for_model(self, fixture_data, model_label):
+        return [row for row in fixture_data if row[NODE_MODEL_KEY] == model_label]
+
+    def _assert_refers_to(self, relation, instance):
+        self.assertEqual(
+            relation,
+            {
+                NODE_MODEL_KEY: instance._meta.label_lower,
+                NODE_SOURCE_PK_KEY: instance.pk,
+                NODE_UUID_KEY: str(instance.uuid),
+            },
+        )
+
+    def test_theme_export_fixture_serializes_recursive_children_and_deduplicates(self):
+        root_theme = Theme.objects.create(name='Root Theme', display_name='Root Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        shared_layer = Layer.objects.create(name='Shared Layer', layer_type='WMS')
+
+        root_child_theme_order = ChildOrder.objects.create(
+            parent_theme=root_theme,
+            content_object=child_theme,
+            order=1,
+        )
+        root_layer_order = ChildOrder.objects.create(
+            parent_theme=root_theme,
+            content_object=shared_layer,
+            order=2,
+        )
+        child_layer_order = ChildOrder.objects.create(
+            parent_theme=child_theme,
+            content_object=shared_layer,
+            order=1,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(root_theme).data
+        theme_rows = self._rows_for_model(fixture_data, 'layers.theme')
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        layer_rows = self._rows_for_model(fixture_data, 'layers.layer')
+
+        self.assertEqual(len(theme_rows), 2)
+        self.assertEqual(len(child_order_rows), 3)
+        self.assertEqual(len(layer_rows), 1)
+        self.assertEqual(
+            set(theme_rows[0][NODE_FIELDS_KEY]),
+            {
+                field.name
+                for field in Theme._meta.concrete_fields
+                if field.name not in {'id', 'site'}
+            },
+        )
+        self.assertNotIn('site', theme_rows[0][NODE_FIELDS_KEY])
+
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
+            root_theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
+            child_theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[1][NODE_RELATIONS_KEY]['content_object'],
+            shared_layer,
+        )
+        self._assert_refers_to(
+            child_order_rows[2][NODE_RELATIONS_KEY]['content_object'],
+            shared_layer,
+        )
+        self.assertEqual(
+            child_order_rows[0][NODE_FIELDS_KEY]['order'],
+            root_child_theme_order.order,
+        )
+        self.assertEqual(
+            child_order_rows[1][NODE_FIELDS_KEY]['order'],
+            root_layer_order.order,
+        )
+        self.assertEqual(
+            child_order_rows[2][NODE_FIELDS_KEY]['order'],
+            child_layer_order.order,
+        )
+
+    def test_theme_export_fixture_stops_at_self_referential_child_order(self):
+        theme = Theme.objects.create(name='Self Referencing Theme', display_name='Self Referencing Theme')
+        child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=theme,
+            order=1,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(theme).data
+
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        self.assertEqual(len(child_order_rows), 1)
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['parent_theme'],
+            theme,
+        )
+        self._assert_refers_to(
+            child_order_rows[0][NODE_RELATIONS_KEY]['content_object'],
+            theme,
+        )
+        self.assertEqual(child_order_rows[0][NODE_FIELDS_KEY]['order'], child_order.order)
+
+    def test_theme_export_fixture_deduplicates_layer_with_multiple_child_orders(self):
+        theme = Theme.objects.create(name='Repeated Layer Theme', display_name='Repeated Layer Theme')
+        layer = Layer.objects.create(name='Repeated Layer', layer_type='WMS')
+        first_child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=layer,
+            order=1,
+        )
+        second_child_order = ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=layer,
+            order=2,
+        )
+
+        fixture_data = ThemeExportFixtureSerializer(theme).data
+
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 1)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 1)
+        child_order_rows = self._rows_for_model(fixture_data, 'layers.childorder')
+        self.assertEqual(len(child_order_rows), 2)
+        self.assertEqual(
+            [row[NODE_FIELDS_KEY]['order'] for row in child_order_rows],
+            [first_child_order.order, second_child_order.order],
+        )
+        for row in child_order_rows:
+            self._assert_refers_to(row[NODE_RELATIONS_KEY]['content_object'], layer)
+
+    
 
 class AttributeInfoExportSerializerTest(TestCase):
 
