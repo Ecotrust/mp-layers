@@ -9,7 +9,7 @@ import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 from layers.fixture_contract import NODE_FIELDS_KEY, NODE_MODEL_KEY, NODE_RELATIONS_KEY, NODE_SOURCE_PK_KEY, NODE_UUID_KEY
-from layers.admin import export_layer_details
+from layers.admin import export_layer_details, export_theme_details
 from rest_framework import serializers
 from unittest.mock import Mock
 # request to get data from live site, mung it and make it into v2
@@ -547,6 +547,51 @@ class ThemeExportFixtureSerializerTest(TestCase):
                 NODE_UUID_KEY: str(instance.uuid),
             },
         )
+
+    def test_theme_export_single_theme(self):
+        parent_theme = Theme.objects.create(name='Parent Theme', display_name='Parent Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        layer_a = Layer.objects.create(name='Layer A', layer_type='WMS')
+        layer_b = Layer.objects.create(name='Layer B', layer_type='WMS')
+
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=child_theme, order=2)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_b, order=2)
+
+        response = export_theme_details(Mock(), Mock(), Theme.objects.filter(pk=parent_theme.pk))
+        fixture_data = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 2)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.childorder')), 4)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 2)
+
+    def test_theme_export_concurrent_themes(self):
+        parent_theme = Theme.objects.create(name='Parent Theme', display_name='Parent Theme')
+        child_theme = Theme.objects.create(name='Child Theme', display_name='Child Theme')
+        third_theme = Theme.objects.create(name='Third Theme', display_name='Third Theme')
+        layer_a = Layer.objects.create(name='Layer A', layer_type='WMS')
+        layer_b = Layer.objects.create(name='Layer B', layer_type='WMS')
+        layer_c = Layer.objects.create(name='Layer C', layer_type='WMS')
+
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=parent_theme, content_object=child_theme, order=2)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=child_theme, content_object=layer_b, order=2)
+        ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_a, order=1)
+        ChildOrder.objects.create(parent_theme=third_theme, content_object=layer_c, order=2)
+
+        selected_themes = Theme.objects.filter(
+            pk__in=[parent_theme.pk, child_theme.pk, third_theme.pk],
+        ).order_by('pk')
+        response = export_theme_details(Mock(), Mock(), selected_themes)
+        fixture_data = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.theme')), 3)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.childorder')), 6)
+        self.assertEqual(len(self._rows_for_model(fixture_data, 'layers.layer')), 3)
 
     def test_theme_export_fixture_serializes_recursive_children_and_deduplicates(self):
         root_theme = Theme.objects.create(name='Root Theme', display_name='Root Theme')
