@@ -248,7 +248,7 @@ class ThemeFixtureImportPR09Test(TestCase):
             "duplicate_uuid_policy": "error",
         }
 
-    def test_existing_child_order_merges_by_parent_and_content_object(self):
+    def test_child_order_source_id_collision_creates_new_relationship(self):
         self._require_importer()
 
         parent_theme = Theme.all_objects.create(
@@ -256,6 +256,14 @@ class ThemeFixtureImportPR09Test(TestCase):
             display_name="Existing Theme",
         )
         layer = Layer.all_objects.create(name="Existing Layer", layer_type="WMS")
+        imported_parent_theme = Theme.all_objects.create(
+            name="Imported Theme",
+            display_name="Imported Theme",
+        )
+        imported_layer = Layer.all_objects.create(
+            name="Imported Layer",
+            layer_type="WMS",
+        )
         child_order = ChildOrder.objects.create(
             parent_theme=parent_theme,
             content_object=layer,
@@ -263,27 +271,27 @@ class ThemeFixtureImportPR09Test(TestCase):
         )
         original_pk = child_order.pk
         original_date_created = child_order.date_created
+        original_date_modified = child_order.date_modified
         original_parent_theme_id = child_order.parent_theme_id
         original_content_type_id = child_order.content_type_id
         original_object_id = child_order.object_id
-        original_date_modified = child_order.date_modified
 
         fixture_rows = [
             build_node(
                 model="layers.childorder",
-                source_pk=999999,
+                source_pk=original_pk,
                 uuid_value=None,
                 fields={"order": 17},
                 relations={
                     "parent_theme": build_ref(
                         model="layers.theme",
                         source_pk=1001,
-                        uuid_value=parent_theme.uuid,
+                        uuid_value=imported_parent_theme.uuid,
                     ),
                     "content_object": build_ref(
                         model="layers.layer",
                         source_pk=1002,
-                        uuid_value=layer.uuid,
+                        uuid_value=imported_layer.uuid,
                     ),
                 },
             )
@@ -291,19 +299,24 @@ class ThemeFixtureImportPR09Test(TestCase):
 
         import_fixture_rows(fixture_rows, **self._import_kwargs())
 
-        child_orders = ChildOrder.objects.filter(
-            parent_theme=parent_theme,
-            object_id=layer.pk,
-        )
-        self.assertEqual(child_orders.count(), 1)
+        child_orders = ChildOrder.objects.all()
+        self.assertEqual(child_orders.count(), 2)
+
         child_order.refresh_from_db()
         self.assertEqual(child_order.pk, original_pk)
-        self.assertEqual(child_order.order, 17)
+        self.assertEqual(child_order.order, 3)
         self.assertEqual(child_order.parent_theme_id, original_parent_theme_id)
         self.assertEqual(child_order.content_type_id, original_content_type_id)
         self.assertEqual(child_order.object_id, original_object_id)
         self.assertEqual(child_order.date_created, original_date_created)
-        self.assertGreater(child_order.date_modified, original_date_modified)
+        self.assertEqual(child_order.date_modified, original_date_modified)
+
+        imported_child_order = ChildOrder.objects.get(
+            parent_theme=imported_parent_theme,
+            object_id=imported_layer.pk,
+        )
+        self.assertNotEqual(imported_child_order.pk, original_pk)
+        self.assertEqual(imported_child_order.order, 17)
 
 
 class LayerFixtureImportPR06Test(TestCase):
