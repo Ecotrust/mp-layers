@@ -311,6 +311,18 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_form.html')
     change_list_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_list.html')
 
+    def values_match(self, current_value, new_value):
+        from datetime import date, datetime
+        from uuid import UUID
+
+        if current_value == new_value:
+            return True
+        if isinstance(current_value, UUID):
+            return current_value == UUID(str(new_value))
+        if isinstance(current_value, (date, datetime)):
+            return current_value == type(current_value).fromisoformat(str(new_value))
+        return False
+
     def _fixture_preview_rows(self, rows):
         preview_rows = []
         for row in rows:
@@ -327,7 +339,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
             if existing_record is not None:
                 for field_name, new_value in row['fields'].items():
                     current_value = getattr(existing_record, field_name)
-                    if current_value != new_value:
+                    if not self.values_match(current_value, new_value):
                         changes.append({
                             'name': field_name,
                             'current_value': current_value,

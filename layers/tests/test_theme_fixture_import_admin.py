@@ -1,5 +1,5 @@
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
@@ -8,7 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from layers.fixture_contract import build_node
-from layers.models import Theme
+from layers.admin import export_theme_details
+from layers.models import ChildOrder, Layer, Theme
 
 
 class ThemeFixtureImportAdminTest(TestCase):
@@ -82,6 +83,43 @@ class ThemeFixtureImportAdminTest(TestCase):
         self.assertContains(response, "Uploaded Fixture Theme")
         self.assertContains(response, "Confirm")
         self.assertEqual(Theme.all_objects.count(), 0)
+
+    @patch("layers.admin.import_fixture_rows")
+    def test_exported_theme_fixture_preview_has_no_field_differences(self, import_fixture_rows):
+        self.client.force_login(self.superuser)
+        theme = Theme.all_objects.create(
+            name="Preview Theme",
+            display_name="Preview Theme",
+        )
+        layer = Layer.all_objects.create(name="Preview Layer", layer_type="WMS")
+        ChildOrder.objects.create(
+            parent_theme=theme,
+            content_object=layer,
+            order=4,
+        )
+
+        export_response = export_theme_details(
+            Mock(),
+            Mock(),
+            Theme.all_objects.filter(pk=theme.pk),
+        )
+        fixture_file = SimpleUploadedFile(
+            "exported-theme.json",
+            export_response.content,
+            content_type="application/json",
+        )
+        import_fixture_rows.return_value = {"imported": 0, "dry_run": True}
+
+        response = self.client.post(
+            self.upload_url,
+            {"fixture_file": fixture_file},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        import_fixture_rows.assert_called_once()
+        self.assertTrue(response.context["preview_rows"])
+        self.assertTrue(all(not row["changes"] for row in response.context["preview_rows"]))
+        self.assertContains(response, "Create or merge relationship record")
 
     @patch("layers.admin.import_fixture_rows")
     def test_preview_reports_uuid_matched_theme_updates(self, import_fixture_rows):
