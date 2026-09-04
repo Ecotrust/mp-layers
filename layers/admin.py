@@ -873,19 +873,25 @@ class LayerResource(resources.ModelResource):
 
 @admin.action(description="Export layer(s) for migration")
 def export_layer_details(self, request, queryset):
-    import json
     from django.http import HttpResponse
 
-    if queryset.count() != 1:
-        self.message_user(request, "Please select exactly one layer to export.")
+    if not queryset.exists():
+        self.message_user(request, "Please select at least one layer to export.")
         return
 
     layer_id_list = []
+    fixture_rows = []
+    seen_rows = set()
     for layer in queryset:
-        layer_data = layer.to_export_dict()
         layer_id_list.append(layer.id)
+        for row in layer.to_export_dict():
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_rows:
+                seen_rows.add(row_key)
+                fixture_rows.append(row)
+
     layer_ids = "_".join(str(id) for id in layer_id_list)
-    response = HttpResponse(json.dumps(layer_data), content_type='application/geo+json')
+    response = HttpResponse(json.dumps(fixture_rows), content_type='application/geo+json')
     filename = f"layers_{layer_ids}.json"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
