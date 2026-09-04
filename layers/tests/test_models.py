@@ -9,7 +9,9 @@ import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 from layers.fixture_contract import NODE_FIELDS_KEY, NODE_MODEL_KEY, NODE_RELATIONS_KEY, NODE_SOURCE_PK_KEY, NODE_UUID_KEY
+from layers.admin import export_layer_details
 from rest_framework import serializers
+from unittest.mock import Mock
 # request to get data from live site, mung it and make it into v2
 class ThemeTest(TestCase):
     def setUp(self):
@@ -329,6 +331,39 @@ class LayerExportSerializerTest(TestCase):
 
 
 class LayerExportFixtureSerializerTest(TestCase):
+    def test_layer_export_concurrent_layers(self):
+        layer_a = Layer.objects.create(name='Concurrent Layer A', layer_type='WMS')
+        layer_b = Layer.objects.create(name='Concurrent Layer B', layer_type='WMS')
+        shared_companion = Layer.objects.create(name='Shared Companion', layer_type='WMS')
+
+        companionship_a = Companionship.objects.create(layer=layer_a)
+        companionship_a.companions.add(shared_companion)
+        companionship_b = Companionship.objects.create(layer=layer_b)
+        companionship_b.companions.add(shared_companion)
+
+        selected_layers = Layer.all_objects.filter(
+            pk__in=[layer_a.pk, layer_b.pk],
+        ).order_by('pk')
+        expected_fixture = []
+        seen_rows = set()
+        for layer in selected_layers:
+            for row in layer.to_export_dict():
+                row_key = (row[NODE_MODEL_KEY], row[NODE_SOURCE_PK_KEY])
+                if row_key not in seen_rows:
+                    seen_rows.add(row_key)
+                    expected_fixture.append(row)
+
+        response = export_layer_details(Mock(), Mock(), selected_layers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content), expected_fixture)
+        shared_companion_rows = [
+            row for row in expected_fixture
+            if row[NODE_MODEL_KEY] == 'layers.layer'
+            and row[NODE_SOURCE_PK_KEY] == shared_companion.pk
+        ]
+        self.assertEqual(len(shared_companion_rows), 1)
+
     def test_layer_export_fixture_contains_attribute_infos_followed_by_layer(self):
 
         create_data = {
