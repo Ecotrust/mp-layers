@@ -241,6 +241,7 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
     search_fields = ['display_name', 'name',]
     form = ThemeForm
     inlines = [ThemeParentInline, ExistingChildInline, ChildInline]
+    actions = [export_theme_details]
     
     fieldsets = (
         ('BASIC INFO', {
