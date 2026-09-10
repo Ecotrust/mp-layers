@@ -382,7 +382,8 @@ def import_fixture_rows(
                 "dry_run": True,
             }
 
-    _execute_import()
+    with transaction.atomic():
+        _execute_import()
     return {
         "imported": len(rows),
         "dry_run": False,
