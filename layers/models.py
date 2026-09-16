@@ -769,7 +769,15 @@ class Layer(ChildType, SiteFlags):
     def attributes(self):
         return {'compress_attributes': self.compress_display,
                 'event': self.attribute_event,
-                'attributes': [{'display': attr.display_name, 'field': attr.field_name, 'precision': attr.precision} for attr in self.attribute_fields.all().order_by('order')],
+                'attributes': [
+                    {
+                        # 'display': attr.display_name, 
+                        'field': attr.field_name, 
+                        'label': attr.field_label if attr.field_label and len(attr.field_label.strip()) > 0 else None,
+                        'precision': attr.precision,
+                        'preserve_format': attr.preserve_format,
+                    } for attr in self.attribute_fields.all().order_by('order')
+                ],
                 'mouseover_attribute': self.mouseover_field,
                 'preserved_format_attributes': [attr.field_name for attr in self.attribute_fields.filter(preserve_format=True)]
         }
@@ -1116,17 +1124,7 @@ class Layer(ChildType, SiteFlags):
         }
         return layers_dict
     
-    def save(self, *args, **kwargs):
-        if 'slug_name' in kwargs.keys():
-            self.slug_name = kwargs['slug_name']
-            kwargs.pop('slug_name', None)
-        else:
-            slug = slugify(self.name)
-            if self.id:
-                self.slug_name = '{}{}'.format(slug, self.id)
-            else:
-                self.slug_name = '{}_new'.format(slug)
-
+    def resetCache(self):
         content_type = ContentType.objects.get_for_model(self.__class__)
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
@@ -1144,6 +1142,20 @@ class Layer(ChildType, SiteFlags):
             cache.delete(key)
             with connection.cursor() as cursor:
                 cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
+
+    def save(self, *args, **kwargs):
+        if 'slug_name' in kwargs.keys():
+            self.slug_name = kwargs['slug_name']
+            kwargs.pop('slug_name', None)
+        else:
+            slug = slugify(self.name)
+            if self.id:
+                self.slug_name = '{}{}'.format(slug, self.id)
+            else:
+                self.slug_name = '{}_new'.format(slug)
+
+        self.resetCache()
+
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
@@ -1502,6 +1514,14 @@ class AttributeInfo(models.Model):
 
     def __str__(self):
         return str(self.field_name)
+
+    def resetCache(self):
+        for layer in self.layer_set.all():
+            layer.resetCache()
+
+    def save(self, *args, **kwargs):
+        self.resetCache()
+        super(AttributeInfo, self).save(*args, **kwargs)
 
 class LookupInfo(models.Model):
     DASH_CHOICES = (
