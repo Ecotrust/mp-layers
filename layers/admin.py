@@ -1257,6 +1257,7 @@ class LookupInfoAdmin(admin.ModelAdmin):
 
 class AttributeInfoAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
+    search_fields = ('display_name', 'field_name', 'field_label')
 
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)
