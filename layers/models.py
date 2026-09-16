@@ -1516,12 +1516,16 @@ class AttributeInfo(models.Model):
         return str(self.field_name)
 
     def resetCache(self):
-        for layer in self.layer_set.all():
-            layer.resetCache()
+        if self.pk is None:
+            # If saving a new AttributeInfo instance, the m2m relationship cannot be used (no 'id' assigned)
+            return
+        else:
+            for layer in self.layer_set.all():
+                layer.resetCache()
 
     def save(self, *args, **kwargs):
-        self.resetCache()
         super(AttributeInfo, self).save(*args, **kwargs)
+        self.resetCache()
 
 class LookupInfo(models.Model):
     DASH_CHOICES = (

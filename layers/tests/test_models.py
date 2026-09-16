@@ -1,5 +1,5 @@
 from django.test import TestCase, RequestFactory, override_settings
-from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
+from layers.models import AttributeInfo, Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
 from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
@@ -7,6 +7,20 @@ import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
 # request to get data from live site, mung it and make it into v2
+class AttributeInfoTest(TestCase):
+    def test_new_attribute_info_can_be_saved(self):
+        attribute = AttributeInfo(
+            display_name="Record Name",
+            field_name="record_name",
+        )
+
+        attribute.save()
+
+        self.assertIsNotNone(attribute.pk)
+        self.assertEqual(attribute.display_name, "Record Name")
+        self.assertEqual(attribute.field_name, "record_name")
+
+
 class ThemeTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
