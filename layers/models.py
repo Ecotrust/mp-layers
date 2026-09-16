@@ -771,7 +771,7 @@ class Layer(ChildType, SiteFlags):
                 'event': self.attribute_event,
                 'attributes': [
                     {
-                        # 'display': attr.display_name, 
+                        'display': attr.display_name, 
                         'field': attr.field_name, 
                         'label': attr.field_label if attr.field_label and len(attr.field_label.strip()) > 0 else None,
                         'precision': attr.precision,
