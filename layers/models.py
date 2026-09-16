@@ -1490,7 +1490,8 @@ class MultilayerDimensionValue(models.Model):
 
 class AttributeInfo(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    display_name = models.CharField(max_length=255, blank=True, null=True)
+    display_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="Record Name", help_text="How this record will be shown for selection in the admin dashboard")
+    field_label = models.CharField(max_length=255, blank=True, null=True, default=None, help_text="How this entry should be labeled in the map reports")
     field_name = models.CharField(max_length=255, blank=True, null=True)
     precision = models.IntegerField(blank=True, null=True)
     order = models.IntegerField(default=1)
