@@ -1516,8 +1516,12 @@ class AttributeInfo(models.Model):
         return str(self.field_name)
 
     def resetCache(self):
-        for layer in self.layer_set.all():
-            layer.resetCache()
+        try:
+            for layer in self.layer_set.all():
+                layer.resetCache()
+        except ValueError:
+            # If saving a new AttributeInfo instance, the m2m relationship cannot be used (no 'id' assigned)
+            pass
 
     def save(self, *args, **kwargs):
         self.resetCache()
