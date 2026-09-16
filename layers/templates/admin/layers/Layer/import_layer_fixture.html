@@ -12,7 +12,7 @@
       <p>Validated {{ fixture_rows|length }} fixture row{{ fixture_rows|length|pluralize }}.</p>
       {% for row in preview_rows %}
         <section>
-          <h2>{{ row.model }}</h2>
+          <h2>{{ row.model }}: {{ row.name }}</h2>
           <p>{{ row.action }}</p>
           {% if row.changes %}
             <table>

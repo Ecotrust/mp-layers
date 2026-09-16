@@ -1107,9 +1107,15 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             else:
                 action = 'Create or merge relationship record'
 
+            if row['fields']:
+                object_name = row['fields'].get('name', '')
+            else:
+                object_name = uuid_value
+
             preview_rows.append({
                 'model': model_label,
                 'uuid': uuid_value,
+                'name': object_name,
                 'action': action,
                 'changes': changes,
             })
