@@ -1524,8 +1524,8 @@ class AttributeInfo(models.Model):
             pass
 
     def save(self, *args, **kwargs):
-        self.resetCache()
         super(AttributeInfo, self).save(*args, **kwargs)
+        self.resetCache()
 
 class LookupInfo(models.Model):
     DASH_CHOICES = (
