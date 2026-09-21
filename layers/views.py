@@ -99,10 +99,6 @@ def dictThemeCache(theme, site_id=None):
                     cache.set('layers_theme_%d_%d' % (theme.id, site.id), themes_dict, 60*60*24*7)
     
     return themes_dict
-# Create your views here.
-def get_json(request):
-    from data_manager.views import get_json as old_get_json
-    return old_get_json(request)
 
 # def get_json2(request):
 #     from django.core.cache import cache
