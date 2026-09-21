@@ -749,11 +749,19 @@ class VectorLayerTest(TestCase):
             name="testlayer2",
             layer_type='Vector',  
             mouseover_field="hi",
+            opacity=5.0
         ) 
         self.vector_layer2 = LayerVector.objects.create(
             layer=self.layer2,
-            custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0, 
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0,
         )
 
         self.layer2.site.add(site)
@@ -765,9 +773,31 @@ class VectorLayerTest(TestCase):
 
         layer2_actual_data = LayerVectorSerializer(self.vector_layer2).data
 
-        verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="Vector", order=2)
-        verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="Vector", order=1, mouseover_field="hi", custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-                                                            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0)
+        verify_serializer_v1_output(
+            self, 
+            layer1_actual_data, 
+            name=self.layer1.name, 
+            layer_type="Vector", 
+            order=2
+        )
+        verify_serializer_v1_output(
+            self, 
+            layer2_actual_data, 
+            name=self.layer2.name, 
+            layer_type="Vector", 
+            order=1, 
+            mouseover_field="hi", 
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0, 
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0,
+            opacity=5.0
+        )
 
 @override_settings(DB_CHANNEL="madronaportal")
 class ChildOrderSerializerTest(TestCase):
