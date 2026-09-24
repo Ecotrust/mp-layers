@@ -94,6 +94,7 @@ class AttributeInfoExportSerializer(serializers.Serializer):
             'uuid': str(instance.uuid),
             'display_name': instance.display_name,
             'field_name': instance.field_name,
+            'field_label': instance.field_label,
             'precision': instance.precision,
             'order': instance.order,
             'preserve_format': instance.preserve_format,
