@@ -13,6 +13,20 @@ from layers.admin import export_layer_details, export_theme_details
 from rest_framework import serializers
 from unittest.mock import Mock
 # request to get data from live site, mung it and make it into v2
+class AttributeInfoTest(TestCase):
+    def test_new_attribute_info_can_be_saved(self):
+        attribute = AttributeInfo(
+            display_name="Record Name",
+            field_name="record_name",
+        )
+
+        attribute.save()
+
+        self.assertIsNotNone(attribute.pk)
+        self.assertEqual(attribute.display_name, "Record Name")
+        self.assertEqual(attribute.field_name, "record_name")
+
+
 class ThemeTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)

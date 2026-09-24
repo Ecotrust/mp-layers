@@ -1594,7 +1594,8 @@ class LookupInfoAdmin(admin.ModelAdmin):
 #     form = ChildOrderForm
 
 class AttributeInfoAdmin(admin.ModelAdmin):
-    list_display = ('field_name', 'display_name', 'precision', 'order', 'preserve_format')
+    list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
+    search_fields = ('display_name', 'field_name', 'field_label')
 
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)
