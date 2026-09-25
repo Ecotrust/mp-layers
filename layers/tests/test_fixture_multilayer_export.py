@@ -364,3 +364,62 @@ class LayerMultilayerFixtureExportTest(TestCase):
                 for ref in value_rows['val-2b'][NODE_RELATIONS_KEY]['associations']
             },
         )
+
+    def test_export_includes_associations_with_null_target_layer(self):
+        export_layer = Layer.objects.create(
+            name='Hurricane Tracks Since 1980 in the North Atlantic Slider',
+            layer_type='slider',
+        )
+        dimension = MultilayerDimension.objects.create(
+            layer=export_layer,
+            name='Decade',
+            label='Decade',
+            order=201,
+        )
+
+        value_association_pairs = []
+        for decade in ('1980-1989', '1990-1999', '2000-2009', '2010-2019'):
+            association_name = 'Decade: {}'.format(decade)
+            value = MultilayerDimensionValue.objects.create(
+                dimension=dimension,
+                value='| {} |'.format(association_name),
+                label=decade,
+                order=300 + len(value_association_pairs),
+            )
+            association = MultilayerAssociation.objects.create(
+                parentLayer=export_layer,
+                layer=None,
+                name=association_name,
+            )
+            value.associations.add(association)
+            value_association_pairs.append((value, association))
+
+        fixture_data = export_layer.to_export_dict()
+        association_rows = [
+            row for row in fixture_data
+            if row[NODE_MODEL_KEY] == 'layers.multilayerassociation'
+        ]
+        value_rows = {
+            row[NODE_SOURCE_PK_KEY]: row
+            for row in fixture_data
+            if row[NODE_MODEL_KEY] == 'layers.multilayerdimensionvalue'
+        }
+
+        self.assertEqual(len(association_rows), 4)
+        self.assertEqual(
+            {row[NODE_FIELDS_KEY]['name'] for row in association_rows},
+            {'Decade: {}'.format(decade) for decade in ('1980-1989', '1990-1999', '2000-2009', '2010-2019')},
+        )
+        self.assertTrue(all(
+            row[NODE_RELATIONS_KEY]['layer'] is None
+            for row in association_rows
+        ))
+        for value, association in value_association_pairs:
+            self.assertEqual(
+                value_rows[value.pk][NODE_RELATIONS_KEY]['associations'],
+                [{
+                    NODE_MODEL_KEY: 'layers.multilayerassociation',
+                    NODE_SOURCE_PK_KEY: association.pk,
+                    'uuid': str(association.uuid),
+                }],
+            )
