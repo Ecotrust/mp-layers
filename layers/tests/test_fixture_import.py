@@ -678,6 +678,7 @@ class LayerFixtureImportPR07Test(TestCase):
         dimension_uuid = uuid4()
         association_a_uuid = uuid4()
         association_b_uuid = uuid4()
+        association_without_layer_uuid = uuid4()
         value_1_uuid = uuid4()
         value_2_uuid = uuid4()
 
@@ -759,6 +760,20 @@ class LayerFixtureImportPR07Test(TestCase):
                 },
             ),
             build_node(
+                model="layers.multilayerassociation",
+                source_pk=1203,
+                uuid_value=association_without_layer_uuid,
+                fields={"name": "No target layer"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50311,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": None,
+                },
+            ),
+            build_node(
                 model="layers.multilayerdimensionvalue",
                 source_pk=1301,
                 uuid_value=value_1_uuid,
@@ -794,7 +809,12 @@ class LayerFixtureImportPR07Test(TestCase):
                             model="layers.multilayerassociation",
                             source_pk=50502,
                             uuid_value=association_b_uuid,
-                        )
+                        ),
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50503,
+                            uuid_value=association_without_layer_uuid,
+                        ),
                     ],
                 },
             ),
@@ -808,13 +828,21 @@ class LayerFixtureImportPR07Test(TestCase):
 
         imported_dimension = MultilayerDimension.objects.get(uuid=dimension_uuid)
         self.assertEqual(imported_dimension.layer_id, imported_parent.pk)
+        self.assertEqual(MultilayerDimension.objects.count(), 1)
+        self.assertEqual(MultilayerDimensionValue.objects.count(), 2)
+        self.assertEqual(MultilayerAssociation.objects.count(), 3)
 
         association_a = MultilayerAssociation.objects.get(uuid=association_a_uuid)
         association_b = MultilayerAssociation.objects.get(uuid=association_b_uuid)
+        association_without_layer = MultilayerAssociation.objects.get(
+            uuid=association_without_layer_uuid
+        )
         self.assertEqual(association_a.parentLayer_id, imported_parent.pk)
         self.assertEqual(association_b.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_without_layer.parentLayer_id, imported_parent.pk)
         self.assertEqual(association_a.layer_id, imported_target_a.pk)
         self.assertEqual(association_b.layer_id, imported_target_b.pk)
+        self.assertIsNone(association_without_layer.layer_id)
 
         value_1 = MultilayerDimensionValue.objects.get(uuid=value_1_uuid)
         value_2 = MultilayerDimensionValue.objects.get(uuid=value_2_uuid)
@@ -826,7 +854,7 @@ class LayerFixtureImportPR07Test(TestCase):
         )
         self.assertEqual(
             set(value_2.associations.values_list("uuid", flat=True)),
-            {association_b_uuid},
+            {association_b_uuid, association_without_layer_uuid},
         )
 
     def test_missing_dimension_or_association_reference_raises_in_strict_mode(self):
