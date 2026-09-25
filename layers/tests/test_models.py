@@ -18,6 +18,7 @@ class AttributeInfoTest(TestCase):
         attribute = AttributeInfo(
             display_name="Record Name",
             field_name="record_name",
+            field_label="Depth (m)",
         )
 
         attribute.save()
@@ -25,6 +26,7 @@ class AttributeInfoTest(TestCase):
         self.assertIsNotNone(attribute.pk)
         self.assertEqual(attribute.display_name, "Record Name")
         self.assertEqual(attribute.field_name, "record_name")
+        self.assertEqual(attribute.field_label, "Depth (m)")
 
 
 class ThemeTest(TestCase):
