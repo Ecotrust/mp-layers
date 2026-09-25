@@ -11,6 +11,7 @@ from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
 from django.db import transaction
+from django.db.models import Model
 
 from .fixture_contract import (
     NODE_FIELDS_KEY,
@@ -309,7 +310,7 @@ def import_fixture_rows(
 
             _apply_fields(value_obj, row.get(NODE_FIELDS_KEY, {}))
             value_obj.dimension = dimension_obj
-            value_obj.save()
+            Model.save(value_obj)
             value_obj.associations.set(resolved_associations)
 
         # Second pass: companionship relation rows (non-UUID identity).
