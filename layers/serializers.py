@@ -364,7 +364,6 @@ class LayerExportFixtureSerializer(serializers.Serializer):
                     for value in values:
                         scoped_associations_by_value[value.pk] = list(
                             value.associations.filter(parentLayer=layer_obj)
-                            .exclude(layer__isnull=True)
                             .exclude(layer=layer_obj)
                             .select_related('layer')
                             .order_by('pk')
@@ -407,9 +406,12 @@ class LayerExportFixtureSerializer(serializers.Serializer):
 
                         for association in scoped_associations:
                             target_layer = association.layer
-                            if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
-                                enqueued_layer_pks.add(target_layer.pk)
-                                layer_queue.append(target_layer)
+                            layer_ref=None
+                            if target_layer is not None:
+                                layer_ref = self._to_ref(target_layer)
+                                if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
+                                    enqueued_layer_pks.add(target_layer.pk)
+                                    layer_queue.append(target_layer)
 
                             if association.pk in seen_multilayer_association_pks:
                                 continue
@@ -422,7 +424,7 @@ class LayerExportFixtureSerializer(serializers.Serializer):
                                 },
                                 {
                                     'parentLayer': self._to_ref(layer_obj),
-                                    'layer': self._to_ref(target_layer),
+                                    'layer': layer_ref,
                                 },
                             ))
 
