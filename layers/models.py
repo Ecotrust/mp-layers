@@ -552,6 +552,12 @@ class Theme(ChildType, SiteFlags):
             cache.set(cache_label, layers_dict, 60*60*24*7)
         return layers_dict
 
+    def to_export_dict(self):
+        from layers.serializers import ThemeExportFixtureSerializer
+
+        serializer = ThemeExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def __str__(self):
         return "{} [T-{}]".format(self.name, self.pk)
 
@@ -769,7 +775,15 @@ class Layer(ChildType, SiteFlags):
     def attributes(self):
         return {'compress_attributes': self.compress_display,
                 'event': self.attribute_event,
-                'attributes': [{'display': attr.display_name, 'field': attr.field_name, 'precision': attr.precision} for attr in self.attribute_fields.all().order_by('order')],
+                'attributes': [
+                    {
+                        'display': attr.display_name, 
+                        'field': attr.field_name, 
+                        'label': attr.field_label if attr.field_label and len(attr.field_label.strip()) > 0 else None,
+                        'precision': attr.precision,
+                        'preserve_format': attr.preserve_format,
+                    } for attr in self.attribute_fields.all().order_by('order')
+                ],
                 'mouseover_attribute': self.mouseover_field,
                 'preserved_format_attributes': [attr.field_name for attr in self.attribute_fields.filter(preserve_format=True)]
         }
@@ -1122,19 +1136,7 @@ class Layer(ChildType, SiteFlags):
         serializer = LayerExportFixtureSerializer(self)
         return serializer.to_representation(self)
 
-    def save(self, *args, **kwargs):
-        provided_slug_name = kwargs.pop('slug_name', None)
-        is_new = self._state.adding
-
-        if provided_slug_name is not None:
-            self.slug_name = provided_slug_name
-        else:
-            slug = slugify(self.name)
-            if self.id:
-                self.slug_name = '{}{}'.format(slug, self.id)
-            else:
-                self.slug_name = '{}_new'.format(slug)
-
+    def resetCache(self):
         content_type = ContentType.objects.get_for_model(self.__class__)
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
@@ -1152,6 +1154,22 @@ class Layer(ChildType, SiteFlags):
             cache.delete(key)
             with connection.cursor() as cursor:
                 cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
+
+    def save(self, *args, **kwargs):
+        provided_slug_name = kwargs.pop('slug_name', None)
+        is_new = self._state.adding
+
+        if provided_slug_name is not None:
+            self.slug_name = provided_slug_name
+        else:
+            slug = slugify(self.name)
+            if self.id:
+                self.slug_name = '{}{}'.format(slug, self.id)
+            else:
+                self.slug_name = '{}_new'.format(slug)
+
+        self.resetCache()
+
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
@@ -1501,7 +1519,8 @@ class MultilayerDimensionValue(models.Model):
 
 class AttributeInfo(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    display_name = models.CharField(max_length=255, blank=True, null=True)
+    display_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="Record Name", help_text="How this record will be shown for selection in the admin dashboard")
+    field_label = models.CharField(max_length=255, blank=True, null=True, default=None, help_text="How this entry should be labeled in the map reports")
     field_name = models.CharField(max_length=255, blank=True, null=True)
     precision = models.IntegerField(blank=True, null=True)
     order = models.IntegerField(default=1)
@@ -1512,6 +1531,18 @@ class AttributeInfo(models.Model):
 
     def __str__(self):
         return str(self.field_name)
+
+    def resetCache(self):
+        if self.pk is None:
+            # If saving a new AttributeInfo instance, the m2m relationship cannot be used (no 'id' assigned)
+            return
+        else:
+            for layer in self.layer_set.all():
+                layer.resetCache()
+
+    def save(self, *args, **kwargs):
+        super(AttributeInfo, self).save(*args, **kwargs)
+        self.resetCache()
 
 class LookupInfo(models.Model):
     DASH_CHOICES = (

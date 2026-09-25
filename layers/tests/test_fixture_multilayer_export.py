@@ -8,7 +8,6 @@ from layers.fixture_contract import (
 )
 from layers.models import (
     Layer,
-    MultilayerAssociation,
     MultilayerDimension,
     MultilayerDimensionValue,
 )
@@ -60,28 +59,22 @@ class LayerMultilayerFixtureExportTest(TestCase):
             order=1,
         )
 
-        # Associations:
-        # - included_association matches parentLayer and is referenced by a selected value.
-        # - wrong_parent_association is referenced but has wrong parentLayer.
-        # - unreferenced_association has matching parentLayer but is not referenced by selected values.
-        included_association = MultilayerAssociation.objects.create(
-            parentLayer=export_layer,
-            layer=other_layer,
-            name='included',
-        )
-        wrong_parent_association = MultilayerAssociation.objects.create(
-            parentLayer=other_layer,
-            layer=export_layer,
-            name='wrong-parent',
-        )
-        unreferenced_association = MultilayerAssociation.objects.create(
-            parentLayer=export_layer,
-            layer=export_layer,
-            name='unreferenced',
-        )
+        # Modify the associations generated as each value was saved.
+        included_association = root_value_a.associations.order_by('pk').first()
+        included_association.name = 'included'
+        included_association.layer = other_layer
+        included_association.save(update_fields=['name', 'layer'])
 
-        root_value_a.associations.add(included_association, wrong_parent_association)
-        other_value.associations.add(unreferenced_association)
+        wrong_parent_association = other_value.associations.order_by('pk').first()
+        wrong_parent_association.layer = export_layer
+        wrong_parent_association.save(update_fields=['layer'])
+        root_value_a.associations.add(wrong_parent_association)
+
+        unreferenced_association = root_value_b.associations.order_by('pk').first()
+        unreferenced_association.name = 'unreferenced'
+        unreferenced_association.layer = export_layer
+        unreferenced_association.save(update_fields=['name', 'layer'])
+        root_value_b.associations.remove(unreferenced_association)
 
         fixture_data = export_layer.to_export_dict()
 
@@ -180,13 +173,13 @@ class LayerMultilayerFixtureExportTest(TestCase):
                     name='Target {}'.format(association_name),
                     layer_type='WMS',
                 )
-                association = MultilayerAssociation.objects.create(
-                    parentLayer=export_layer,
-                    layer=target_layer,
-                    name=association_name,
-                )
-                dim_one_value.associations.add(association)
-                dim_two_value.associations.add(association)
+                association = dim_one_value.associations.filter(
+                    pk__in=dim_two_value.associations.values_list('pk', flat=True),
+                ).order_by('pk').first()
+                self.assertIsNotNone(association)
+                association.layer = target_layer
+                association.name = association_name
+                association.save(update_fields=['layer', 'name'])
                 combo_to_target_layer[association_name] = target_layer
                 combo_to_association[association_name] = association
 
@@ -315,13 +308,13 @@ class LayerMultilayerFixtureExportTest(TestCase):
                     name='Target {}'.format(association_name),
                     layer_type='WMS',
                 )
-                association = MultilayerAssociation.objects.create(
-                    parentLayer=export_layer,
-                    layer=target_layer,
-                    name=association_name,
-                )
-                dim_one_value.associations.add(association)
-                dim_two_value.associations.add(association)
+                association = dim_one_value.associations.filter(
+                    pk__in=dim_two_value.associations.values_list('pk', flat=True),
+                ).order_by('pk').first()
+                self.assertIsNotNone(association)
+                association.layer = target_layer
+                association.name = association_name
+                association.save(update_fields=['layer', 'name'])
                 associations[association_name] = association
 
         fixture_data = export_layer.to_export_dict()
@@ -364,3 +357,64 @@ class LayerMultilayerFixtureExportTest(TestCase):
                 for ref in value_rows['val-2b'][NODE_RELATIONS_KEY]['associations']
             },
         )
+
+    def test_export_includes_associations_with_null_target_layer(self):
+        export_layer = Layer.objects.create(
+            name='Hurricane Tracks Since 1980 in the North Atlantic Slider',
+            layer_type='slider',
+        )
+        dimension = MultilayerDimension.objects.create(
+            layer=export_layer,
+            name='Decade',
+            label='Decade',
+            order=201,
+        )
+
+        values = []
+        for decade in ('1980-1989', '1990-1999', '2000-2009', '2010-2019'):
+            association_name = 'Decade: {}'.format(decade)
+            value = MultilayerDimensionValue.objects.create(
+                dimension=dimension,
+                value='| {} |'.format(association_name),
+                label=decade,
+                order=300 + len(values),
+            )
+            values.append((decade, value))
+
+        value_association_pairs = []
+        for decade, value in values:
+            association = value.associations.order_by('pk').first()
+            association.name = 'Decade: {}'.format(decade)
+            association.layer = None
+            association.save(update_fields=['name', 'layer'])
+            value_association_pairs.append((value, association))
+
+        fixture_data = export_layer.to_export_dict()
+        association_rows = [
+            row for row in fixture_data
+            if row[NODE_MODEL_KEY] == 'layers.multilayerassociation'
+        ]
+        value_rows = {
+            row[NODE_SOURCE_PK_KEY]: row
+            for row in fixture_data
+            if row[NODE_MODEL_KEY] == 'layers.multilayerdimensionvalue'
+        }
+
+        self.assertEqual(len(association_rows), 4)
+        self.assertEqual(
+            {row[NODE_FIELDS_KEY]['name'] for row in association_rows},
+            {'Decade: {}'.format(decade) for decade in ('1980-1989', '1990-1999', '2000-2009', '2010-2019')},
+        )
+        self.assertTrue(all(
+            row[NODE_RELATIONS_KEY]['layer'] is None
+            for row in association_rows
+        ))
+        for value, association in value_association_pairs:
+            self.assertEqual(
+                value_rows[value.pk][NODE_RELATIONS_KEY]['associations'],
+                [{
+                    NODE_MODEL_KEY: 'layers.multilayerassociation',
+                    NODE_SOURCE_PK_KEY: association.pk,
+                    'uuid': str(association.uuid),
+                }],
+            )

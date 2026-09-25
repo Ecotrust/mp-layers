@@ -6,6 +6,7 @@ from django.urls import reverse
 from layers.fixture_contract import build_node, build_ref
 from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo, MultilayerDimension, MultilayerDimensionValue, MultilayerAssociation
 from rest_framework import serializers
+from rest_framework.utils.serializer_helpers import ReturnList
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
                        "show_legend", "legend", "legend_title", "legend_subtitle", "description", "overview", "data_url",
@@ -93,6 +94,7 @@ class AttributeInfoExportSerializer(serializers.Serializer):
             'uuid': str(instance.uuid),
             'display_name': instance.display_name,
             'field_name': instance.field_name,
+            'field_label': instance.field_label,
             'precision': instance.precision,
             'order': instance.order,
             'preserve_format': instance.preserve_format,
@@ -362,7 +364,6 @@ class LayerExportFixtureSerializer(serializers.Serializer):
                     for value in values:
                         scoped_associations_by_value[value.pk] = list(
                             value.associations.filter(parentLayer=layer_obj)
-                            .exclude(layer__isnull=True)
                             .exclude(layer=layer_obj)
                             .select_related('layer')
                             .order_by('pk')
@@ -405,9 +406,12 @@ class LayerExportFixtureSerializer(serializers.Serializer):
 
                         for association in scoped_associations:
                             target_layer = association.layer
-                            if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
-                                enqueued_layer_pks.add(target_layer.pk)
-                                layer_queue.append(target_layer)
+                            layer_ref=None
+                            if target_layer is not None:
+                                layer_ref = self._to_ref(target_layer)
+                                if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
+                                    enqueued_layer_pks.add(target_layer.pk)
+                                    layer_queue.append(target_layer)
 
                             if association.pk in seen_multilayer_association_pks:
                                 continue
@@ -420,9 +424,95 @@ class LayerExportFixtureSerializer(serializers.Serializer):
                                 },
                                 {
                                     'parentLayer': self._to_ref(layer_obj),
-                                    'layer': self._to_ref(target_layer),
+                                    'layer': layer_ref,
                                 },
                             ))
+
+        return fixture_rows
+
+
+class ThemeExportFixtureSerializer(serializers.Serializer):
+    @property
+    def data(self):
+        if not hasattr(self, '_data'):
+            self._data = ReturnList(
+                self.to_representation(self.instance),
+                serializer=self,
+            )
+        return self._data
+
+    def _to_ref(self, instance):
+        return build_ref(instance=instance)
+
+    def _serialize_value(self, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        return str(value)
+
+    def _model_fields(self, instance, excluded_fields):
+        return {
+            field.name: self._serialize_value(field.value_from_object(instance))
+            for field in instance._meta.concrete_fields
+            if field.name not in excluded_fields
+        }
+
+    def _to_row(self, instance, fields, relations=None):
+        return build_node(
+            model=instance._meta.label_lower,
+            source_pk=instance.pk,
+            uuid_value=getattr(instance, 'uuid', None),
+            fields=fields,
+            relations=relations,
+        )
+
+    def to_representation(self, instance):
+        fixture_rows = []
+        seen_theme_pks = set()
+        seen_child_order_pks = set()
+        seen_row_keys = set()
+        theme_queue = [instance]
+
+        def append_row(row):
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_row_keys:
+                seen_row_keys.add(row_key)
+                fixture_rows.append(row)
+
+        while theme_queue:
+            theme = theme_queue.pop(0)
+            if theme.pk in seen_theme_pks:
+                continue
+            seen_theme_pks.add(theme.pk)
+
+            append_row(self._to_row(
+                theme,
+                self._model_fields(theme, {'id', 'site'}),
+            ))
+
+            child_orders = ChildOrder.objects.filter(parent_theme=theme).order_by('order', 'pk')
+            for child_order in child_orders:
+                content_object = child_order.content_object
+                if content_object is None or child_order.pk in seen_child_order_pks:
+                    continue
+                seen_child_order_pks.add(child_order.pk)
+
+                append_row(self._to_row(
+                    child_order,
+                    self._model_fields(child_order, {
+                        'id', 'parent_theme', 'content_type', 'object_id',
+                    }),
+                    {
+                        'parent_theme': self._to_ref(theme),
+                        'content_object': self._to_ref(content_object),
+                    },
+                ))
+
+                if isinstance(content_object, Theme):
+                    if content_object.pk not in seen_theme_pks:
+                        theme_queue.append(content_object)
+                elif isinstance(content_object, Layer):
+                    for row in LayerExportFixtureSerializer().to_representation(content_object):
+                        append_row(row)
 
         return fixture_rows
 
