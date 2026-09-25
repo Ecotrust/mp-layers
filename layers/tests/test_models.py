@@ -733,6 +733,7 @@ class AttributeInfoExportSerializerTest(TestCase):
         expected_export_data = {
             'display_name': 'Depth',
             'field_name': 'depth_m',
+            'field_label': 'Depth (m)',
             'precision': 3,
             'order': 7,
             'preserve_format': True,
