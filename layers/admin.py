@@ -1067,11 +1067,25 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
 
     def values_match(self, current_value, new_value):
-        from datetime import datetime
+        from datetime import date, datetime
         if current_value == new_value:
             return True
-        if isinstance(current_value, datetime):
-            new_time = datetime.fromisoformat(new_value)
+        if isinstance(current_value, (date, datetime)):
+            if new_value is None:
+                return False
+            try:
+                new_time = new_value
+                if isinstance(new_value, str):
+                    try:
+                        new_value = datetime.fromisoformat(new_value)
+                    except ValueError:
+                        pass
+                if isinstance(new_value, (date, datetime)):
+                    new_time = datetime.fromisoformat(new_value.isoformat())
+                if isinstance(current_value, date):
+                    return datetime.fromisoformat(current_value.isoformat()) == new_time
+            except (TypeError, ValueError):
+                return False
             return current_value == new_time
         if isinstance(current_value, uuid.UUID):
             return current_value == uuid.UUID(new_value)
