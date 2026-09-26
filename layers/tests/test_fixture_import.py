@@ -1,0 +1,1096 @@
+from uuid import uuid4
+
+from django.contrib.sites.models import Site
+from django.test import TestCase
+
+from layers.fixture_contract import build_node, build_ref
+from layers.models import (
+    AttributeInfo,
+    Companionship,
+    ChildOrder,
+    Layer,
+    LayerArcFeatureService,
+    LayerArcREST,
+    LayerVector,
+    LayerWMS,
+    LayerXYZ,
+    LookupInfo,
+    MultilayerAssociation,
+    MultilayerDimension,
+    MultilayerDimensionValue,
+    Theme,
+)
+
+try:
+    from layers.fixture_import import import_fixture_rows
+except ImportError:
+    import_fixture_rows = None
+
+
+class LayerFixtureImportPR05Test(TestCase):
+    """layer fixture contract tests for UUID-first fixture import behavior."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _layer_fields(self, name):
+        return {
+            "name": name,
+            "layer_type": "WMS",
+            "slug_name": None,
+            "url": None,
+        }
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def test_uuid_match_updates_existing_even_when_source_pk_differs(self):
+        """Ensure UUIDs are used as the true source of identity, not source PKs."""
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        existing_layer = Layer.objects.create(
+            name="Original",
+            layer_type="WMS",
+            uuid=layer_uuid,
+        )
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9999,
+                uuid_value=layer_uuid,
+                fields=self._layer_fields("Updated by UUID"),
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        existing_layer.refresh_from_db()
+        self.assertEqual(existing_layer.name, "Updated by UUID")
+        self.assertEqual(Layer.objects.filter(uuid=layer_uuid).count(), 1)
+
+    def test_source_pk_collision_with_different_uuid_creates_new_record(self):
+        """If records with different IDs, but same UUID/type are found, create
+        a new record with a new ID."""
+        self._require_importer()
+
+        existing_layer = Layer.objects.create(name="Existing", layer_type="WMS")
+        new_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=existing_layer.pk,
+                uuid_value=new_uuid,
+                fields=self._layer_fields("Created on UUID mismatch"),
+                relations={},
+            )
+        ]
+
+        before_count = Layer.objects.count()
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertEqual(Layer.objects.count(), before_count + 1)
+        self.assertTrue(Layer.objects.filter(uuid=new_uuid).exists())
+        existing_layer.refresh_from_db()
+        self.assertEqual(existing_layer.name, "Existing")
+
+    def test_unused_source_pk_is_preserved_when_creating_record(self):
+        self._require_importer()
+
+        new_uuid = uuid4()
+        source_pk = 999999
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=source_pk,
+                uuid_value=new_uuid,
+                fields=self._layer_fields("Preserved Source PK"),
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.all_objects.get(uuid=new_uuid)
+        self.assertEqual(imported_layer.pk, source_pk)
+
+    def test_second_pass_resolves_relations_by_uuid_not_source_pk(self):
+        """As name suggests - ensure 2nd pass uses UUIDs for reference, not just PK or 'id'."""
+        self._require_importer()
+
+        parent_uuid = uuid4()
+        target_uuid = uuid4()
+        association_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=101,
+                uuid_value=parent_uuid,
+                fields=self._layer_fields("Imported Parent"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=202,
+                uuid_value=target_uuid,
+                fields=self._layer_fields("Imported Target"),
+                relations={},
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=303,
+                uuid_value=association_uuid,
+                fields={"name": "Val-1aVal-2b"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=99901,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=99902,
+                        uuid_value=target_uuid,
+                    ),
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_parent = Layer.objects.get(uuid=parent_uuid)
+        imported_target = Layer.objects.get(uuid=target_uuid)
+        imported_association = MultilayerAssociation.objects.get(uuid=association_uuid)
+
+        self.assertEqual(imported_association.parentLayer_id, imported_parent.pk)
+        self.assertEqual(imported_association.layer_id, imported_target.pk)
+
+    def test_new_layers_are_associated_to_all_sites_by_default(self):
+        """Sites info should no longer matter on import if all DBs are segregated. 
+        We will assume any imported layer is intended to be seen on the new server, 
+        so we will associate it with all sites by default."""
+        self._require_importer()
+
+        Site.objects.get_or_create(id=1, defaults={"domain": "example.com", "name": "example"})
+        Site.objects.get_or_create(id=2, defaults={"domain": "preview.example.com", "name": "preview"})
+
+        new_uuid = uuid4()
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=404,
+                uuid_value=new_uuid,
+                fields=self._layer_fields("Site-linked Import"),
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.objects.get(uuid=new_uuid)
+        imported_site_ids = set(imported_layer.site.values_list("id", flat=True))
+        all_site_ids = set(Site.objects.values_list("id", flat=True))
+        self.assertEqual(imported_site_ids, all_site_ids)
+
+    def test_duplicate_uuid_rows_with_conflicting_fields_raise_error(self):
+        """two records with the same UUID and a different field. Right now
+        we don't have a plan for resolving this, so ValueError should be raised."""
+        self._require_importer()
+
+        shared_uuid = uuid4()
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=501,
+                uuid_value=shared_uuid,
+                fields=self._layer_fields("Name A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=502,
+                uuid_value=shared_uuid,
+                fields=self._layer_fields("Name B"),
+                relations={},
+            ),
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+
+class ThemeFixtureImportPR09Test(TestCase):
+    """Theme fixture import tests for non-UUID ChildOrder identity."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def test_child_order_source_id_collision_creates_new_relationship(self):
+        self._require_importer()
+
+        parent_theme = Theme.all_objects.create(
+            name="Existing Theme",
+            display_name="Existing Theme",
+        )
+        layer = Layer.all_objects.create(name="Existing Layer", layer_type="WMS")
+        imported_parent_theme = Theme.all_objects.create(
+            name="Imported Theme",
+            display_name="Imported Theme",
+        )
+        imported_layer = Layer.all_objects.create(
+            name="Imported Layer",
+            layer_type="WMS",
+        )
+        child_order = ChildOrder.objects.create(
+            parent_theme=parent_theme,
+            content_object=layer,
+            order=3,
+        )
+        original_pk = child_order.pk
+        original_date_created = child_order.date_created
+        original_date_modified = child_order.date_modified
+        original_parent_theme_id = child_order.parent_theme_id
+        original_content_type_id = child_order.content_type_id
+        original_object_id = child_order.object_id
+
+        fixture_rows = [
+            build_node(
+                model="layers.childorder",
+                source_pk=original_pk,
+                uuid_value=None,
+                fields={"order": 17},
+                relations={
+                    "parent_theme": build_ref(
+                        model="layers.theme",
+                        source_pk=1001,
+                        uuid_value=imported_parent_theme.uuid,
+                    ),
+                    "content_object": build_ref(
+                        model="layers.layer",
+                        source_pk=1002,
+                        uuid_value=imported_layer.uuid,
+                    ),
+                },
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        child_orders = ChildOrder.objects.all()
+        self.assertEqual(child_orders.count(), 2)
+
+        child_order.refresh_from_db()
+        self.assertEqual(child_order.pk, original_pk)
+        self.assertEqual(child_order.order, 3)
+        self.assertEqual(child_order.parent_theme_id, original_parent_theme_id)
+        self.assertEqual(child_order.content_type_id, original_content_type_id)
+        self.assertEqual(child_order.object_id, original_object_id)
+        self.assertEqual(child_order.date_created, original_date_created)
+        self.assertEqual(child_order.date_modified, original_date_modified)
+
+        imported_child_order = ChildOrder.objects.get(
+            parent_theme=imported_parent_theme,
+            object_id=imported_layer.pk,
+        )
+        self.assertNotEqual(imported_child_order.pk, original_pk)
+        self.assertEqual(imported_child_order.order, 17)
+
+
+class LayerFixtureImportPR06Test(TestCase):
+    """PR06 contract tests for associated model import behavior."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def _layer_fields(self, name):
+        return {
+            "name": name,
+            "layer_type": "WMS",
+            "slug_name": None,
+            "url": None,
+        }
+
+    def test_attributeinfo_uuid_match_updates_existing_even_when_source_pk_differs(self):
+        self._require_importer()
+
+        attribute_uuid = uuid4()
+        existing_attr = AttributeInfo.objects.create(
+            uuid=attribute_uuid,
+            display_name="Original Label",
+            field_name="old_field",
+            order=1,
+        )
+
+        fixture_rows = [
+            build_node(
+                model="layers.attributeinfo",
+                source_pk=8801,
+                uuid_value=attribute_uuid,
+                fields={
+                    "display_name": "Updated Label",
+                    "field_name": "new_field",
+                    "order": 7,
+                },
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        existing_attr.refresh_from_db()
+        self.assertEqual(existing_attr.display_name, "Updated Label")
+        self.assertEqual(existing_attr.field_name, "new_field")
+        self.assertEqual(AttributeInfo.objects.filter(uuid=attribute_uuid).count(), 1)
+
+    def test_lookupinfo_source_pk_collision_with_different_uuid_creates_new_record(self):
+        self._require_importer()
+
+        existing_lookup = LookupInfo.objects.create(value="A", description="existing")
+        new_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.lookupinfo",
+                source_pk=existing_lookup.pk,
+                uuid_value=new_uuid,
+                fields={
+                    "value": "B",
+                    "description": "imported",
+                    "dashstyle": "solid",
+                },
+                relations={},
+            )
+        ]
+
+        before_count = LookupInfo.objects.count()
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertEqual(LookupInfo.objects.count(), before_count + 1)
+        self.assertTrue(LookupInfo.objects.filter(uuid=new_uuid).exists())
+
+    def test_second_pass_resolves_layer_attribute_fields_by_uuid(self):
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        attr_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.attributeinfo",
+                source_pk=9301,
+                uuid_value=attr_uuid,
+                fields={
+                    "display_name": "Area",
+                    "field_name": "area_sqkm",
+                    "order": 2,
+                },
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9302,
+                uuid_value=layer_uuid,
+                fields=self._layer_fields("Layer With Attributes"),
+                relations={
+                    "attribute_fields": [
+                        build_ref(
+                            model="layers.attributeinfo",
+                            source_pk=77701,
+                            uuid_value=attr_uuid,
+                        )
+                    ]
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.objects.get(uuid=layer_uuid)
+        imported_attr = AttributeInfo.objects.get(uuid=attr_uuid)
+        self.assertEqual(imported_layer.attribute_fields.count(), 1)
+        self.assertEqual(imported_layer.attribute_fields.first().pk, imported_attr.pk)
+
+    def test_second_pass_resolves_companionship_layer_and_companions_by_uuid(self):
+        self._require_importer()
+
+        owner_uuid = uuid4()
+        companion_a_uuid = uuid4()
+        companion_b_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9401,
+                uuid_value=owner_uuid,
+                fields=self._layer_fields("Owner Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9402,
+                uuid_value=companion_a_uuid,
+                fields=self._layer_fields("Companion A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9403,
+                uuid_value=companion_b_uuid,
+                fields=self._layer_fields("Companion B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9404,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55501,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55502,
+                            uuid_value=companion_a_uuid,
+                        ),
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55503,
+                            uuid_value=companion_b_uuid,
+                        ),
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_owner = Layer.objects.get(uuid=owner_uuid)
+        companionship = Companionship.objects.get(layer=imported_owner)
+        companion_uuids = set(
+            companionship.companions.values_list("uuid", flat=True)
+        )
+        self.assertEqual(companion_uuids, {companion_a_uuid, companion_b_uuid})
+
+    def test_multiple_companionship_rows_for_same_owner_merge_into_first_record(self):
+        self._require_importer()
+
+        owner_uuid = uuid4()
+        companion_a_uuid = uuid4()
+        companion_b_uuid = uuid4()
+        companion_c_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9411,
+                uuid_value=owner_uuid,
+                fields=self._layer_fields("Owner Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9412,
+                uuid_value=companion_a_uuid,
+                fields=self._layer_fields("Companion A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9413,
+                uuid_value=companion_b_uuid,
+                fields=self._layer_fields("Companion B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9414,
+                uuid_value=companion_c_uuid,
+                fields=self._layer_fields("Companion C"),
+                relations={},
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9415,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55601,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55602,
+                            uuid_value=companion_a_uuid,
+                        ),
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55603,
+                            uuid_value=companion_b_uuid,
+                        ),
+                    ],
+                },
+            ),
+            build_node(
+                model="layers.companionship",
+                source_pk=9416,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=55611,
+                        uuid_value=owner_uuid,
+                    ),
+                    "companions": [
+                        build_ref(
+                            model="layers.layer",
+                            source_pk=55612,
+                            uuid_value=companion_c_uuid,
+                        ),
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_owner = Layer.objects.get(uuid=owner_uuid)
+        companionship_rows = Companionship.objects.filter(layer=imported_owner)
+        self.assertEqual(companionship_rows.count(), 1)
+
+        companionship = companionship_rows.first()
+        companion_set = set(companionship.companions.values_list("uuid", flat=True))
+        self.assertEqual(
+            companion_set,
+            {companion_a_uuid, companion_b_uuid, companion_c_uuid},
+        )
+
+        # Importing the same fixture again should not duplicate identical rows.
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+        self.assertEqual(Companionship.objects.filter(layer=imported_owner).count(), 1)
+        companion_set = set(
+            Companionship.objects.get(layer=imported_owner).companions.values_list("uuid", flat=True)
+        )
+        self.assertEqual(
+            companion_set,
+            {companion_a_uuid, companion_b_uuid, companion_c_uuid},
+        )
+
+    def test_missing_attribute_relation_uuid_raises_error_under_strict_policy(self):
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        missing_attr_uuid = uuid4()
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9501,
+                uuid_value=layer_uuid,
+                fields=self._layer_fields("Layer Missing Attribute Ref"),
+                relations={
+                    "attribute_fields": [
+                        build_ref(
+                            model="layers.attributeinfo",
+                            source_pk=88801,
+                            uuid_value=missing_attr_uuid,
+                        )
+                    ]
+                },
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+
+class LayerFixtureImportPR07Test(TestCase):
+    """PR07 contract tests for multilayer import graph integrity."""
+
+    def _require_importer(self):
+        self.assertIsNotNone(
+            import_fixture_rows,
+            "importer API missing: expected layers.fixture_import.import_fixture_rows",
+        )
+
+    def _import_kwargs(self):
+        return {
+            "dry_run": False,
+            "associate_all_sites": True,
+            "missing_ref_policy": "error",
+            "duplicate_uuid_policy": "error",
+        }
+
+    def _layer_fields(self, name, layer_type="WMS"):
+        return {
+            "name": name,
+            "layer_type": layer_type,
+            "slug_name": None,
+            "url": None,
+        }
+
+    def test_multilayer_dimension_value_association_graph_resolves_by_uuid(self):
+        self._require_importer()
+
+        parent_uuid = uuid4()
+        target_a_uuid = uuid4()
+        target_b_uuid = uuid4()
+        dimension_uuid = uuid4()
+        association_a_uuid = uuid4()
+        association_b_uuid = uuid4()
+        association_without_layer_uuid = uuid4()
+        value_1_uuid = uuid4()
+        value_2_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=1001,
+                uuid_value=parent_uuid,
+                fields=self._layer_fields("Parent Slider Layer"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=1002,
+                uuid_value=target_a_uuid,
+                fields=self._layer_fields("Target A"),
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=1003,
+                uuid_value=target_b_uuid,
+                fields=self._layer_fields("Target B"),
+                relations={},
+            ),
+            build_node(
+                model="layers.multilayerdimension",
+                source_pk=1101,
+                uuid_value=dimension_uuid,
+                fields={
+                    "name": "Year",
+                    "label": "Year",
+                    "order": 10,
+                    "animated": True,
+                    "angle_labels": False,
+                },
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50101,
+                        uuid_value=parent_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=1201,
+                uuid_value=association_a_uuid,
+                fields={"name": "A"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50201,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50202,
+                        uuid_value=target_a_uuid,
+                    ),
+                },
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=1202,
+                uuid_value=association_b_uuid,
+                fields={"name": "B"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50301,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=50302,
+                        uuid_value=target_b_uuid,
+                    ),
+                },
+            ),
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=1203,
+                uuid_value=association_without_layer_uuid,
+                fields={"name": "No target layer"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=50311,
+                        uuid_value=parent_uuid,
+                    ),
+                    "layer": None,
+                },
+            ),
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1301,
+                uuid_value=value_1_uuid,
+                fields={"value": "2020", "label": "2020", "order": 1},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=50401,
+                        uuid_value=dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50402,
+                            uuid_value=association_a_uuid,
+                        )
+                    ],
+                },
+            ),
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1302,
+                uuid_value=value_2_uuid,
+                fields={"value": "2021", "label": "2021", "order": 2},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=50501,
+                        uuid_value=dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50502,
+                            uuid_value=association_b_uuid,
+                        ),
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=50503,
+                            uuid_value=association_without_layer_uuid,
+                        ),
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_parent = Layer.objects.get(uuid=parent_uuid)
+        imported_target_a = Layer.objects.get(uuid=target_a_uuid)
+        imported_target_b = Layer.objects.get(uuid=target_b_uuid)
+
+        imported_dimension = MultilayerDimension.objects.get(uuid=dimension_uuid)
+        self.assertEqual(imported_dimension.layer_id, imported_parent.pk)
+        self.assertEqual(MultilayerDimension.objects.count(), 1)
+        self.assertEqual(MultilayerDimensionValue.objects.count(), 2)
+        self.assertEqual(MultilayerAssociation.objects.count(), 3)
+
+        association_a = MultilayerAssociation.objects.get(uuid=association_a_uuid)
+        association_b = MultilayerAssociation.objects.get(uuid=association_b_uuid)
+        association_without_layer = MultilayerAssociation.objects.get(
+            uuid=association_without_layer_uuid
+        )
+        self.assertEqual(association_a.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_b.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_without_layer.parentLayer_id, imported_parent.pk)
+        self.assertEqual(association_a.layer_id, imported_target_a.pk)
+        self.assertEqual(association_b.layer_id, imported_target_b.pk)
+        self.assertIsNone(association_without_layer.layer_id)
+
+        value_1 = MultilayerDimensionValue.objects.get(uuid=value_1_uuid)
+        value_2 = MultilayerDimensionValue.objects.get(uuid=value_2_uuid)
+        self.assertEqual(value_1.dimension_id, imported_dimension.pk)
+        self.assertEqual(value_2.dimension_id, imported_dimension.pk)
+        self.assertEqual(
+            set(value_1.associations.values_list("uuid", flat=True)),
+            {association_a_uuid},
+        )
+        self.assertEqual(
+            set(value_2.associations.values_list("uuid", flat=True)),
+            {association_b_uuid, association_without_layer_uuid},
+        )
+
+    def test_missing_dimension_or_association_reference_raises_in_strict_mode(self):
+        self._require_importer()
+
+        value_uuid = uuid4()
+        missing_dimension_uuid = uuid4()
+        missing_association_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.multilayerdimensionvalue",
+                source_pk=1401,
+                uuid_value=value_uuid,
+                fields={"value": "X", "label": "X", "order": 1},
+                relations={
+                    "dimension": build_ref(
+                        model="layers.multilayerdimension",
+                        source_pk=60101,
+                        uuid_value=missing_dimension_uuid,
+                    ),
+                    "associations": [
+                        build_ref(
+                            model="layers.multilayerassociation",
+                            source_pk=60102,
+                            uuid_value=missing_association_uuid,
+                        )
+                    ],
+                },
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+    def test_second_pass_resolves_specific_layer_rows_by_layer_uuid(self):
+        self._require_importer()
+
+        wms_uuid = uuid4()
+        arcrest_uuid = uuid4()
+        xyz_uuid = uuid4()
+        afs_uuid = uuid4()
+        vector_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9601,
+                uuid_value=wms_uuid,
+                fields={**self._layer_fields("WMS Layer"), "layer_type": "WMS"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9602,
+                uuid_value=arcrest_uuid,
+                fields={**self._layer_fields("ArcREST Layer"), "layer_type": "ArcRest"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9603,
+                uuid_value=xyz_uuid,
+                fields={**self._layer_fields("XYZ Layer"), "layer_type": "XYZ"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9604,
+                uuid_value=afs_uuid,
+                fields={
+                    **self._layer_fields("ArcFeature Layer"),
+                    "layer_type": "ArcFeatureServer",
+                },
+                relations={},
+            ),
+            build_node(
+                model="layers.layer",
+                source_pk=9605,
+                uuid_value=vector_uuid,
+                fields={**self._layer_fields("Vector Layer"), "layer_type": "Vector"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layerwms",
+                source_pk=9701,
+                uuid_value=None,
+                fields={"wms_slug": "sample:layer", "wms_version": "1.1.1"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19901,
+                        uuid_value=wms_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerarcrest",
+                source_pk=9702,
+                uuid_value=None,
+                fields={"arcgis_layers": "0,1"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19902,
+                        uuid_value=arcrest_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerxyz",
+                source_pk=9703,
+                uuid_value=None,
+                fields={},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19903,
+                        uuid_value=xyz_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layerarcfeatureservice",
+                source_pk=9704,
+                uuid_value=None,
+                fields={"arcgis_layers": "2"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19904,
+                        uuid_value=afs_uuid,
+                    )
+                },
+            ),
+            build_node(
+                model="layers.layervector",
+                source_pk=9705,
+                uuid_value=None,
+                fields={"lookup_field": "kind"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=19905,
+                        uuid_value=vector_uuid,
+                    )
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertTrue(LayerWMS.objects.filter(layer__uuid=wms_uuid).exists())
+        self.assertTrue(LayerArcREST.objects.filter(layer__uuid=arcrest_uuid).exists())
+        self.assertTrue(LayerXYZ.objects.filter(layer__uuid=xyz_uuid).exists())
+        self.assertTrue(
+            LayerArcFeatureService.objects.filter(layer__uuid=afs_uuid).exists()
+        )
+        self.assertTrue(LayerVector.objects.filter(layer__uuid=vector_uuid).exists())
+
+    def test_vector_lookup_table_relations_resolve_by_lookup_uuid(self):
+        self._require_importer()
+
+        vector_uuid = uuid4()
+        lookup_uuid = uuid4()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=9801,
+                uuid_value=vector_uuid,
+                fields={**self._layer_fields("Vector + Lookup"), "layer_type": "Vector"},
+                relations={},
+            ),
+            build_node(
+                model="layers.lookupinfo",
+                source_pk=9802,
+                uuid_value=lookup_uuid,
+                fields={"value": "1", "description": "one", "dashstyle": "solid"},
+                relations={},
+            ),
+            build_node(
+                model="layers.layervector",
+                source_pk=9803,
+                uuid_value=None,
+                fields={"lookup_field": "class"},
+                relations={
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=29901,
+                        uuid_value=vector_uuid,
+                    ),
+                    "lookup_table": [
+                        build_ref(
+                            model="layers.lookupinfo",
+                            source_pk=29902,
+                            uuid_value=lookup_uuid,
+                        )
+                    ],
+                },
+            ),
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        vector_row = LayerVector.objects.get(layer__uuid=vector_uuid)
+        self.assertEqual(vector_row.lookup_table.count(), 1)
+        self.assertEqual(vector_row.lookup_table.first().uuid, lookup_uuid)
+
+    def test_missing_relation_uuid_raises_error_under_strict_policy(self):
+        """Raise ValueError if required relations are missing from the fixture."""
+        self._require_importer()
+
+        assoc_uuid = uuid4()
+        missing_parent_uuid = uuid4()
+        missing_target_uuid = uuid4()
+        fixture_rows = [
+            build_node(
+                model="layers.multilayerassociation",
+                source_pk=601,
+                uuid_value=assoc_uuid,
+                fields={"name": "Val-1aVal-2b"},
+                relations={
+                    "parentLayer": build_ref(
+                        model="layers.layer",
+                        source_pk=9601,
+                        uuid_value=missing_parent_uuid,
+                    ),
+                    "layer": build_ref(
+                        model="layers.layer",
+                        source_pk=9602,
+                        uuid_value=missing_target_uuid,
+                    ),
+                },
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            import_fixture_rows(fixture_rows, **self._import_kwargs())

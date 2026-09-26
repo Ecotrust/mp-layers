@@ -1,14 +1,18 @@
 from collections import OrderedDict
+import json
 from dal import autocomplete
 from django.contrib import admin
+from django.apps import apps
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django import forms
 from django.forms.models import inlineformset_factory
 from django.db import transaction
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.urls import path
+from django.shortcuts import redirect, render
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.html import format_html
@@ -19,6 +23,8 @@ import nested_admin
 import os
 from queryset_sequence import QuerySetSequence
 import requests
+from .fixture_contract import validate_node_shape
+from .fixture_import import import_fixture_rows
 from .models import *
 
 # MP-Layers is meant to fully replace MP-Data-Manager, but several pieces are still
@@ -204,11 +210,39 @@ class ThemeParentInline(GenericTabularInline):
             pass
         return formset
 
+@admin.action(description="Export Theme(s) for migration")
+def export_theme_details(self, request, queryset):
+    from django.http import HttpResponse
+
+    if not queryset.exists():
+        self.message_user(request, "Please select at least one theme to export.")
+        return
+
+    theme_id_list = []
+    fixture_rows = []
+    seen_rows = set()
+    for theme in queryset:
+        theme_id_list.append(theme.id)
+        for row in theme.to_export_dict():
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_rows:
+                seen_rows.add(row_key)
+                fixture_rows.append(row)
+
+    theme_ids = "_".join(str(id) for id in theme_id_list)
+    response = HttpResponse(json.dumps(fixture_rows), content_type='application/json')
+    filename = f"themes_{theme_ids}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
+    fixture_import_session_key = "layers.theme_fixture_import_rows"
     list_display = ('display_name', 'name', 'order', 'date_modified', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
     form = ThemeForm
     inlines = [ThemeParentInline, ExistingChildInline, ChildInline]
+    actions = [export_theme_details]
     
     fieldsets = (
         ('BASIC INFO', {
@@ -275,6 +309,144 @@ class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
         js = ['theme_admin.js',]
         
     change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_form.html')
+    change_list_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Theme', 'change_list.html')
+
+    def values_match(self, current_value, new_value):
+        from datetime import date, datetime
+        from uuid import UUID
+
+        if current_value == new_value:
+            return True
+        if isinstance(current_value, UUID):
+            return current_value == UUID(str(new_value))
+        if isinstance(current_value, (date, datetime)):
+            return current_value == type(current_value).fromisoformat(str(new_value))
+        return False
+
+    def _fixture_preview_rows(self, rows):
+        preview_rows = []
+        for row in rows:
+            model_label = row['model']
+            uuid_value = row['uuid']
+            existing_record = None
+            if uuid_value:
+                model = apps.get_model(model_label)
+                if any(field.name == 'uuid' for field in model._meta.fields):
+                    manager = getattr(model, 'all_objects', model._base_manager)
+                    existing_record = manager.filter(uuid=uuid_value).first()
+
+            changes = []
+            if existing_record is not None:
+                for field_name, new_value in row['fields'].items():
+                    current_value = getattr(existing_record, field_name)
+                    if not self.values_match(current_value, new_value):
+                        changes.append({
+                            'name': field_name,
+                            'current_value': current_value,
+                            'new_value': new_value,
+                        })
+
+            if existing_record is not None:
+                action = f'Update existing record: "{existing_record}"'
+            elif uuid_value:
+                action = 'Create new record'
+            else:
+                action = 'Create or merge relationship record'
+
+            preview_rows.append({
+                'model': model_label,
+                'uuid': uuid_value,
+                'action': action,
+                'fields': row['fields'],
+                'changes': changes,
+            })
+        return preview_rows
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                'import-fixture/',
+                self.admin_site.admin_view(self.import_fixture),
+                name='layers_theme_import_fixture',
+            ),
+        ]
+        return custom_urls + urls
+
+    def import_fixture(self, request):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        changelist_url = reverse('admin:layers_theme_changelist')
+        context = {
+            **self.admin_site.each_context(request),
+            'opts': self.model._meta,
+            'title': 'Import theme fixture',
+            'changelist_url': changelist_url,
+        }
+
+        if request.method == 'POST' and 'cancel' in request.POST:
+            request.session.pop(self.fixture_import_session_key, None)
+            return redirect(changelist_url)
+
+        if request.method == 'POST' and 'confirm' in request.POST:
+            rows = request.session.get(self.fixture_import_session_key)
+            if rows is None:
+                context['error'] = 'No validated fixture is available to import.'
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=False,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                context['fixture_rows'] = rows
+                context['preview_rows'] = self._fixture_preview_rows(rows)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            request.session.pop(self.fixture_import_session_key, None)
+            self.message_user(request, 'Imported {} fixture rows.'.format(result['imported']))
+            return redirect(changelist_url)
+
+        if request.method == 'POST':
+            fixture_file = request.FILES.get('fixture_file')
+            if fixture_file is None:
+                context['error'] = 'Choose a fixture JSON file to import.'
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                rows = json.loads(fixture_file.read().decode('utf-8'))
+                if not isinstance(rows, list):
+                    raise ValueError('Fixture JSON must contain a list of rows.')
+                for row in rows:
+                    validate_node_shape(row)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+                context['error'] = 'Upload valid JSON fixture data: {}'.format(error)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=True,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
+
+            request.session[self.fixture_import_session_key] = rows
+            context['fixture_rows'] = rows
+            context['preview_result'] = result
+            context['preview_rows'] = self._fixture_preview_rows(rows)
+
+        return render(request, 'admin/layers/Theme/import_theme_fixture.html', context)
 
 
     def get_queryset(self, request):
@@ -865,7 +1037,104 @@ class LayerResource(resources.ModelResource):
 
         export_order = fields
 
+@admin.action(description="Export layer(s) for migration")
+def export_layer_details(self, request, queryset):
+    from django.http import HttpResponse
+
+    if not queryset.exists():
+        self.message_user(request, "Please select at least one layer to export.")
+        return
+
+    layer_id_list = []
+    fixture_rows = []
+    seen_rows = set()
+    for layer in queryset:
+        layer_id_list.append(layer.id)
+        for row in layer.to_export_dict():
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_rows:
+                seen_rows.add(row_key)
+                fixture_rows.append(row)
+
+    layer_ids = "_".join(str(id) for id in layer_id_list)
+    response = HttpResponse(json.dumps(fixture_rows), content_type='application/geo+json')
+    filename = f"layers_{layer_ids}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
+    fixture_import_session_key = "layers.fixture_import_rows"
+
+    def values_match(self, current_value, new_value):
+        from datetime import date, datetime
+        if current_value == new_value:
+            return True
+        if isinstance(current_value, (date, datetime)):
+            if new_value is None:
+                return False
+            try:
+                new_time = new_value
+                if isinstance(new_value, str):
+                    try:
+                        new_value = datetime.fromisoformat(new_value)
+                    except ValueError:
+                        pass
+                if isinstance(new_value, (date, datetime)):
+                    new_time = datetime.fromisoformat(new_value.isoformat())
+                if isinstance(current_value, date):
+                    return datetime.fromisoformat(current_value.isoformat()) == new_time
+            except (TypeError, ValueError):
+                return False
+            return current_value == new_time
+        if isinstance(current_value, uuid.UUID):
+            return current_value == uuid.UUID(new_value)
+        return False
+
+    def _fixture_preview_rows(self, rows):
+        preview_rows = []
+        for row in rows:
+            model_label = row['model']
+            uuid_value = row['uuid']
+            existing_record = None
+            if uuid_value:
+                model = apps.get_model(model_label)
+                if any(field.name == 'uuid' for field in model._meta.fields):
+                    manager = getattr(model, 'all_objects', model._base_manager)
+                    existing_record = manager.filter(uuid=uuid_value).first()
+
+            changes = []
+            if existing_record is not None:
+                for field_name, new_value in row['fields'].items():
+                    current_value = getattr(existing_record, field_name)
+                    if not self.values_match(current_value, new_value):
+                        changes.append({
+                            'name': field_name,
+                            'current_value': current_value,
+                            'new_value': new_value,
+                        })
+
+            if existing_record is not None:
+                action = f'Update existing record: "{existing_record}"'
+            elif uuid_value:
+                action = 'Create new record'
+            else:
+                action = 'Create or merge relationship record'
+
+            if row['fields']:
+                object_name = row['fields'].get('name', '')
+            else:
+                object_name = uuid_value
+
+            preview_rows.append({
+                'model': model_label,
+                'uuid': uuid_value,
+                'name': object_name,
+                'action': action,
+                'changes': changes,
+            })
+        return preview_rows
+
     def get_parent_themes(self, obj):
         # Fetch the ContentType for the Layer model
         content_type = ContentType.objects.get_for_model(obj)
@@ -912,6 +1181,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     exclude = ('slug_name', "is_sublayer", "sublayers")
     form = LayerForm
     resource_classes = [LayerResource]
+    actions = [export_layer_details]
     
 
     if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
@@ -1012,6 +1282,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     
     add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
     change_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
+    change_list_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_list.html')
 
     def change_view(self, request, object_id, form_url='', extra_context={}):
         extra_context['CATALOG_TECHNOLOGY'] = settings.CATALOG_TECHNOLOGY
@@ -1189,10 +1460,91 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            path(
+                'import-fixture/',
+                self.admin_site.admin_view(self.import_fixture),
+                name='layers_layer_import_fixture',
+            ),
             path('get-layer-list/', self.admin_site.admin_view(self.get_layer_list), name='get-layer-list'),
             path('update-layer-status/<int:layer_id>/', self.admin_site.admin_view(self.update_layer_status), name='update-layer-status'),
         ]
         return custom_urls + urls
+
+    def import_fixture(self, request):
+        import json
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        changelist_url = reverse('admin:layers_layer_changelist')
+        context = {
+            **self.admin_site.each_context(request),
+            'opts': self.model._meta,
+            'title': 'Import layer fixture',
+            'changelist_url': changelist_url,
+        }
+
+        if request.method == 'POST' and 'cancel' in request.POST:
+            request.session.pop(self.fixture_import_session_key, None)
+            return redirect(changelist_url)
+
+        if request.method == 'POST' and 'confirm' in request.POST:
+            rows = request.session.get(self.fixture_import_session_key)
+            if rows is None:
+                context['error'] = 'No validated fixture is available to import.'
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=False,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                context['fixture_rows'] = rows
+                context['preview_rows'] = self._fixture_preview_rows(rows)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
+
+            request.session.pop(self.fixture_import_session_key, None)
+            self.message_user(request, 'Imported {} fixture rows.'.format(result['imported']))
+            return redirect(changelist_url)
+
+        if request.method == 'POST':
+            fixture_file = request.FILES.get('fixture_file')
+            if fixture_file is None:
+                context['error'] = 'Choose a fixture JSON file to import.'
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
+
+            try:
+                rows = json.loads(fixture_file.read().decode('utf-8'))
+                if not isinstance(rows, list):
+                    raise ValueError('Fixture JSON must contain a list of rows.')
+                for row in rows:
+                    validate_node_shape(row)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+                context['error'] = 'Upload valid JSON fixture data: {}'.format(error)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
+
+            try:
+                result = import_fixture_rows(
+                    rows,
+                    dry_run=True,
+                    associate_all_sites=True,
+                    missing_ref_policy='error',
+                    duplicate_uuid_policy='error',
+                )
+            except ValueError as error:
+                context['error'] = str(error)
+                return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
+
+            request.session[self.fixture_import_session_key] = rows
+            context['fixture_rows'] = rows
+            context['preview_result'] = result
+            context['preview_rows'] = self._fixture_preview_rows(rows)
+
+        return render(request, 'admin/layers/Layer/import_layer_fixture.html', context)
 
     def http_status(self, obj):
         return format_html(

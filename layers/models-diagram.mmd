@@ -1,0 +1,149 @@
+classDiagram
+    class Site
+    class ContentType
+
+    class ChildType {
+        <<abstract>>
+        +get_search_object(...)
+        +save(...)
+    }
+
+    class SiteFlags {
+        <<mixin>>
+        +primary_site()
+        +preview_site()
+    }
+
+    class Theme {
+        +name
+        +display_name
+        +slug_name
+        +is_visible
+        +is_dynamic
+        +metadata_url
+        +data_url()
+        +bookmark_link
+    }
+
+    class Layer {
+        +name
+        +slug_name
+        +layer_type
+        +url
+        +is_visible
+        +metadata
+        +bookmark
+        +data_download
+        +data_url()
+        +bookmark_link()
+    }
+
+    class ChildOrder {
+        +order
+        +object_id
+    }
+
+    class Companionship {
+        +layer
+        +companions
+    }
+
+    class LayerType {
+        <<abstract>>
+        +layer
+    }
+
+    class VectorType {
+        +custom_style
+        +outline_color
+        +lookup_table
+    }
+
+    class RasterType {
+        +query_by_point
+    }
+
+    class ArcServer {
+        +arcgis_layers
+        +password_protected
+    }
+
+    class LayerArcREST
+    class LayerArcFeatureService
+    class LayerXYZ
+    class LayerVector
+    class LayerWMS
+
+    class MultilayerDimension {
+        +name
+        +label
+        +order
+        +animated
+        +angle_labels
+    }
+
+    class MultilayerAssociation {
+        +name
+    }
+
+    class MultilayerDimensionValue {
+        +value
+        +label
+        +order
+    }
+
+    class AttributeInfo {
+        +display_name
+        +field_name
+        +precision
+        +order
+        +preserve_format
+    }
+
+    class LookupInfo {
+        +value
+        +description
+        +color
+        +stroke_color
+        +stroke_width
+        +dashstyle
+        +fill
+    }
+
+    ChildType <|-- Theme
+    ChildType <|-- Layer
+    SiteFlags <|-- Theme
+    SiteFlags <|-- Layer
+
+    Theme "1" --> "0..*" ChildOrder : parent_theme
+    ChildOrder --> ContentType : content_type
+    ChildOrder --> Theme : content_object (generic)
+    ChildOrder --> Layer : content_object (generic)
+
+    Theme "0..*" --> "0..*" Site : site
+    Layer "0..*" --> "0..*" Site : site
+
+    Layer "1" --> "0..*" Companionship : layer
+    Layer "0..*" --> "0..*" Companionship : companions
+
+    LayerType --> Layer : layer
+    LayerType <|-- VectorType
+    LayerType <|-- RasterType
+    LayerType <|-- ArcServer
+    ArcServer <|-- LayerArcREST
+    ArcServer <|-- LayerArcFeatureService
+    RasterType <|-- LayerArcREST
+    VectorType <|-- LayerArcFeatureService
+    RasterType <|-- LayerXYZ
+    VectorType <|-- LayerVector
+    RasterType <|-- LayerWMS
+
+    Layer "1" --> "0..*" MultilayerDimension : has dimensions
+    MultilayerDimension "1" --> "0..*" MultilayerDimensionValue : values
+
+    Layer "1" --> "0..*" MultilayerAssociation : parentLayer
+    Layer "0..1" --> "0..*" MultilayerAssociation : associated_layer
+    MultilayerAssociation "1" --> "0..*" MultilayerDimensionValue : associations
+
+    Layer "0..*" --> "0..*" AttributeInfo : attribute_fields
+    VectorType "0..*" --> "0..*" LookupInfo : lookup_table

@@ -552,6 +552,12 @@ class Theme(ChildType, SiteFlags):
             cache.set(cache_label, layers_dict, 60*60*24*7)
         return layers_dict
 
+    def to_export_dict(self):
+        from layers.serializers import ThemeExportFixtureSerializer
+
+        serializer = ThemeExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def __str__(self):
         return "{} [T-{}]".format(self.name, self.pk)
 
@@ -1124,6 +1130,12 @@ class Layer(ChildType, SiteFlags):
         }
         return layers_dict
     
+    def to_export_dict(self):
+        from layers.serializers import LayerExportFixtureSerializer
+
+        serializer = LayerExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def resetCache(self):
         content_type = ContentType.objects.get_for_model(self.__class__)
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
@@ -1144,9 +1156,11 @@ class Layer(ChildType, SiteFlags):
                 cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
 
     def save(self, *args, **kwargs):
-        if 'slug_name' in kwargs.keys():
-            self.slug_name = kwargs['slug_name']
-            kwargs.pop('slug_name', None)
+        provided_slug_name = kwargs.pop('slug_name', None)
+        is_new = self._state.adding
+
+        if provided_slug_name is not None:
+            self.slug_name = provided_slug_name
         else:
             slug = slugify(self.name)
             if self.id:
@@ -1159,6 +1173,9 @@ class Layer(ChildType, SiteFlags):
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
+                if is_new and self.id and provided_slug_name is None:
+                    self.slug_name = '{}{}'.format(slugify(self.name), self.id)
+                    super(Layer, self).save(update_fields=['slug_name'])
         except IntegrityError as e:
             if 'duplicate key value violates unique constraint' in str(e):
                 model = type(self)
