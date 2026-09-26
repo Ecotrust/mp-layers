@@ -230,7 +230,7 @@ def export_theme_details(self, request, queryset):
                 fixture_rows.append(row)
 
     theme_ids = "_".join(str(id) for id in theme_id_list)
-    response = HttpResponse(json.dumps(fixture_rows), content_type='application/geo+json')
+    response = HttpResponse(json.dumps(fixture_rows), content_type='application/json')
     filename = f"themes_{theme_ids}.json"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
