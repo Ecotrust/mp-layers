@@ -186,7 +186,10 @@ def import_fixture_rows(
                 row_obj = model_class(**create_kwargs)
 
             _apply_fields(row_obj, row_fields)
-            row_obj.save()
+            if model_label == LAYER_MODEL and row_obj.slug_name:
+                row_obj.save(slug_name=row_obj.slug_name)
+            else:
+                row_obj.save()
 
             if model_label == LAYER_MODEL and associate_all_sites:
                 row_obj.site.set(Site.objects.all())
