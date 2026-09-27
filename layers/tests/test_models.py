@@ -1,5 +1,6 @@
 from django.test import TestCase, RequestFactory, override_settings
 from django.utils import timezone
+from django.core.cache import cache
 from datetime import date
 from layers.models import Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, AttributeInfo, LookupInfo
 from layers.serializers import ThemeSerializer, ThemeExportFixtureSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, LayerExportSerializer, AttributeInfoExportSerializer, LookupInfoExportSerializer, LayerWMSExportSerializer, LayerArcRESTExportSerializer, LayerArcFeatureServiceExportSerializer, LayerVectorExportSerializer, LayerXYZExportSerializer
@@ -1918,4 +1919,121 @@ class GetPortalCatalogMapViewTest(TestCase):
         response = self._get()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.content), {})
+
+
+class LayerCacheInvalidationTest(TestCase):
+    """Regression tests: Layer.save()/resetCache() must clear its own cache
+    records as well as any ancestor theme's cached shortDict/childorder entries.
+    """
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = ['all_layers_qs']
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_layer_serialized_details_{}_{}'.format(self.layer.pk, site_id))
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_layer_save_clears_own_and_parent_theme_cache(self):
+        self.layer.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))
+
+
+class ThemeCacheInvalidationTest(TestCase):
+    """Regression tests: Theme.save() must clear its own shortDict cache,
+    its ancestors' shortDict cache, and any childorder cache linking it to its parent.
+    """
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.grandparent_theme = Theme.objects.create(name="Cache Grandparent Theme")
+        self.grandparent_theme.site.add(self.site)
+        self.parent_theme = Theme.objects.create(name="Cache Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.child_theme = Theme.objects.create(name="Cache Child Theme")
+        self.child_theme.site.add(self.site)
+
+        ChildOrder.objects.create(
+            parent_theme=self.grandparent_theme, content_object=self.parent_theme, order=1,
+        )
+        self.child_theme_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.child_theme, order=1,
+        )
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = []
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_theme_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.grandparent_theme.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.child_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_theme_save_clears_own_and_ancestor_cache(self):
+        self.child_theme.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))
+
+
+class ChildOrderCacheInvalidationTest(TestCase):
+    """Regression test: ChildOrder.save() must clear its own per-site cache records."""
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache ChildOrder Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache ChildOrder Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.dirty_key = 'layers_childorder_{}_{}'.format(self.child_order.pk, self.site.pk)
+        cache.set(self.dirty_key, 'stale-value', 60)
+
+    def test_child_order_save_clears_own_cache(self):
+        self.child_order.save()
+        self.assertIsNone(cache.get(self.dirty_key))
+
+
+class AttributeInfoCacheInvalidationTest(TestCase):
+    """Regression test: AttributeInfo.save() must reset cache for every Layer it is attached to."""
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache AttributeInfo Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache AttributeInfo Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.attribute_info = AttributeInfo.objects.create(
+            display_name="Cache Attribute", field_name="cache_attribute",
+        )
+        self.layer.attribute_fields.add(self.attribute_info)
+
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = ['all_layers_qs']
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_layer_serialized_details_{}_{}'.format(self.layer.pk, site_id))
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_attribute_info_save_clears_associated_layer_cache(self):
+        self.attribute_info.field_label = "Updated Label"
+        self.attribute_info.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))
 
