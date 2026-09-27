@@ -9,6 +9,7 @@ from django.template.defaultfilters import slugify
 from django.urls import reverse
 from django.conf import settings
 from colorfield.fields import ColorField
+from .cache_utils import cache_signals_suppressed
 import uuid
 
 # Review widgets for ITK database (how are relationships set up)
@@ -31,7 +32,6 @@ def update_model_sequence(model, unique_key, manager):
     sequence_name = 'layers_{}_{}_seq'.format(model.__name__.lower(), unique_key)
     with connection.cursor() as cursor:
         cursor.execute("SELECT setval('{}', {}, true);".format(sequence_name, max_theme_pk))
-
 
 class SiteFlags(object):#(models.Model):
     """Add-on class for displaying sites in the list_display
@@ -77,6 +77,8 @@ class ChildType(models.Model):
     # Clear caching related to bootstrap-3-typeahead 'layer search' logic
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+        if cache_signals_suppressed():
+            return
         for site in Site.objects.all():
             cache_key = 'layers_childtype_search_object_{}_{}_{}'.format(self.__class__.__name__, self.pk, site.id)
             cache.delete(cache_key)
@@ -552,6 +554,12 @@ class Theme(ChildType, SiteFlags):
             cache.set(cache_label, layers_dict, 60*60*24*7)
         return layers_dict
 
+    def to_export_dict(self):
+        from layers.serializers import ThemeExportFixtureSerializer
+
+        serializer = ThemeExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def __str__(self):
         return "{} [T-{}]".format(self.name, self.pk)
 
@@ -569,10 +577,11 @@ class Theme(ChildType, SiteFlags):
             for ancestor_id in ancestor_ids:
                 dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(ancestor_id, site_id))
             dirty_cache_keys.append('layers_theme_shortdict_{}_{}'.format(self.pk, site_id))        
-        for key in dirty_cache_keys:
-            cache.delete(key)
-            with connection.cursor() as cursor:
-                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
+        if not cache_signals_suppressed():
+            for key in dirty_cache_keys:
+                cache.delete(key)
+                with connection.cursor() as cursor:
+                    cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Theme, self).save(*args, **kwargs)
@@ -592,7 +601,6 @@ class Theme(ChildType, SiteFlags):
         indexes = [
             models.Index(fields=['id',]),
         ]
-
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
 class Layer(ChildType, SiteFlags):
@@ -730,7 +738,6 @@ class Layer(ChildType, SiteFlags):
             if companionship.companions.exists():
                 return True
         return False
-
 
     ######################################################
     #          Data Catalog Stuff                        #
@@ -956,7 +963,6 @@ class Layer(ChildType, SiteFlags):
         else:
             return self.parent.top_parent
 
-    
     @property
     def parent_orders(self):
         # Get the ContentType for the Layer model
@@ -1008,7 +1014,6 @@ class Layer(ChildType, SiteFlags):
             return False
         return self.parent.parent != None
 
-    
     @property
     def themes(self):
         # Get the ContentType for the Layer model
@@ -1124,7 +1129,15 @@ class Layer(ChildType, SiteFlags):
         }
         return layers_dict
     
+    def to_export_dict(self):
+        from layers.serializers import LayerExportFixtureSerializer
+
+        serializer = LayerExportFixtureSerializer(self)
+        return serializer.to_representation(self)
+
     def resetCache(self):
+        if cache_signals_suppressed():
+            return
         content_type = ContentType.objects.get_for_model(self.__class__)
         parent_orders = ChildOrder.objects.filter(object_id=self.pk, content_type=content_type)
         ancestor_ids = self.ancestor_ids
@@ -1144,9 +1157,11 @@ class Layer(ChildType, SiteFlags):
                 cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
 
     def save(self, *args, **kwargs):
-        if 'slug_name' in kwargs.keys():
-            self.slug_name = kwargs['slug_name']
-            kwargs.pop('slug_name', None)
+        provided_slug_name = kwargs.pop('slug_name', None)
+        is_new = self._state.adding
+
+        if provided_slug_name is not None:
+            self.slug_name = provided_slug_name
         else:
             slug = slugify(self.name)
             if self.id:
@@ -1159,6 +1174,9 @@ class Layer(ChildType, SiteFlags):
         try:
             with transaction.atomic():
                 super(Layer, self).save(*args, **kwargs)
+                if is_new and self.id and provided_slug_name is None:
+                    self.slug_name = '{}{}'.format(slugify(self.name), self.id)
+                    super(Layer, self).save(update_fields=['slug_name'])
         except IntegrityError as e:
             if 'duplicate key value violates unique constraint' in str(e):
                 model = type(self)
@@ -1215,10 +1233,11 @@ class ChildOrder(models.Model):
         # clean keys tied to /children/ api
         for site in Site.objects.all():
             dirty_cache_keys.append('layers_childorder_{}_{}'.format(self.pk, site.pk))
-        for key in dirty_cache_keys:
-            cache.delete(key)
-            with connection.cursor() as cursor:
-                cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
+        if not cache_signals_suppressed():
+            for key in dirty_cache_keys:
+                cache.delete(key)
+                with connection.cursor() as cursor:
+                    cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         if not self.object_id == None:
             # During import, if this is a dry run there will be no child object for this order.
             try:

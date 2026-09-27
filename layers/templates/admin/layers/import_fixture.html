@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .submit-row input.cancel-button {
+      background: var(--delete-button-bg);
+      border-radius: 4px;
+      padding: 0.625rem 0.9375rem;
+      line-height: 0.9375rem;
+      color: var(--button-fg);
+    }
+
+    .submit-row input.cancel-button:focus,
+    .submit-row input.cancel-button:hover,
+    .submit-row input.cancel-button:active {
+      background: var(--delete-button-hover-bg);
+      text-decoration: none;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% block fixture_import_content %}{% endblock %}
+{% endblock %}

@@ -5,10 +5,6 @@ from . import views
 # path is an exact match
 
 urlpatterns = [
-    #'',
-    # path('get_json$', views.get_json),
-    re_path(r'^get_json/?$', views.get_json),
-    # re_path(r'^get_json2/?$', views.get_json2),
     re_path(r'^get_themes/?$', views.get_themes),
     re_path(r'^get_layer_search_data/?$', views.get_layer_search_data),
     re_path(r'^get_layers_for_theme/(?P<themeID>\d+)/?$', views.get_layers_for_theme),

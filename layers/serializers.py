@@ -3,8 +3,10 @@ from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.template.loader import render_to_string
 from django.urls import reverse
-from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ
+from layers.fixture_contract import build_node, build_ref
+from layers.models import Theme, Layer, ChildOrder, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, AttributeInfo, LookupInfo, MultilayerDimension, MultilayerDimensionValue, MultilayerAssociation
 from rest_framework import serializers
+from rest_framework.utils.serializer_helpers import ReturnList
 #need to add catalog html to shared_layer_fields after adding it to subtheme serializer and to layer model
 shared_layer_fields = ["id", "name", "uuid", "type", "url", "proxy_url", "is_disabled", "disabled_message", "opacity",
                        "show_legend", "legend", "legend_title", "legend_subtitle", "description", "overview", "data_url",
@@ -24,6 +26,496 @@ layer_arcgis_fields = ["arcgis_layers", "password_protected", "disable_arcgis_at
 raster_type_fields = ["query_by_point"]
 
 library_fields = []
+
+class LayerExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        attribute_field_refs = [
+            {
+                'pk': attribute_info.pk,
+                'uuid': str(attribute_info.uuid),
+            }
+            for attribute_info in instance.attribute_fields.all().order_by('order')
+        ]
+
+        return {
+            'name': instance.name,
+            'uuid': str(instance.uuid),
+            'slug_name': instance.slug_name,
+            'layer_type': instance.layer_type,
+            'url': instance.url,
+            'last_success_status': str(instance.last_success_status) if instance.last_success_status else None,
+            'last_http_status': instance.last_http_status,
+            'opacity': instance.opacity,
+            'is_disabled': instance.is_disabled,
+            'disabled_message': instance.disabled_message,
+            'is_visible': instance.is_visible,
+            'search_query': instance.search_query,
+            'geoportal_id': instance.geoportal_id,
+            'catalog_name': instance.catalog_name,
+            'catalog_id': instance.catalog_id,
+            'proxy_url': instance.proxy_url,
+            'shareable_url': instance.shareable_url,
+            'utfurl': instance.utfurl,
+            'show_legend': instance.show_legend,
+            'legend': instance.legend,
+            'legend_title': instance.legend_title,
+            'legend_subtitle': instance.legend_subtitle,
+            'description': instance.description,
+            'overview': instance.overview,
+            'data_source': instance.data_source,
+            'data_notes': instance.data_notes,
+            'data_publish_date': str(instance.data_publish_date) if instance.data_publish_date else None,
+            'metadata': instance.metadata,
+            'source': instance.source,
+            'bookmark': instance.bookmark,
+            'kml': instance.kml,
+            'data_download': instance.data_download,
+            'learn_more': instance.learn_more,
+            'map_tiles': instance.map_tiles,
+            'label_field': instance.label_field,
+            'attribute_event': instance.attribute_event,
+            'attribute_fields': attribute_field_refs,
+            'annotated': instance.annotated,
+            'compress_display': instance.compress_display,
+            'mouseover_field': instance.mouseover_field,
+            'espis_enabled': instance.espis_enabled,
+            'espis_search': instance.espis_search,
+            'espis_region': instance.espis_region,
+            'date_created': str(instance.date_created) if instance.date_created else None,
+            'date_modified': str(instance.date_modified) if instance.date_modified else None,
+            'minZoom': instance.minZoom,
+            'maxZoom': instance.maxZoom,
+        }
+
+
+class AttributeInfoExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'uuid': str(instance.uuid),
+            'display_name': instance.display_name,
+            'field_name': instance.field_name,
+            'field_label': instance.field_label,
+            'precision': instance.precision,
+            'order': instance.order,
+            'preserve_format': instance.preserve_format,
+        }
+
+
+class LookupInfoExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'uuid': str(instance.uuid),
+            'value': instance.value,
+            'description': instance.description,
+            'color': instance.color,
+            'stroke_color': instance.stroke_color,
+            'stroke_width': instance.stroke_width,
+            'dashstyle': instance.dashstyle,
+            'fill': instance.fill,
+            'graphic': instance.graphic,
+            'graphic_scale': instance.graphic_scale,
+        }
+
+
+class LayerTypeExportSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return {
+            'layer': instance.layer.pk,
+        }
+
+
+class RasterTypeExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'query_by_point': instance.query_by_point,
+        })
+        return data
+
+
+class ArcServerExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'arcgis_layers': instance.arcgis_layers,
+            'password_protected': instance.password_protected,
+            'disable_arcgis_attributes': instance.disable_arcgis_attributes,
+        })
+        return data
+
+
+class VectorTypeExportSerializer(LayerTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'custom_style': instance.custom_style,
+            'outline_width': instance.outline_width,
+            'outline_color': instance.outline_color,
+            'outline_opacity': instance.outline_opacity,
+            'fill_opacity': instance.fill_opacity,
+            'color': instance.color,
+            'point_radius': instance.point_radius,
+            'graphic': instance.graphic,
+            'graphic_scale': instance.graphic_scale,
+            'lookup_field': instance.lookup_field,
+            'lookup_table': [lookup.pk for lookup in instance.lookup_table.all().order_by('pk')],
+        })
+        return data
+
+
+class LayerWMSExportSerializer(RasterTypeExportSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.update({
+            'wms_help': instance.wms_help,
+            'wms_slug': instance.wms_slug,
+            'wms_version': instance.wms_version,
+            'wms_format': instance.wms_format,
+            'wms_srs': instance.wms_srs,
+            'wms_timing': instance.wms_timing,
+            'wms_time_item': instance.wms_time_item,
+            'wms_styles': instance.wms_styles,
+            'wms_additional': instance.wms_additional,
+            'wms_info': instance.wms_info,
+            'wms_info_format': instance.wms_info_format,
+        })
+        return data
+
+
+class LayerArcRESTExportSerializer(ArcServerExportSerializer, RasterTypeExportSerializer):
+    def to_representation(self, instance):
+        data = ArcServerExportSerializer.to_representation(self, instance)
+        raster_data = RasterTypeExportSerializer.to_representation(self, instance)
+        raster_data.pop('layer', None)
+        data.update(raster_data)
+        return data
+
+
+class LayerArcFeatureServiceExportSerializer(ArcServerExportSerializer, VectorTypeExportSerializer):
+    def to_representation(self, instance):
+        data = ArcServerExportSerializer.to_representation(self, instance)
+        vector_data = VectorTypeExportSerializer.to_representation(self, instance)
+        vector_data.pop('layer', None)
+        data.update(vector_data)
+        return data
+
+
+class LayerVectorExportSerializer(VectorTypeExportSerializer):
+    pass
+
+
+class LayerXYZExportSerializer(RasterTypeExportSerializer):
+    pass
+
+
+class LayerExportFixtureSerializer(serializers.Serializer):
+    def _to_ref(self, instance):
+        return build_ref(instance=instance)
+
+    def _get_outgoing_companion_layers(self, companionship):
+        companion_layer_ids = companionship.companions.through.objects.filter(
+            companionship_id=companionship.pk,
+        ).values_list('layer_id', flat=True)
+        return list(Layer.all_objects.filter(pk__in=companion_layer_ids).order_by('pk'))
+
+    def _to_row(self, instance, fields, relations=None):
+        uuid_value = getattr(instance, 'uuid', None)
+        return build_node(
+            model=instance._meta.label_lower,
+            source_pk=instance.pk,
+            uuid_value=uuid_value,
+            fields=fields,
+            relations=relations,
+        )
+
+    def to_representation(self, instance):
+        # Export is built as a traversal pipeline so we can keep output
+        # deterministic while collecting related rows only once.
+        root_layer_pk = instance.pk
+        fixture_rows = []
+        seen_lookup_info_pks = set()
+        seen_attribute_info_pks = set()
+        seen_specific_instances = set()
+        seen_companionship_pks = set()
+        seen_multilayer_dimension_pks = set()
+        seen_multilayer_value_pks = set()
+        seen_multilayer_association_pks = set()
+        seen_layer_pks = set()
+        enqueued_layer_pks = {instance.pk}
+        layer_queue = [instance]
+
+        specific_exporters = {
+            LayerWMS: LayerWMSExportSerializer,
+            LayerArcREST: LayerArcRESTExportSerializer,
+            LayerArcFeatureService: LayerArcFeatureServiceExportSerializer,
+            LayerVector: LayerVectorExportSerializer,
+            LayerXYZ: LayerXYZExportSerializer,
+        }
+
+        while layer_queue:
+            layer_obj = layer_queue.pop(0)
+            if layer_obj.pk in seen_layer_pks:
+                continue
+            seen_layer_pks.add(layer_obj.pk)
+
+            # Emit attribute rows before the owning layer row so downstream
+            # relation refs can point at a complete set of dependency rows.
+            attribute_infos = list(layer_obj.attribute_fields.all().order_by('order', 'display_name', 'pk'))
+            for attribute_info in attribute_infos:
+                if attribute_info.pk in seen_attribute_info_pks:
+                    continue
+                seen_attribute_info_pks.add(attribute_info.pk)
+                fixture_rows.append(self._to_row(
+                    attribute_info,
+                    AttributeInfoExportSerializer(attribute_info).data,
+                ))
+
+            specific_instance = layer_obj.specific_instance
+            lookup_infos = []
+            if specific_instance is not None and hasattr(specific_instance, 'lookup_table'):
+                lookup_infos = list(specific_instance.lookup_table.all().order_by('pk'))
+
+            # Lookup rows are exported before the owning layer row for the same
+            # reason as attributes: the row graph stays self-contained.
+            for lookup_info in lookup_infos:
+                if lookup_info.pk in seen_lookup_info_pks:
+                    continue
+                seen_lookup_info_pks.add(lookup_info.pk)
+                fixture_rows.append(self._to_row(
+                    lookup_info,
+                    LookupInfoExportSerializer(lookup_info).data,
+                ))
+
+            outgoing_companionships = list(layer_obj.companionships.all().order_by('pk'))
+            layer_fields = LayerExportSerializer(layer_obj).data
+            layer_fields.pop('attribute_fields', None)
+            layer_relations = {
+                'attribute_fields': [self._to_ref(attribute_info) for attribute_info in attribute_infos],
+            }
+            if outgoing_companionships:
+                layer_relations['companionships'] = [self._to_ref(companionship) for companionship in outgoing_companionships]
+
+            # The base layer row carries refs to its attributes and outgoing
+            # companionships, but does not inline related objects.
+            fixture_rows.append(self._to_row(
+                layer_obj,
+                layer_fields,
+                layer_relations,
+            ))
+
+            # Specific layer-type rows are exported separately so the import
+            # side can rehydrate the polymorphic layer subtype independently.
+            if specific_instance is not None:
+                specific_key = (specific_instance._meta.label_lower, specific_instance.pk)
+                if specific_key not in seen_specific_instances:
+                    seen_specific_instances.add(specific_key)
+                    exporter_class = specific_exporters.get(type(specific_instance))
+                    if exporter_class:
+                        specific_data = dict(exporter_class(specific_instance).data)
+                        specific_data.pop('layer', None)
+                        specific_data.pop('lookup_table', None)
+
+                        specific_relations = {
+                            'layer': self._to_ref(layer_obj),
+                        }
+
+                        if hasattr(specific_instance, 'lookup_table'):
+                            specific_relations['lookup_table'] = [self._to_ref(lookup_info) for lookup_info in lookup_infos]
+
+                        fixture_rows.append(self._to_row(
+                            specific_instance,
+                            specific_data,
+                            specific_relations,
+                        ))
+
+            # Traverse companionships one-way: only follow outgoing links from
+            # the current layer, enqueue newly discovered companion layers, and
+            # export each companionship row once.
+            for companionship in outgoing_companionships:
+                companions = self._get_outgoing_companion_layers(companionship)
+                if companionship.pk not in seen_companionship_pks:
+                    seen_companionship_pks.add(companionship.pk)
+                    fixture_rows.append(self._to_row(
+                        companionship,
+                        {},
+                        {
+                            'layer': self._to_ref(companionship.layer),
+                            'companions': [self._to_ref(companion_layer) for companion_layer in companions],
+                        },
+                    ))
+
+                for companion_layer in companions:
+                    if companion_layer.pk in seen_layer_pks or companion_layer.pk in enqueued_layer_pks:
+                        continue
+                    enqueued_layer_pks.add(companion_layer.pk)
+                    layer_queue.append(companion_layer)
+
+            # PR04 scope: export multilayer rows only for the root layer.
+            if layer_obj.pk == root_layer_pk:
+                dimensions = list(
+                    MultilayerDimension.objects.filter(layer=layer_obj).order_by('order', 'pk')
+                )
+                for dimension in dimensions:
+                    values = list(
+                        MultilayerDimensionValue.objects.filter(dimension=dimension).order_by('order', 'pk')
+                    )
+
+                    scoped_associations_by_value = {}
+                    for value in values:
+                        scoped_associations_by_value[value.pk] = list(
+                            value.associations.filter(parentLayer=layer_obj)
+                            .exclude(layer=layer_obj)
+                            .select_related('layer')
+                            .order_by('pk')
+                        )
+
+                    if dimension.pk not in seen_multilayer_dimension_pks:
+                        seen_multilayer_dimension_pks.add(dimension.pk)
+                        fixture_rows.append(self._to_row(
+                            dimension,
+                            {
+                                'name': dimension.name,
+                                'label': dimension.label,
+                                'order': dimension.order,
+                                'animated': dimension.animated,
+                                'angle_labels': dimension.angle_labels,
+                            },
+                            {
+                                'layer': self._to_ref(layer_obj),
+                                'multilayerdimensionvalue_set': [self._to_ref(value) for value in values],
+                            },
+                        ))
+
+                    for value in values:
+                        scoped_associations = scoped_associations_by_value[value.pk]
+
+                        if value.pk not in seen_multilayer_value_pks:
+                            seen_multilayer_value_pks.add(value.pk)
+                            fixture_rows.append(self._to_row(
+                                value,
+                                {
+                                    'value': value.value,
+                                    'label': value.label,
+                                    'order': value.order,
+                                },
+                                {
+                                    'dimension': self._to_ref(dimension),
+                                    'associations': [self._to_ref(association) for association in scoped_associations],
+                                },
+                            ))
+
+                        for association in scoped_associations:
+                            target_layer = association.layer
+                            layer_ref=None
+                            if target_layer is not None:
+                                layer_ref = self._to_ref(target_layer)
+                                if target_layer.pk not in seen_layer_pks and target_layer.pk not in enqueued_layer_pks:
+                                    enqueued_layer_pks.add(target_layer.pk)
+                                    layer_queue.append(target_layer)
+
+                            if association.pk in seen_multilayer_association_pks:
+                                continue
+
+                            seen_multilayer_association_pks.add(association.pk)
+                            fixture_rows.append(self._to_row(
+                                association,
+                                {
+                                    'name': association.name,
+                                },
+                                {
+                                    'parentLayer': self._to_ref(layer_obj),
+                                    'layer': layer_ref,
+                                },
+                            ))
+
+        return fixture_rows
+
+
+class ThemeExportFixtureSerializer(serializers.Serializer):
+    @property
+    def data(self):
+        if not hasattr(self, '_data'):
+            self._data = ReturnList(
+                self.to_representation(self.instance),
+                serializer=self,
+            )
+        return self._data
+
+    def _to_ref(self, instance):
+        return build_ref(instance=instance)
+
+    def _serialize_value(self, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        return str(value)
+
+    def _model_fields(self, instance, excluded_fields):
+        return {
+            field.name: self._serialize_value(field.value_from_object(instance))
+            for field in instance._meta.concrete_fields
+            if field.name not in excluded_fields
+        }
+
+    def _to_row(self, instance, fields, relations=None):
+        return build_node(
+            model=instance._meta.label_lower,
+            source_pk=instance.pk,
+            uuid_value=getattr(instance, 'uuid', None),
+            fields=fields,
+            relations=relations,
+        )
+
+    def to_representation(self, instance):
+        fixture_rows = []
+        seen_theme_pks = set()
+        seen_child_order_pks = set()
+        seen_row_keys = set()
+        theme_queue = [instance]
+
+        def append_row(row):
+            row_key = (row['model'], row['source_pk'])
+            if row_key not in seen_row_keys:
+                seen_row_keys.add(row_key)
+                fixture_rows.append(row)
+
+        while theme_queue:
+            theme = theme_queue.pop(0)
+            if theme.pk in seen_theme_pks:
+                continue
+            seen_theme_pks.add(theme.pk)
+
+            append_row(self._to_row(
+                theme,
+                self._model_fields(theme, {'id', 'site'}),
+            ))
+
+            child_orders = ChildOrder.objects.filter(parent_theme=theme).order_by('order', 'pk')
+            for child_order in child_orders:
+                content_object = child_order.content_object
+                if content_object is None or child_order.pk in seen_child_order_pks:
+                    continue
+                seen_child_order_pks.add(child_order.pk)
+
+                append_row(self._to_row(
+                    child_order,
+                    self._model_fields(child_order, {
+                        'id', 'parent_theme', 'content_type', 'object_id',
+                    }),
+                    {
+                        'parent_theme': self._to_ref(theme),
+                        'content_object': self._to_ref(content_object),
+                    },
+                ))
+
+                if isinstance(content_object, Theme):
+                    if content_object.pk not in seen_theme_pks:
+                        theme_queue.append(content_object)
+                elif isinstance(content_object, Layer):
+                    for row in LayerExportFixtureSerializer().to_representation(content_object):
+                        append_row(row)
+
+        return fixture_rows
+
 
 def get_companion_layers(obj):
     if hasattr(obj, 'layer'):
@@ -329,8 +821,6 @@ def get_specific_layer_instance(layer):
             pass
     return None
 
-
-
 def get_serialized_layer(instance):
     specific_layer_instance = None
     if isinstance(instance, Layer):
@@ -430,7 +920,6 @@ class ChildOrderSerializer(serializers.ModelSerializer):
         model = ChildOrder
         fields = []
 
-
 # use this serializer for only the top level themes
 # create a new serializer for subthemes, so that it matches the layer format
 class ThemeSerializer(serializers.ModelSerializer):
@@ -481,7 +970,6 @@ class ThemeSerializer(serializers.ModelSerializer):
     def get_queryable(self, obj):
         return False
     
-
 class ShortThemeSerializer(serializers.ModelSerializer):
     class Meta:
             model = Theme
@@ -598,10 +1086,6 @@ class SubThemeSerializer(serializers.ModelSerializer):
         return None
     def get_queryable(self, obj):
         return False
-    
-
-
-
 
 class CompanionLayerSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
@@ -725,7 +1209,6 @@ def check_is_sublayer(obj):
     else:
         return True
     
-
 class SubLayerSerializer(serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
     is_sublayer = serializers.SerializerMethodField()

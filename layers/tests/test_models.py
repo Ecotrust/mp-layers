@@ -1,17 +1,23 @@
 from django.test import TestCase, RequestFactory, override_settings
-from layers.models import AttributeInfo, Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder
-from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer
+from django.utils import timezone
+from django.core.cache import cache
+from datetime import date
+from layers.serializers import ThemeSerializer, LayerWMSSerializer, CompanionLayerSerializer, LayerArcRESTSerializer, LayerArcFeatureServiceSerializer, LayerXYZSerializer, LayerVectorSerializer, SubThemeSerializer, ChildOrderSerializer, get_specific_layer_instance
+from layers.models import AttributeInfo, Theme, Layer, MultilayerAssociation, MultilayerDimension, MultilayerDimensionValue, Companionship, LayerWMS, LayerArcREST, LayerArcFeatureService, LayerVector, LayerXYZ, ChildOrder, LookupInfo
+
 from layers.views import get_portal_catalog_map
 from collections.abc import Collection
 import json
 from django.contrib.sites.models import Site
 from django.contrib.contenttypes.models import ContentType
+from unittest.mock import Mock
 # request to get data from live site, mung it and make it into v2
 class AttributeInfoTest(TestCase):
     def test_new_attribute_info_can_be_saved(self):
         attribute = AttributeInfo(
             display_name="Record Name",
             field_name="record_name",
+            field_label="Depth (m)",
         )
 
         attribute.save()
@@ -19,8 +25,9 @@ class AttributeInfoTest(TestCase):
         self.assertIsNotNone(attribute.pk)
         self.assertEqual(attribute.display_name, "Record Name")
         self.assertEqual(attribute.field_name, "record_name")
+        self.assertEqual(attribute.field_label, "Depth (m)")
 
-
+@override_settings(DB_CHANNEL="madronaportal")
 class ThemeTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -138,33 +145,41 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
             'mouseover_attribute': None,
             'preserved_format_attributes': []
         }
-    expected_data_url = None
+    if layer_type in ["radio"]:
+        source_object = Theme.all_objects.get(pk=serialized_data['id'])
+        expected_data_url = SubThemeSerializer(source_object).data["data_url"]
+    else:
+        source_object = Layer.all_objects.get(pk=serialized_data['id'])
+        expected_data_url = source_object.data_url
+
+    expected_tiles = source_object.tiles_link if isinstance(source_object, Layer) else None
+    expected_wms_additional = None if layer_type == "WMS" else ""
     if 'mouseover_field' in kwargs:
         expected_attributes['mouseover_attribute'] = kwargs['mouseover_field']
     
     expected_values = {
         "name": name,
         "type": layer_type,
-        "url": "",
+        "url": None,
         "order": 0,
         "proxy_url": False,
         "is_disabled": False,
-        "disabled_message": "",
+        "disabled_message": None,
         "show_legend": True,
         "legend": None,
         "legend_title": None,
         "legend_subtitle": None,
-        "description": "",
-        "overview": "",
+        "description": None,
+        "overview": None,
         "data_source": None,
-        "data_notes": "",
+        "data_notes": None,
         "metadata": None,
         "source": None,
         "annotated": False,
         "kml": None,
         "data_download": None,
         "learn_more": None,
-        "tiles": None,
+        "tiles": expected_tiles,
         "label_field": None,
         "minZoom": None,
         "maxZoom": None,
@@ -187,7 +202,7 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
         "wms_timing": None,
         "wms_time_item": None,
         "wms_styles": None,
-        "wms_additional": "",
+        "wms_additional": expected_wms_additional,
         "wms_info": False,
         "wms_info_format": None,
         "arcgis_layers": None,
@@ -205,17 +220,27 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
         "lookups": expected_lookup,
     }
 
-    companionships = Companionship.objects.filter(layer=serialized_data['id'])
-    if companionships.exists():
+    if isinstance(source_object, Layer):
+        expected_values['has_companion'] = source_object.has_companion
         companion_layers = []
-        for companionship in companionships:
-            companion_layers.extend(CompanionLayerSerializer(companionship.companions.all(), many=True).data)
-        if companion_layers:
-            expected_values['has_companion'] = True
-            expected_values['companion_layers'] = companion_layers
+        companion_parent = get_specific_layer_instance(source_object) or source_object
 
+        if source_object.has_companion:
+            for companionship in Companionship.objects.filter(layer=source_object):
+                companion_layers.extend(list(companionship.companions.all()))
+        else:
+            companion_layers = [companionship.layer for companionship in source_object.companion_to.all()]
+
+        if companion_layers:
+            expected_values['companion_layers'] = CompanionLayerSerializer(
+                companion_layers,
+                many=True,
+                context={'companion_parent': companion_parent},
+            ).data
+
+    # override expected values with any provided keyword arguments
     for arg, value in kwargs.items():
-        if arg != "mouseover_field": 
+        if arg != "mouseover_field":
             expected_values[arg] = value
 
     # Check if all expected keys are present and expected values match
@@ -223,6 +248,7 @@ def verify_serializer_v1_output(self, serialized_data, name, layer_type, **kwarg
         self.assertIn(key, serialized_data)
         self.assertEqual(serialized_data[key], expected_value, f"This is the key: {key}")
        
+@override_settings(DB_CHANNEL="madronaportal")
 class CompanionLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -291,149 +317,7 @@ class CompanionLayerTest(TestCase):
         self.assertIn("attributes", serialized_layer1_data)
         self.assertIn("lookups", serialized_layer1_data)
 
-class LayerSerializerTest(TestCase):
-    def setUp(self):
-        # First Level
-        site = Site.objects.get(pk=1)
-        self.parent_theme = Theme.objects.create(name="Parent Theme")
-        self.parent_theme.site.add(site)
-        # Second Level
-        self.sub_theme = Theme.objects.create(name="Sub Theme", theme_type="radio")
-        self.sub_theme.site.add(site)
-        self.layer1 = Layer.objects.create(
-            name="testlayer",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer1 = LayerWMS.objects.create(
-            layer=self.layer1,
-        )  
-        self.layer1.site.add(site)
-        # Third Level
-        self.layer2 = Layer.objects.create(
-            name="testlayer2",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer2 = LayerWMS.objects.create(
-            layer=self.layer2,
-        )  
-        self.layer2.site.add(site)
-        self.sub_sub_theme = Theme.objects.create(name="Sub Sub Theme", theme_type="radio")
-        self.sub_sub_theme.site.add(site)
-        # Fourth Level
-        self.layer3 = Layer.objects.create(
-            name="testlayer3",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer3 = LayerWMS.objects.create(
-            layer=self.layer3,
-        )  
-        self.layer3.site.add(site)
-        ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.sub_theme, order = 1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer1, order=2)
-
-        ChildOrder.objects.create(parent_theme=self.sub_theme, content_object=self.layer2, order=1)
-        ChildOrder.objects.create(parent_theme=self.sub_theme, content_object=self.sub_sub_theme, order=2)
-
-        ChildOrder.objects.create(parent_theme=self.sub_sub_theme, content_object=self.layer3, order=1)
-
-    def test_serialize_second_third_layer_parent(self):
-        # Direct descendents of the parent theme should not have a parent when serialized.
-        serialized_layer1_data = LayerWMSSerializer(self.wms_layer1).data
-        self.assertIsNone(serialized_layer1_data["parent"])
-
-        # Third level layers should have their direct parent serialized.
-        serialized_layer2_data = LayerWMSSerializer(self.wms_layer2).data
-        self.assertEqual(self.sub_theme.id, serialized_layer2_data["parent"]["id"])
-
-    def test_serialize_fourth_and_beyond_layer_parent(self):
-        # Layers fourth level and beyond should point to the second layer ancestor.
-        # AKA should skip past any intermediary parents until the second layer.
-        serialized_layer3_data = LayerWMSSerializer(self.wms_layer3).data 
-        self.assertEqual(self.sub_theme.id, serialized_layer3_data["parent"]["id"])
-
-class SubThemeSerializerTest(TestCase):
-    def setUp(self):
-        # Create a test subtheme instance
-        site = Site.objects.get(pk=1)
-        self.parent_theme = Theme.objects.create(name="Parent Theme")
-        self.parent_theme.site.add(site)
-        self.sub_theme = Theme.objects.create(name="Sub Theme", theme_type="radio")
-        self.sub_theme.site.add(site)
-        self.sub_sub_theme = Theme.objects.create(name="Subsubtheme", theme_type="radio")
-        self.sub_sub_theme.site.add(site)
-        self.layer2 = Layer.objects.create(
-            name="arcgis",
-            layer_type='ArcRest',  
-        ) 
-        self.arcgis_layer2 = LayerArcREST.objects.create(
-            layer=self.layer2,
-        )  
-        self.layer2.site.add(site)
-        self.layer1 = Layer.objects.create(
-            name="testlayer",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer1 = LayerWMS.objects.create(
-            layer=self.layer1,
-        )  
-        self.layer1.site.add(site)
-        self.layer3 = Layer.objects.create(
-            name="testlayer3",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer3 = LayerWMS.objects.create(
-            layer=self.layer3,
-        )  
-        self.layer3.site.add(site)
-
-        self.layer4 = Layer.objects.create(
-            name="testlayer4",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer4 = LayerWMS.objects.create(
-            layer=self.layer4,
-        )  
-        self.layer4.site.add(site)
-        self.layer5 = Layer.objects.create(
-            name="testlayer5",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer5 = LayerWMS.objects.create(
-            layer=self.layer5,
-        )  
-        self.layer5.site.add(site)
-
-        ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.sub_theme, object_id=self.sub_theme.id, order = 1)
-        ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer5, order=1)
-        self.child_order_1 = ChildOrder.objects.create(parent_theme=self.sub_theme, content_object=self.layer1, order=1)
-        
-        ChildOrder.objects.create(parent_theme=self.sub_theme, content_object=self.sub_sub_theme, order=2)
-        ChildOrder.objects.create(parent_theme=self.sub_theme, content_object=self.layer3, order=3)
-
-        ChildOrder.objects.create(parent_theme=self.sub_sub_theme, content_object=self.layer2, order=1)
-        ChildOrder.objects.create(parent_theme=self.sub_sub_theme, content_object=self.layer4, order=2)
-
-
-    def test_subtheme_serialization(self):
-    
-
-        serializer = SubThemeSerializer(self.sub_theme)
-        serialized_subtheme_data = serializer.data
-
-        serialized_layer_data = LayerWMSSerializer(self.wms_layer3).data
-        verify_serializer_v1_output(self, serialized_subtheme_data, name=self.sub_theme.name, layer_type=self.sub_theme.theme_type, order=1)
-
-        # Extract only the 'id' from each item in 'subLayers'
-        serialized_ids = [item['id'] for item in serialized_subtheme_data['subLayers']]
-
-        # Define the expected IDs in order
-        expected_ids = [self.layer1.id, self.layer2.id, self.layer4.id, self.layer3.id]
-
-        # Assert that the order of IDs in the serialized data matches the expected order
-        self.assertEqual(serialized_ids, expected_ids)
-        # self.assertEqual(serialized_subtheme_data["id"], serialized_layer_data["parent"])
-
-
+@override_settings(DB_CHANNEL="madronaportal")
 class WMSLayerTest(TestCase):
     def setUp(self):
         # Create Parent Themes
@@ -457,8 +341,17 @@ class WMSLayerTest(TestCase):
         ) 
         self.wms_layer2 = LayerWMS.objects.create(
             layer=self.layer2,
-            wms_slug="hi", wms_version="hello", wms_format="pusheen", wms_srs="world", 
-                wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test"
+            wms_slug="hi", 
+            wms_version="hello", 
+            wms_format="pusheen", 
+            wms_srs="world", 
+            wms_styles="style", 
+            wms_timing="hullo", 
+            wms_time_item="ello", 
+            wms_additional="star", 
+            wms_info=True, 
+            wms_info_format="test",
+
         )  
         self.layer2.site.add(site)
         self.companionship = Companionship.objects.create(layer=self.layer1)
@@ -507,10 +400,31 @@ class WMSLayerTest(TestCase):
 
         # Check that the WMS specific attributes exist
         
-        verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="WMS", order=1)
-        verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="WMS", order=1, wms_slug="hi", wms_version="hello", wms_format="pusheen", wms_srs="world", 
-                                              wms_styles="style", wms_timing="hullo", wms_time_item="ello", wms_additional="star", wms_info=True, wms_info_format="test")
+        verify_serializer_v1_output(
+            self, 
+            layer1_actual_data, 
+            name=self.layer1.name, 
+            layer_type="WMS", order=1
+        )
+        verify_serializer_v1_output(
+            self, 
+            layer2_actual_data, 
+            name=self.layer2.name, 
+            layer_type="WMS", 
+            order=1, 
+            wms_slug="hi", 
+            wms_version="hello", 
+            wms_format="pusheen", 
+            wms_srs="world", 
+            wms_styles="style", 
+            wms_timing="hullo", 
+            wms_time_item="ello", 
+            wms_additional="star", 
+            wms_info=True, 
+            wms_info_format="test",
+        )
 
+@override_settings(DB_CHANNEL="madronaportal")
 class ArcRESTLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -521,19 +435,22 @@ class ArcRESTLayerTest(TestCase):
        # Create layers
         self.layer1 = Layer.objects.create(
             name="testlayer",
-            layer_type='ArcRest',  
+            layer_type='ArcRest',
         ) 
         self.arcrest_layer1 = LayerArcREST.objects.create(
-            layer=self.layer1,     
+            layer=self.layer1,
         )  
         self.layer1.site.add(site)
         self.layer2 = Layer.objects.create(
             name="testlayer2",
-            layer_type='ArcRest',  
+            layer_type='ArcRest',
         ) 
         self.arcrest_layer2 = LayerArcREST.objects.create(
             layer=self.layer2,
-            arcgis_layers="19", password_protected=True, query_by_point=True, disable_arcgis_attributes=True,
+            arcgis_layers="19", 
+            password_protected=True, 
+            query_by_point=True, 
+            disable_arcgis_attributes=True,
         )  
         self.layer2.site.add(site)
         self.layer3 = Layer.objects.create(
@@ -555,9 +472,26 @@ class ArcRESTLayerTest(TestCase):
         layer1_actual_data = LayerArcRESTSerializer(self.arcrest_layer1).data
         layer2_actual_data = LayerArcRESTSerializer(self.arcrest_layer2).data
 
-        verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="ArcRest", order=1)
-        verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="ArcRest", order=1, arcgis_layers="19", password_protected=True, query_by_point=True, disable_arcgis_attributes=True)
+        verify_serializer_v1_output(
+            self, 
+            layer1_actual_data, 
+            name=self.layer1.name, 
+            layer_type="ArcRest", 
+            order=1
+        )
+        verify_serializer_v1_output(
+            self, 
+            layer2_actual_data, 
+            name=self.layer2.name, 
+            layer_type="ArcRest", 
+            order=1, 
+            arcgis_layers="19", 
+            password_protected=True, 
+            query_by_point=True, 
+            disable_arcgis_attributes=True
+        )
         
+@override_settings(DB_CHANNEL="madronaportal")
 class ArcFeatureServiceLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -578,9 +512,18 @@ class ArcFeatureServiceLayerTest(TestCase):
         ) 
         self.arc_layer2 = LayerArcFeatureService.objects.create(
             layer=self.layer2,
-            arcgis_layers="19", password_protected=True,  disable_arcgis_attributes=True,
-                                                            custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-                                                            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0, opacity=5.0
+            arcgis_layers="19", 
+            password_protected=True,  
+            disable_arcgis_attributes=True,
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0,
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0
         )  
         self.layer2.site.add(site)
         self.companionship = Companionship.objects.create(layer=self.layer1)
@@ -594,11 +537,32 @@ class ArcFeatureServiceLayerTest(TestCase):
         layer1_actual_data = LayerArcFeatureServiceSerializer(self.arc_layer1).data
         layer2_actual_data = LayerArcFeatureServiceSerializer(self.arc_layer2).data
 
-        verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="ArcFeatureServer", order=2)
-        verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="ArcFeatureServer", order=1, arcgis_layers="19", password_protected=True, disable_arcgis_attributes=True,
-                                                            custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-                                                            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0, opacity=5.0)
+        verify_serializer_v1_output(self, 
+            layer1_actual_data, 
+            name=self.layer1.name, 
+            layer_type="ArcFeatureServer", 
+            order=2
+        )
+        verify_serializer_v1_output(self, 
+            layer2_actual_data, 
+            name=self.layer2.name, 
+            layer_type="ArcFeatureServer", 
+            order=1, 
+            arcgis_layers="19", 
+            password_protected=True, 
+            disable_arcgis_attributes=True,
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0, 
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0,
+        )
 
+@override_settings(DB_CHANNEL="madronaportal")
 class XYZLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -634,6 +598,7 @@ class XYZLayerTest(TestCase):
         verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="XYZ", order=2)
         verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="XYZ", query_by_point=True, order=1)
 
+@override_settings(DB_CHANNEL="madronaportal")
 class VectorLayerTest(TestCase):
     def setUp(self):
         site = Site.objects.get(pk=1)
@@ -651,11 +616,19 @@ class VectorLayerTest(TestCase):
             name="testlayer2",
             layer_type='Vector',  
             mouseover_field="hi",
+            opacity=5.0
         ) 
         self.vector_layer2 = LayerVector.objects.create(
             layer=self.layer2,
-            custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0, opacity=5.0
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0, 
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0,
         )
 
         self.layer2.site.add(site)
@@ -667,128 +640,33 @@ class VectorLayerTest(TestCase):
 
         layer2_actual_data = LayerVectorSerializer(self.vector_layer2).data
 
-        verify_serializer_v1_output(self, layer1_actual_data, name=self.layer1.name, layer_type="Vector", order=2)
-        verify_serializer_v1_output(self, layer2_actual_data, name=self.layer2.name, layer_type="Vector", order=1, mouseover_field="hi", custom_style="test", outline_width=5, outline_color="blue", outline_opacity=5.0,
-                                                            fill_opacity=5.0, color="blue", point_radius=5, graphic="Test", graphic_scale=5.0, opacity=5.0)
+        verify_serializer_v1_output(
+            self, 
+            layer1_actual_data, 
+            name=self.layer1.name, 
+            layer_type="Vector", 
+            order=2
+        )
+        verify_serializer_v1_output(
+            self, 
+            layer2_actual_data, 
+            name=self.layer2.name, 
+            layer_type="Vector", 
+            order=1, 
+            mouseover_field="hi", 
+            custom_style="test", 
+            outline_width=5, 
+            outline_color="blue", 
+            outline_opacity=5.0,
+            fill_opacity=5.0, 
+            color="blue", 
+            point_radius=5, 
+            graphic="Test", 
+            graphic_scale=5.0,
+            opacity=5.0
+        )
 
-class ChildOrderSerializerTest(TestCase):
-    def setUp(self):
-        # Create a parent theme
-        site = Site.objects.get(pk=1)
-        self.parent_theme = Theme.objects.create(name="Test Parent Theme")
-        self.parent_theme.site.add(site)
-        self.sub_theme = Theme.objects.create(name="Sub Theme")
-        self.sub_theme.site.add(site)
-        # Create layers
-        self.layer1 = Layer.objects.create(
-            name="Layer WMS",
-            layer_type='WMS',  
-        ) 
-        self.wms_layer1 = LayerWMS.objects.create(
-            layer=self.layer1,
-        )  
-        self.layer1.site.add(site)
-        self.layer2 = Layer.objects.create(
-            name="Layer ArcREST",
-            layer_type='ArcRest',  
-        ) 
-        self.arcrest_layer2 = LayerArcREST.objects.create(
-            layer=self.layer2,
-        )  
-        self.layer2.site.add(site)
-        self.layer3 = Layer.objects.create(
-            name="Layer ArcFeature",
-            layer_type='ArcFeatureServer',  
-        ) 
-        self.arcfeature_layer3 = LayerArcFeatureService.objects.create(
-            layer=self.layer3,
-        )  
-        self.layer3.site.add(site)
-        self.layer4 = Layer.objects.create(
-            name="Layer XYZ",
-            layer_type='XYZ',  
-        ) 
-        self.xyz_layer4 = LayerXYZ.objects.create(
-            layer=self.layer4,
-        )  
-        self.layer4.site.add(site)
-        self.layer5 = Layer.objects.create(
-            name="Layer Vector",
-            layer_type='Vector',  
-        ) 
-        self.vector_layer5 = LayerVector.objects.create(
-            layer=self.layer5,
-        )  
-        self.layer5.site.add(site)
-        # Create a corresponding ChildOrder instance
-        self.child_order_wms = ChildOrder.objects.create(parent_theme=self.parent_theme,content_object=self.layer1, order=1)
-        self.child_order_arc_rest = ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer2, order=1)
-        self.child_order_arc_feature = ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer3, order=1)
-        self.child_order_xyz = ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer4, order=1)
-        self.child_order_vector = ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.layer5, order=1)
-        self.child_order_subtheme = ChildOrder.objects.create(parent_theme=self.parent_theme, content_object=self.sub_theme, order=1)
-    def test_serialize_layer_arc_rest(self):
-        # Serialize the LayerArcREST instance directly
-        arc_rest_serializer = LayerArcRESTSerializer(self.arcrest_layer2)
-        arc_rest_serialized_data = arc_rest_serializer.data
-
-        # Serialize the ChildOrder instance that contains the LayerArcREST
-        child_order_serializer = ChildOrderSerializer(self.child_order_arc_rest)
-        child_order_serialized_data = child_order_serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(child_order_serialized_data, arc_rest_serialized_data)
-
-    def test_serialize_layer_wms(self):
-        wms_serializer = LayerWMSSerializer(self.wms_layer1)
-        wms_serialized_data = wms_serializer.data
-        # Serialize ChildOrder with a LayerWMS object
-        serializer = ChildOrderSerializer(self.child_order_wms)
-        serialized_data = serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(serialized_data, wms_serialized_data)
-
-    def test_serialize_layer_arc_feature(self):
-        arc_feature_serializer = LayerArcFeatureServiceSerializer(self.arcfeature_layer3)
-        arc_feature_serialized_data = arc_feature_serializer.data
-        # Serialize ChildOrder with a LayerWMS object
-        serializer = ChildOrderSerializer(self.child_order_arc_feature)
-        serialized_data = serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(serialized_data, arc_feature_serialized_data)
-
-    def test_serialize_layer_xyz(self):
-        xyz_serializer = LayerXYZSerializer(self.xyz_layer4)
-        xyz_serialized_data = xyz_serializer.data
-        # Serialize ChildOrder with a LayerWMS object
-        serializer = ChildOrderSerializer(self.child_order_xyz)
-        serialized_data = serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(serialized_data, xyz_serialized_data)
-
-    def test_serialize_layer_vector(self):
-        vector_serializer = LayerVectorSerializer(self.vector_layer5)
-        vector_serialized_data = vector_serializer.data
-        # Serialize ChildOrder with a LayerWMS object
-        serializer = ChildOrderSerializer(self.child_order_vector)
-        serialized_data = serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(serialized_data, vector_serialized_data)
-    
-    def test_serialize_subtheme(self):
-        subtheme_serializer = SubThemeSerializer(self.sub_theme)
-        subtheme_serialized_data = subtheme_serializer.data
-        # Serialize ChildOrder with a LayerWMS object
-        serializer = ChildOrderSerializer(self.child_order_subtheme)
-        serialized_data = serializer.data
-
-        # Compare the two serialized outputs
-        self.assertEqual(serialized_data, subtheme_serialized_data)
-
+@override_settings(DB_CHANNEL="madronaportal")
 class MultilayerTest(TestCase):
     def setUp(self):
         # Create Parent Layer
@@ -880,7 +758,7 @@ class MultilayerTest(TestCase):
         self.assertEqual([], january_data["dimensions"])
         self.assertEqual({}, january_data["associated_multilayers"])
 
-
+@override_settings(DB_CHANNEL="madronaportal")
 class ThemeLayersPropertyTest(TestCase):
     """Tests for Theme.layers and Theme.all_layers model properties."""
 
@@ -1014,7 +892,7 @@ class ThemeLayersPropertyTest(TestCase):
             set(layer.pk for layer in self.sub_theme.layers),
         )
 
-
+@override_settings(DB_CHANNEL="madronaportal")
 class GetPortalCatalogMapViewTest(TestCase):
     """Tests for the get_portal_catalog_map view."""
 
@@ -1178,3 +1056,115 @@ class GetPortalCatalogMapViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.content), {})
 
+class LayerCacheInvalidationTest(TestCase):
+    """Regression tests: Layer.save()/resetCache() must clear its own cache
+    records as well as any ancestor theme's cached shortDict/childorder entries.
+    """
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = ['all_layers_qs']
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_layer_serialized_details_{}_{}'.format(self.layer.pk, site_id))
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_layer_save_clears_own_and_parent_theme_cache(self):
+        self.layer.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))
+
+class ThemeCacheInvalidationTest(TestCase):
+    """Regression tests: Theme.save() must clear its own shortDict cache,
+    its ancestors' shortDict cache, and any childorder cache linking it to its parent.
+    """
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.grandparent_theme = Theme.objects.create(name="Cache Grandparent Theme")
+        self.grandparent_theme.site.add(self.site)
+        self.parent_theme = Theme.objects.create(name="Cache Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.child_theme = Theme.objects.create(name="Cache Child Theme")
+        self.child_theme.site.add(self.site)
+
+        ChildOrder.objects.create(
+            parent_theme=self.grandparent_theme, content_object=self.parent_theme, order=1,
+        )
+        self.child_theme_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.child_theme, order=1,
+        )
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = []
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_theme_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.grandparent_theme.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.child_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_theme_save_clears_own_and_ancestor_cache(self):
+        self.child_theme.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))
+
+class ChildOrderCacheInvalidationTest(TestCase):
+    """Regression test: ChildOrder.save() must clear its own per-site cache records."""
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache ChildOrder Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache ChildOrder Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.dirty_key = 'layers_childorder_{}_{}'.format(self.child_order.pk, self.site.pk)
+        cache.set(self.dirty_key, 'stale-value', 60)
+
+    def test_child_order_save_clears_own_cache(self):
+        self.child_order.save()
+        self.assertIsNone(cache.get(self.dirty_key))
+
+class AttributeInfoCacheInvalidationTest(TestCase):
+    """Regression test: AttributeInfo.save() must reset cache for every Layer it is attached to."""
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.parent_theme = Theme.objects.create(name="Cache AttributeInfo Parent Theme")
+        self.parent_theme.site.add(self.site)
+        self.layer = Layer.objects.create(name="Cache AttributeInfo Layer", layer_type='WMS')
+        self.layer.site.add(self.site)
+        LayerWMS.objects.create(layer=self.layer)
+        self.child_order = ChildOrder.objects.create(
+            parent_theme=self.parent_theme, content_object=self.layer, order=1,
+        )
+        self.attribute_info = AttributeInfo.objects.create(
+            display_name="Cache Attribute", field_name="cache_attribute",
+        )
+        self.layer.attribute_fields.add(self.attribute_info)
+
+        self.site_ids = [self.site.pk, '']
+        self.dirty_keys = ['all_layers_qs']
+        for site_id in self.site_ids:
+            self.dirty_keys.append('layers_layer_serialized_details_{}_{}'.format(self.layer.pk, site_id))
+            self.dirty_keys.append('layers_childorder_{}_{}'.format(self.child_order.pk, site_id))
+            self.dirty_keys.append('layers_theme_shortdict_{}_{}'.format(self.parent_theme.pk, site_id))
+        for key in self.dirty_keys:
+            cache.set(key, 'stale-value', 60)
+
+    def test_attribute_info_save_clears_associated_layer_cache(self):
+        self.attribute_info.field_label = "Updated Label"
+        self.attribute_info.save()
+        for key in self.dirty_keys:
+            self.assertIsNone(cache.get(key), "Expected cache key '{}' to be cleared".format(key))

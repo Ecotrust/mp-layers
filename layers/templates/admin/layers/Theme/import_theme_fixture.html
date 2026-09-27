@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  {% if error %}
+    <p class="errornote">{{ error }}</p>
+  {% endif %}
+
+  {% if preview_rows %}
+    <h2>Preview</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>UUID</th>
+          <th>Action</th>
+          <th>Name</th>
+          <th>Changes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_rows %}
+          <tr>
+            <td>{{ row.model }}</td>
+            <td>{{ row.uuid }}</td>
+            <td>{{ row.action }}</td>
+            <td>{{ row.fields.name }}</td>
+            <td>
+              {% for change in row.changes %}
+                {{ change.name }}: {{ change.current_value }} -> {{ change.new_value }}{% if not forloop.last %}; {% endif %}
+              {% empty %}
+                None
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if preview_rows %}
+      <button type="submit" name="confirm" value="1">Confirm</button>
+      <button type="submit" name="cancel" value="1">Cancel</button>
+    {% else %}
+      <p><input type="file" name="fixture_file" accept="application/json" required></p>
+      <button type="submit">Preview</button>
+    {% endif %}
+  </form>
+{% endblock %}
