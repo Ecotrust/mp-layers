@@ -230,6 +230,24 @@ class LayerFixtureImportPR05Test(TestCase):
         with self.assertRaises(ValueError):
             import_fixture_rows(fixture_rows, **self._import_kwargs())
 
+    def test_unknown_model_row_raises_value_error_without_counting_as_imported(self):
+        self._require_importer()
+
+        fixture_rows = [
+            {
+                "model": "layers.unsupported",
+                "source_pk": 777,
+                "uuid": str(uuid4()),
+                "fields": {},
+                "relations": {},
+            }
+        ]
+
+        with self.assertRaises(ValueError) as raised:
+            import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        self.assertIn("layers.unsupported", str(raised.exception))
+
 
 class ThemeFixtureImportPR09Test(TestCase):
     """Theme fixture import tests for non-UUID ChildOrder identity."""
