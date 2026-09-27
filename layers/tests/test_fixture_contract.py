@@ -99,6 +99,11 @@ class FixtureContractTest(SimpleTestCase):
                 NODE_FIELDS_KEY: {},
             })
 
+    def test_validate_node_shape_rejects_non_mapping_nodes(self):
+        for node_obj in (None, 1):
+            with self.assertRaises(ValueError):
+                validate_node_shape(node_obj)
+
     def test_ref_sort_key_is_stable(self):
         ref_one = {NODE_MODEL_KEY: "layers.lookupinfo", NODE_SOURCE_PK_KEY: 2, NODE_UUID_KEY: "b"}
         ref_two = {NODE_MODEL_KEY: "layers.lookupinfo", NODE_SOURCE_PK_KEY: 1, NODE_UUID_KEY: "a"}
