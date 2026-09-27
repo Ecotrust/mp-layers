@@ -355,12 +355,12 @@ class DataManagerGetLayersForThemeTest(TestCase):
         # This test layer will not have attributes defined other than required fields to test default behavior when attributes left empty
         layer1.site.add(site)
 
-        layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
-        layer2.site.add(site)
+        self.layer2 = Layer.objects.create(name="sublayer", layer_type="ArcRest")
+        self.layer2.site.add(site)
 
         ChildOrder.objects.create(parent_theme=self.theme1, content_object=layer1, order=1)
-        ChildOrder.objects.create(parent_theme=self.theme1, content_object=layer2, order=1)
-        ChildOrder.objects.create(parent_theme=layer1, content_object=layer2, order=1)
+        ChildOrder.objects.create(parent_theme=self.theme1, content_object=self.layer2, order=1)
+        ChildOrder.objects.create(parent_theme=layer1, content_object=self.layer2, order=1)
 
     def test_get_layers_for_theme(self):
         request = self.factory.get(f"/layers/get_layers_for_theme/{self.theme1.id}/", HTTP_HOST="localhost:8000")
@@ -394,7 +394,8 @@ class DataManagerGetLayersForThemeTest(TestCase):
         self.assertEqual(result["layers"][0]["name"], "arcrest_layer")
         self.assertEqual(result["layers"][0]["has_sublayers"], True)
         self.assertEqual(result["layers"][0]["subLayers"][0]["name"], "arcrest_layer >> sublayer")
-        self.assertEqual(result["layers"][0]["subLayers"][0]["slug_name"], "sublayer_new")
+        # no slug_name was explicitly provided, so it auto-generates to a stable id-based slug on save
+        self.assertEqual(result["layers"][0]["subLayers"][0]["slug_name"], self.layer2.slug_name)
 
 # update to mock a working WMS service for testing purposes
 # class DataManagerWMSRequestCapabilities(TestCase):
