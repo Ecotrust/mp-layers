@@ -13,6 +13,7 @@ from django.contrib.sites.models import Site
 from django.db import transaction
 from django.db.models import Model
 
+from .cache_utils import suppress_cache_signals
 from .fixture_contract import (
     NODE_FIELDS_KEY,
     NODE_MODEL_KEY,
@@ -389,7 +390,7 @@ def import_fixture_rows(
                 specific_obj.lookup_table.set(resolved_lookup_refs)
 
     if dry_run:
-        with transaction.atomic():
+        with transaction.atomic(), suppress_cache_signals():
             _execute_import()
             transaction.set_rollback(True)
             return {
