@@ -1,6 +1,8 @@
 from uuid import uuid4
+from unittest.mock import patch
 
 from django.contrib.sites.models import Site
+from django.db.backends.utils import CursorWrapper
 from django.test import TestCase
 
 from layers.fixture_contract import build_node, build_ref
@@ -311,6 +313,57 @@ class ThemeFixtureImportPR09Test(TestCase):
 
         imported_theme = Theme.all_objects.get(uuid=theme_uuid)
         self.assertEqual(imported_theme.slug_name, slug_name)
+
+    def test_dry_run_does_not_change_cache_or_emit_notify(self):
+        self._require_importer()
+
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=999996,
+                uuid_value=uuid4(),
+                fields={
+                    "name": "Dry Run Layer",
+                    "layer_type": "WMS",
+                    "slug_name": "dry-run-layer",
+                },
+                relations={},
+            ),
+            build_node(
+                model="layers.theme",
+                source_pk=999995,
+                uuid_value=uuid4(),
+                fields={
+                    "name": "Dry Run Theme",
+                    "display_name": "Dry Run Theme",
+                    "slug_name": "dry-run-theme",
+                },
+                relations={},
+            ),
+        ]
+
+        executed_sql = []
+        original_execute = CursorWrapper.execute
+
+        def record_execute(cursor, sql, params=None):
+            executed_sql.append(sql)
+            return original_execute(cursor, sql, params)
+
+        with patch("layers.models.cache.delete") as cache_delete:
+            with patch.object(
+                CursorWrapper,
+                "execute",
+                autospec=True,
+                side_effect=record_execute,
+            ):
+                import_kwargs = self._import_kwargs()
+                import_kwargs["dry_run"] = True
+                import_fixture_rows(fixture_rows, **import_kwargs)
+
+        cache_delete.assert_not_called()
+        self.assertFalse(
+            any(str(sql).lstrip().upper().startswith("NOTIFY ") for sql in executed_sql)
+        )
 
     def test_child_order_source_id_collision_creates_new_relationship(self):
         self._require_importer()
