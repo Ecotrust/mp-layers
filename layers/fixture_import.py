@@ -32,6 +32,14 @@ MULTILAYER_DIMENSION_VALUE_MODEL = "layers.multilayerdimensionvalue"
 ATTRIBUTE_INFO_MODEL = "layers.attributeinfo"
 LOOKUP_INFO_MODEL = "layers.lookupinfo"
 COMPANIONSHIP_MODEL = "layers.companionship"
+PRIMARY_IMPORT_MODELS = {LAYER_MODEL, THEME_MODEL, ATTRIBUTE_INFO_MODEL, LOOKUP_INFO_MODEL}
+SECONDARY_IMPORT_MODELS = {
+    CHILD_ORDER_MODEL,
+    MULTILAYER_ASSOCIATION_MODEL,
+    MULTILAYER_DIMENSION_MODEL,
+    MULTILAYER_DIMENSION_VALUE_MODEL,
+    COMPANIONSHIP_MODEL,
+}
 SPECIFIC_LAYER_MODELS = {
     "layers.layerwms",
     "layers.layerarcrest",
@@ -155,8 +163,11 @@ def import_fixture_rows(
         # First pass: upsert UUID-keyed rows that do not require relation remaps.
         for row in rows:
             model_label = row.get(NODE_MODEL_KEY)
-            if model_label not in {LAYER_MODEL, THEME_MODEL, ATTRIBUTE_INFO_MODEL, LOOKUP_INFO_MODEL}:
-                continue
+            if model_label not in PRIMARY_IMPORT_MODELS:
+                if model_label not in SECONDARY_IMPORT_MODELS and model_label not in SPECIFIC_LAYER_MODELS:
+                    raise ValueError("Unsupported model label: %s" % model_label)
+                else:
+                    continue
 
             row_uuid = normalize_uuid(row.get(NODE_UUID_KEY))
             if not row_uuid:
