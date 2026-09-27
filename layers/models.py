@@ -32,7 +32,6 @@ def update_model_sequence(model, unique_key, manager):
     with connection.cursor() as cursor:
         cursor.execute("SELECT setval('{}', {}, true);".format(sequence_name, max_theme_pk))
 
-
 class SiteFlags(object):#(models.Model):
     """Add-on class for displaying sites in the list_display
     in the admin.
@@ -598,7 +597,6 @@ class Theme(ChildType, SiteFlags):
         indexes = [
             models.Index(fields=['id',]),
         ]
-
 
 # in admin, how can we show all layers regardless of layer type, without querying get all layers that are wms, get layers that are arcgis, etc, bc that is a lot of subqueries
 class Layer(ChildType, SiteFlags):
