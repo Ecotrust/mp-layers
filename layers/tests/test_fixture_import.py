@@ -125,6 +125,28 @@ class LayerFixtureImportPR05Test(TestCase):
         imported_layer = Layer.all_objects.get(uuid=new_uuid)
         self.assertEqual(imported_layer.pk, source_pk)
 
+    def test_layer_slug_name_from_fixture_is_preserved(self):
+        self._require_importer()
+
+        layer_uuid = uuid4()
+        slug_name = "fixture-layer-unique-slug"
+        layer_fields = self._layer_fields("Layer With Fixture Slug")
+        layer_fields["slug_name"] = slug_name
+        fixture_rows = [
+            build_node(
+                model="layers.layer",
+                source_pk=999998,
+                uuid_value=layer_uuid,
+                fields=layer_fields,
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_layer = Layer.all_objects.get(uuid=layer_uuid)
+        self.assertEqual(imported_layer.slug_name, slug_name)
+
     def test_second_pass_resolves_relations_by_uuid_not_source_pk(self):
         """As name suggests - ensure 2nd pass uses UUIDs for reference, not just PK or 'id'."""
         self._require_importer()
@@ -265,6 +287,30 @@ class ThemeFixtureImportPR09Test(TestCase):
             "missing_ref_policy": "error",
             "duplicate_uuid_policy": "error",
         }
+
+    def test_theme_slug_name_from_fixture_is_preserved(self):
+        self._require_importer()
+
+        theme_uuid = uuid4()
+        slug_name = "fixture-theme-unique-slug"
+        fixture_rows = [
+            build_node(
+                model="layers.theme",
+                source_pk=999997,
+                uuid_value=theme_uuid,
+                fields={
+                    "name": "Theme With Fixture Slug",
+                    "display_name": "Theme With Fixture Slug",
+                    "slug_name": slug_name,
+                },
+                relations={},
+            )
+        ]
+
+        import_fixture_rows(fixture_rows, **self._import_kwargs())
+
+        imported_theme = Theme.all_objects.get(uuid=theme_uuid)
+        self.assertEqual(imported_theme.slug_name, slug_name)
 
     def test_child_order_source_id_collision_creates_new_relationship(self):
         self._require_importer()
