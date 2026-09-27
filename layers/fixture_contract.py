@@ -118,6 +118,8 @@ def validate_node_shape(node_obj):
     Example:
         validate_node_shape({'model': 'layers.layer', 'source_pk': 1, 'uuid': '...', 'fields': {}, 'relations': {}})
     """
+    if not isinstance(node_obj, dict):
+        raise ValueError("Invalid node: must be an object")
     required_keys = {
         NODE_MODEL_KEY,
         NODE_SOURCE_PK_KEY,
