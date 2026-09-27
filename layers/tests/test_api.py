@@ -288,10 +288,10 @@ class DataManagerGetLayerSearchDataTest(TestCase):
         self.theme_with_sublayers = Theme.objects.create(name="theme_with_sublayers", display_name="theme_with_sublayers", is_visible=True, description="theme with sublayers")
         self.theme_with_sublayers.site.add(site)
 
-        self.sublayer = Layer.objects.create(name="sublayer")
+        self.sublayer = Layer.objects.create(name="sublayer", layer_type="WMS")
         self.sublayer.site.add(site)
 
-        self.second_layer = Layer.objects.create(name="second_layer")
+        self.second_layer = Layer.objects.create(name="second_layer", layer_type="WMS")
         self.second_layer.site.add(site)
 
         ChildOrder.objects.create(parent_theme=self.first_theme, content_object=self.theme_with_sublayers, order=1)
