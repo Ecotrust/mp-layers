@@ -735,7 +735,6 @@ class Layer(ChildType, SiteFlags):
                 return True
         return False
 
-
     ######################################################
     #          Data Catalog Stuff                        #
     ######################################################
@@ -960,7 +959,6 @@ class Layer(ChildType, SiteFlags):
         else:
             return self.parent.top_parent
 
-    
     @property
     def parent_orders(self):
         # Get the ContentType for the Layer model
@@ -1012,7 +1010,6 @@ class Layer(ChildType, SiteFlags):
             return False
         return self.parent.parent != None
 
-    
     @property
     def themes(self):
         # Get the ContentType for the Layer model
