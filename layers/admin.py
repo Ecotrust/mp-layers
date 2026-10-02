@@ -23,6 +23,7 @@ import nested_admin
 import os
 from queryset_sequence import QuerySetSequence
 import requests
+from reversion.admin import VersionAdmin
 from .fixture_contract import validate_node_shape
 from .fixture_import import import_fixture_rows
 from .models import *
@@ -236,7 +237,7 @@ def export_theme_details(self, request, queryset):
     return response
 
 
-class ThemeAdmin(ImportExportMixin,admin.ModelAdmin):
+class ThemeAdmin(ImportExportMixin, VersionAdmin):
     fixture_import_session_key = "layers.theme_fixture_import_rows"
     list_display = ('display_name', 'name', 'order', 'date_modified', 'is_top_theme', 'primary_site', 'preview_site')
     search_fields = ['display_name', 'name',]
@@ -1063,7 +1064,7 @@ def export_layer_details(self, request, queryset):
     return response
 
 
-class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
+class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
 
     def values_match(self, current_value, new_value):
@@ -1595,7 +1596,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin):
             'all': ("admin/css/layer_http_status.css","admin/css/layer_admin.css",)
         }
     
-class LookupInfoAdmin(admin.ModelAdmin):
+class LookupInfoAdmin(VersionAdmin):
     list_display = ('value', 'description', 'color', 'stroke_color', 'dashstyle', 'fill', 'graphic')
 
 # class ChildOrderForm(forms.ModelForm):
@@ -1607,7 +1608,7 @@ class LookupInfoAdmin(admin.ModelAdmin):
 #     list_display = ('parent_theme', 'content_type', 'object_id', 'order')
 #     form = ChildOrderForm
 
-class AttributeInfoAdmin(admin.ModelAdmin):
+class AttributeInfoAdmin(VersionAdmin):
     list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
     search_fields = ('display_name', 'field_name', 'field_label')
 
