@@ -299,7 +299,7 @@ get_service_type = function (url) {
         type = "ArcRest";
     }
     if (type === "FeatureServer") {
-        type = "Vector";
+        type = "ArcFeatureServer";
     }
     if (type === "VectorTileServer") {
         type = "VectorTile";
