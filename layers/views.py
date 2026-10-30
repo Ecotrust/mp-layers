@@ -538,7 +538,7 @@ def get_catalog_records(request):
     if settings.CATALOG_TECHNOLOGY and settings.CATALOG_TECHNOLOGY == "GeoPortal2":
         from elasticsearch import Elasticsearch
         from elasticsearch_dsl import Search
-        es = Elasticsearch()
+        #es = Elasticsearch()
         index = settings.ELASTICSEARCH_INDEX
         url = settings.CATALOG_SOURCE
         if url:
