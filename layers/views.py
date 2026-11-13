@@ -538,7 +538,6 @@ def get_catalog_records(request):
     if settings.CATALOG_TECHNOLOGY and settings.CATALOG_TECHNOLOGY == "GeoPortal2":
         from elasticsearch import Elasticsearch
         from elasticsearch_dsl import Search
-        #es = Elasticsearch()
         index = settings.ELASTICSEARCH_INDEX
         url = settings.CATALOG_SOURCE
         if url:
@@ -553,12 +552,9 @@ def get_catalog_records(request):
         records = search.source(search_fields)
 
         records_dict = {}
-        # record_ids = []
-        record_names = []
         record_name_lookup = {}
 
         for record in records.scan():
-            # record_ids.append(record.meta.id)
             record_dict = {}
             for index, field in enumerate(['id'] + search_fields):
                 if index == 0:
@@ -571,12 +567,10 @@ def get_catalog_records(request):
                     record_dict[field] = record[field]
             records_dict[record.meta.id] = record_dict
 
-        # data['ids'] = record_ids
         data['records'] = records_dict
         data['record_name_lookup'] = record_name_lookup
         data['ELASTICSEARCH_INDEX'] = settings.ELASTICSEARCH_INDEX
         data['CATALOG_TECHNOLOGY'] = settings.CATALOG_TECHNOLOGY
-        # data['hits'] = len(record_ids)
 
     return JsonResponse(data)
 

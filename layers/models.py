@@ -580,8 +580,6 @@ class Theme(ChildType, SiteFlags):
         if not cache_signals_suppressed():
             for key in dirty_cache_keys:
                 cache.delete(key)
-                # with connection.cursor() as cursor:
-                #     cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         try:
             with transaction.atomic():
                 super(Theme, self).save(*args, **kwargs)
@@ -1153,8 +1151,6 @@ class Layer(ChildType, SiteFlags):
 
         for key in dirty_cache_keys:
             cache.delete(key)
-            # with connection.cursor() as cursor:
-            #     cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
 
     def save(self, *args, **kwargs):
         provided_slug_name = kwargs.pop('slug_name', None)
@@ -1236,8 +1232,6 @@ class ChildOrder(models.Model):
         if not cache_signals_suppressed():
             for key in dirty_cache_keys:
                 cache.delete(key)
-                # with connection.cursor() as cursor:
-                #     cursor.execute("NOTIFY {}, 'deletecache:{}'".format(settings.DB_CHANNEL, key))
         if not self.object_id == None:
             # During import, if this is a dry run there will be no child object for this order.
             try:
