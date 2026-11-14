@@ -370,7 +370,7 @@ const AdminLayerForm = (() => {
         var field_open = '<input type="text" class="vTextField" maxlength="255" '
         var field_close = '</input>';
       }
-      var input_field = field_open + 'id="' + field_id + '" name="layerwms_set-0-' + field_name + '" value="' + field_value + '">' + field_close;
+      var input_field = field_open + 'id="' + field_id + '" name="' + field_name + '" value="' + field_value + '">' + field_close;
       $(sel2_fields[i]).replaceWith(input_field);
       $('#' + field_id).val(field_value);
       $('#' + field_id).siblings('.select2').remove();
@@ -392,7 +392,7 @@ const AdminLayerForm = (() => {
     var original_value = input_field.val();
     var original_name = input_field.attr('name');
     if (!input_field.hasClass("select2-hidden-accessible")) {
-      var select2_field_str = '<select id="' + id + '" type=text" selected="' + original_value + '" name="layerwms_set-0-' + original_name + '"></select>';
+      var select2_field_str = '<select id="' + id + '" type=text" selected="' + original_value + '" name="' + original_name + '"></select>';
       input_field.replaceWith(select2_field_str);
       var select2_field = $('#' + id);
     } else {

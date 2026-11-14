@@ -11,6 +11,15 @@ const union = function (array1, array2) {
     return union_arr;
 }
 
+// Borrowed from admin_layer_form.js
+const show_spinner = function () {
+    $('#spinner-dialog').dialog('open');
+  }
+
+const hide_spinner = function () {
+$('#spinner-dialog').dialog('close');
+}
+
 var populate_fields_from_catalog = function (catalog_record_data, record_id) {
     if (record_id == null || record_id == "null") {
         AdminLayerForm.replace_all_select2_with_input();
@@ -299,7 +308,7 @@ get_service_type = function (url) {
         type = "ArcRest";
     }
     if (type === "FeatureServer") {
-        type = "Vector";
+        type = "ArcFeatureServer";
     }
     if (type === "VectorTileServer") {
         type = "VectorTile";
