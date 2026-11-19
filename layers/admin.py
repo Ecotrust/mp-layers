@@ -1627,6 +1627,23 @@ class AttributeInfoAdmin(VersionAdmin):
     )
     inlines = [LayerInline]
 
+    def save_model(self, request, obj, form, change):
+            layer_ids = []
+            if obj.pk:
+                for layer in obj.layer_set.all():
+                    layer_ids.append(layer.pk)
+            with transaction.atomic():
+                super().save_model(request, obj, form, change)  # Ensure the basic saving functionality.
+                for layer in obj.layer_set.exclude(pk__in=layer_ids):
+                    layer_ids.append(layer.pk)
+                for layer_id in layer_ids:
+                    try:
+                        layer = Layer.objects.get(pk=layer_id)
+                        layer.resetCache()
+                    except Layer.DoesNotExist:
+                        pass
+    
+
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)
 admin.site.register(LookupInfo, LookupInfoAdmin)
