@@ -1608,9 +1608,24 @@ class LookupInfoAdmin(VersionAdmin):
 #     list_display = ('parent_theme', 'content_type', 'object_id', 'order')
 #     form = ChildOrderForm
 
+class LayerInline(admin.TabularInline):
+    model = Layer.attribute_fields.through
+    fk_name = "attributeinfo"
+    fields = ("layer",)
+    autocomplete_fields = ("layer",)
+    verbose_name = "Related layer"
+    verbose_name_plural = "Related layers"
+    extra = 0
+
 class AttributeInfoAdmin(VersionAdmin):
     list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
     search_fields = ('display_name', 'field_name', 'field_label')
+    fieldsets = (
+        (None, {
+            'fields': ('field_name', 'field_label', 'order', 'display_name', 'precision', 'preserve_format')
+        }),
+    )
+    inlines = [LayerInline]
 
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)
