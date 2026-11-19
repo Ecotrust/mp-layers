@@ -75,6 +75,7 @@ class LayerAdminValuesMatchTest(TestCase):
         }
     },
 )
+# This test was primarily written by Copilot
 class AttributeInfoAdminCacheTest(TestCase):
     '''
     Test case for verifying that the cache is properly cleared when a LayerInline is removed from an AttributeInfo instance.
