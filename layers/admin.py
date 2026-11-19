@@ -1185,7 +1185,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
     actions = [export_layer_details]
     
 
-    if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
+    if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None, '']:
         # catalog_fields = ('catalog_name', 'catalog_id',)
         # catalog_fields = 'catalog_name'
         basic_fields = (
