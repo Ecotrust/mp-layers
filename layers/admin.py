@@ -1068,8 +1068,8 @@ class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
     fields = ("attributeinfo", "display_name", "field_name", "field_label", "order", "other_layers")
     readonly_fields = ("display_name", "field_name", "field_label", "order", "other_layers")
     autocomplete_fields = ("attributeinfo",)
-    verbose_name = "Attribute field"
-    verbose_name_plural = "Attribute fields"
+    verbose_name = "Feature Reporting Attribute Field"
+    verbose_name_plural = "Feature Reporting Attribute Fields"
     extra = 0
 
     def get_queryset(self, request):
@@ -1302,6 +1302,10 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
                 ),
             )
         }),
+        ('FEATURE REPORTING', {
+            'description': "to control custom feature reporting behavior for this layer, you can override any Key/Value pair using the 'FEATURE REPORTING ATTRIBUTE FIELDS' section below. If no entries exist, the report will appear unmodified. If any entries exist, no report items will show unless explicitly addressed here.",
+            'fields': ()
+        })
     )
     inlines = [LayerAttributeInfoInline, ArcRESTInline, WMSInline, #XYZInline, 
         VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
