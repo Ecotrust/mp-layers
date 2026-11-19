@@ -1065,11 +1065,44 @@ def export_layer_details(self, request, queryset):
 class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
     model = Layer.attribute_fields.through
     fk_name = "layer"
-    fields = ("attributeinfo",)
+    fields = ("attributeinfo", "display_name", "field_name", "field_label", "order", "other_layers")
+    readonly_fields = ("display_name", "field_name", "field_label", "order", "other_layers")
     autocomplete_fields = ("attributeinfo",)
     verbose_name = "Attribute field"
     verbose_name_plural = "Attribute fields"
     extra = 0
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("attributeinfo").order_by('attributeinfo__order')
+
+    def _attributeinfo_value(self, obj, field):
+        if obj is None or obj.attributeinfo_id is None:
+            return "-"
+        return getattr(obj.attributeinfo, field)
+
+    def display_name(self, obj):
+        return self._attributeinfo_value(obj, "display_name")
+    display_name.short_description = "Display name"
+
+    def field_name(self, obj):
+        return self._attributeinfo_value(obj, "field_name")
+    field_name.short_description = "Field name"
+
+    def field_label(self, obj):
+        return self._attributeinfo_value(obj, "field_label")
+    field_label.short_description = "Field label"
+
+    def order(self, obj):
+        return self._attributeinfo_value(obj, "order")
+    order.short_description = "Order"
+
+    def other_layers(self, obj):
+        if obj is None or obj.attributeinfo_id is None:
+            return "-"
+        layers = obj.attributeinfo.layer_set.exclude(id=obj.layer_id)
+        return ", ".join(str(layer) for layer in layers)
+    other_layers.short_description = "Other layers"
+
 
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
@@ -1259,18 +1292,6 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
             'classes': ('collapse',),
             'fields': ('utfurl',)
         }),
-        ('ATTRIBUTE REPORTING (Vector/Tile, ArcREST/Feature, and WMS)', {
-            'classes': ('collapse',),
-            'fields': (
-                'label_field',
-                (
-                    'attribute_event',
-                    'mouseover_field',
-                ),
-                # These fields are no longer used, but would have gone here.
-                # ('is_annotated', 'compress_display')
-            )
-        }),
         ('APPEARANCE', {
             'classes': ('collapse',),
             'fields': (
@@ -1282,10 +1303,9 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
             )
         }),
     )
-    inlines = [ArcRESTInline, WMSInline, #XYZInline, 
+    inlines = [LayerAttributeInfoInline, ArcRESTInline, WMSInline, #XYZInline, 
         VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
-        NestedMultilayerAssociationInline, LayerParentInline,
-        LayerAttributeInfoInline,
+        NestedMultilayerAssociationInline, LayerParentInline
     ]
     
     add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
