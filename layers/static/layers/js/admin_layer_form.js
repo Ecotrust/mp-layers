@@ -621,7 +621,7 @@ const AdminLayerForm = (() => {
     const catalogIdField = document.getElementById('id_catalog_id');
     const catalogNameField = document.getElementById('id_catalog_name');
 
-    if (CATALOG_TECHNOLOGY !== 'default') {
+    if (!['default', '', null].includes(CATALOG_TECHNOLOGY)) {
       if (catalogIdField) {
         catalogIdField.style.height = '15px';
         catalogIdField.disabled = true;

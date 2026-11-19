@@ -4,6 +4,10 @@ document.addEventListener("DOMContentLoaded", function() {
         const nested_inlines = document.querySelectorAll(".djn-group-root");
         
         nested_inlines.forEach(function(inline) {
+          if (inline.dataset.inlineModel === 'layers-layer_attribute_fields') {
+              return;
+          }
+
           inline.style.display = 'none';
 
           // If the inline ID matches the layerType or specific conditions for 'slider'

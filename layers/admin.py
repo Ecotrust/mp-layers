@@ -509,12 +509,10 @@ class LayerForm(forms.ModelForm):
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
     class Meta:
-        exclude = ('slug_name', "has_companion", "uuid")
+        exclude = ('slug_name', "has_companion", "uuid", "attribute_fields")
         model = Layer
         fields = '__all__'
         widgets = {
-            
-            'attribute_fields': admin.widgets.FilteredSelectMultiple('Attribute fields', False),
             'lookup_table': admin.widgets.FilteredSelectMultiple('Lookup table', False),
         }
     def clean(self):
@@ -1064,6 +1062,15 @@ def export_layer_details(self, request, queryset):
     return response
 
 
+class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
+    model = Layer.attribute_fields.through
+    fk_name = "layer"
+    fields = ("attributeinfo",)
+    autocomplete_fields = ("attributeinfo",)
+    verbose_name = "Attribute field"
+    verbose_name_plural = "Attribute fields"
+    extra = 0
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
 
@@ -1258,7 +1265,6 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
                 'label_field',
                 (
                     'attribute_event',
-                    'attribute_fields',
                     'mouseover_field',
                 ),
                 # These fields are no longer used, but would have gone here.
@@ -1278,7 +1284,8 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
     )
     inlines = [ArcRESTInline, WMSInline, #XYZInline, 
         VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
-        NestedMultilayerAssociationInline, LayerParentInline
+        NestedMultilayerAssociationInline, LayerParentInline,
+        LayerAttributeInfoInline,
     ]
     
     add_form_template = os.path.join(CURRENT_DIR, 'templates', 'admin', 'layers', 'Layer', 'change_form.html')
