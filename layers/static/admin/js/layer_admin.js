@@ -81,13 +81,54 @@ document.addEventListener("DOMContentLoaded", function() {
                   zoom_table_element = zoom_table_element + "</table></div>";
                   $('.arcgis-zoom-layer-table').remove();
                   $('div.field-box.field-minZoom').append(zoom_table_element);
-      
-      
+
+                  build_arcgis_fields_table(data.layers);
                 }
               })
             }
         }
       }
+
+    // Also duplicated in admin_layer_form.js
+    // Function written by Copilot
+    const escape_html = function(value) {
+      if (value === undefined || value === null) {
+        return '';
+      }
+      return $('<div>').text(String(value)).html();
+    }
+
+    // Function written by Copilot
+    const build_arcgis_fields_table = function(arcgis_layers) {
+      var selected_ids = [];
+      $('input[name$="arcgis_layers"]').each(function() {
+        $.each(($(this).val() || '').split(','), function(index, id) {
+          id = id.trim();
+          if (id.length > 0 && selected_ids.indexOf(id) < 0) {
+            selected_ids.push(id);
+          }
+        });
+      });
+      var report_layers = $.grep(arcgis_layers || [], function(layer) {
+        return selected_ids.length == 0 || selected_ids.indexOf(layer.id.toString()) >= 0;
+      });
+
+      var fields_table_element = "<div class='arcgis-fields-table-wrapper'><table class='arcgis-fields-layer-table'><tr><th>Layer ID</th><th>Name</th><th>Type</th><th>Alias</th></tr>";
+      for (var i = 0; i < report_layers.length; i++) {
+        var layer = report_layers[i];
+        var fields = layer.fields || [];
+        if (fields.length == 0) {
+          fields_table_element += "<tr><td>" + escape_html(layer.id) + "</td><td colspan='3'><em>No fields available</em></td></tr>";
+        }
+        for (var j = 0; j < fields.length; j++) {
+          var field = fields[j];
+          fields_table_element += "<tr><td>" + escape_html(layer.id) + "</td><td>" + escape_html(field.name) + "</td><td>" + escape_html(field.type) + "</td><td>" + escape_html(field.alias) + "</td></tr>";
+        }
+      }
+      fields_table_element += "</table></div>";
+      $('.arcgis-fields-table-wrapper').remove();
+      $('fieldset.feature-reporting').append(fields_table_element);
+    }
 
     const layerTypeField = document.querySelector("#id_layer_type");
     if (layerTypeField) {

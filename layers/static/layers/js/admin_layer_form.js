@@ -602,11 +602,56 @@ const AdminLayerForm = (() => {
             $('.arcgis-zoom-layer-table').remove();
             $('div.field-box.field-minZoom').append(zoom_table_element);
 
-
+            build_arcgis_fields_table(data.layers);
           }
         })
       }
     }
+  }
+
+  // Function written by Copilot
+  const escape_html = function (value) {
+    if (value === undefined || value === null) {
+      return '';
+    }
+    return $('<div>').text(String(value)).html();
+  }
+
+  // Function written by Copilot
+  /**
+   * Also duplicated in layer_admin.js
+   * Renders the fields available for reporting (name/type/alias) into the FEATURE REPORTING fieldset.
+   * Only ArcGIS layers listed in 'arcgis_layers' are shown; if none are listed, all are shown.
+   */
+  const build_arcgis_fields_table = function (arcgis_layers) {
+    var selected_ids = [];
+    $('input[name$="arcgis_layers"]').each(function () {
+      $.each(($(this).val() || '').split(','), function (index, id) {
+        id = id.trim();
+        if (id.length > 0 && selected_ids.indexOf(id) < 0) {
+          selected_ids.push(id);
+        }
+      });
+    });
+    var report_layers = $.grep(arcgis_layers || [], function (layer) {
+      return selected_ids.length == 0 || selected_ids.indexOf(layer.id.toString()) >= 0;
+    });
+
+    var fields_table_element = "<div class='arcgis-fields-table-wrapper'><table class='arcgis-fields-layer-table'><tr><th>Layer ID</th><th>Field Name</th><th>Type</th><th>Field Label</th></tr>";
+    for (var i = 0; i < report_layers.length; i++) {
+      var layer = report_layers[i];
+      var fields = layer.fields || [];
+      if (fields.length == 0) {
+        fields_table_element += "<tr><td>" + escape_html(layer.id) + "</td><td colspan='3'><em>No fields available</em></td></tr>";
+      }
+      for (var j = 0; j < fields.length; j++) {
+        var field = fields[j];
+        fields_table_element += "<tr><td>" + escape_html(layer.id) + "</td><td>" + escape_html(field.name) + "</td><td>" + escape_html(field.type) + "</td><td>" + escape_html(field.alias) + "</td></tr>";
+      }
+    }
+    fields_table_element += "</table></div>";
+    $('.arcgis-fields-table-wrapper').remove();
+    $('fieldset.feature-reporting').append(fields_table_element);
   }
 
   /**
@@ -679,6 +724,10 @@ const AdminLayerForm = (() => {
 
     $('#id_layerwms_set-0-wms_help').change(function() {
       AdminLayerForm.get_wms_capabilities();
+    });
+
+    $(document).on('change', 'input[name$="arcgis_layers"]', function() {
+      AdminLayerForm.assign_field_values_from_source_technology();
     });
 
     AdminLayerForm.assign_field_values_from_source_technology();

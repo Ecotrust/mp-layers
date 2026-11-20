@@ -67,6 +67,20 @@ fieldset.late-transition.collapse h2 {
   transition: background 0.5s;
 }
 
+/*************************************
+ *    ArcGIS fields (Feature Reporting)
+ *    Added by Copilot
+ ************************************/
+fieldset.feature-reporting div.arcgis-fields-table-wrapper {
+  max-height: 500px;
+  overflow-y: auto;
+  margin: 0.5rem 10px;
+  border: 1px solid #888;
+}
+fieldset.feature-reporting table.arcgis-fields-layer-table {
+  width: 100%;
+}
+
 /* fieldset.late-transition.collapse.collapsed table,
 fieldset.late-transition.collapse.collapsed input,
 fieldset.late-transition.collapse.collapsed div { */

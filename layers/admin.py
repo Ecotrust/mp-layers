@@ -1303,6 +1303,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
             )
         }),
         ('FEATURE REPORTING', {
+            'classes': ('feature-reporting',),
             'description': "To control custom feature reporting behavior for this layer, you can override any Key/Value pair using the 'FEATURE REPORTING ATTRIBUTE FIELDS' section below. If no entries exist, the report will appear unmodified. If any entries exist, no report items will show unless explicitly addressed here.",
             'fields': ()
         })
