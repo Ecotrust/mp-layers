@@ -509,12 +509,10 @@ class LayerForm(forms.ModelForm):
     has_companion = forms.BooleanField(required=False)
     companion_layers = CompanionLayerChoiceField(queryset=Layer.all_objects.all(), required=False, widget = admin.widgets.FilteredSelectMultiple('companion layers', False))
     class Meta:
-        exclude = ('slug_name', "has_companion", "uuid")
+        exclude = ('slug_name', "has_companion", "uuid", "attribute_fields")
         model = Layer
         fields = '__all__'
         widgets = {
-            
-            'attribute_fields': admin.widgets.FilteredSelectMultiple('Attribute fields', False),
             'lookup_table': admin.widgets.FilteredSelectMultiple('Lookup table', False),
         }
     def clean(self):
@@ -1064,6 +1062,44 @@ def export_layer_details(self, request, queryset):
     return response
 
 
+class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
+    model = Layer.attribute_fields.through
+    fk_name = "layer"
+    fields = ("attributeinfo", "field_name", "field_label", "order", "other_layers")
+    readonly_fields = ("field_name", "field_label", "order", "other_layers")
+    autocomplete_fields = ("attributeinfo",)
+    verbose_name = "Feature Reporting Attribute Field"
+    verbose_name_plural = "Feature Reporting Attribute Fields"
+    extra = 0
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("attributeinfo").order_by('attributeinfo__order')
+
+    def _attributeinfo_value(self, obj, field):
+        if obj is None or obj.attributeinfo_id is None:
+            return "-"
+        return getattr(obj.attributeinfo, field)
+
+    def field_name(self, obj):
+        return self._attributeinfo_value(obj, "field_name")
+    field_name.short_description = "Field name"
+
+    def field_label(self, obj):
+        return self._attributeinfo_value(obj, "field_label")
+    field_label.short_description = "Field label"
+
+    def order(self, obj):
+        return self._attributeinfo_value(obj, "order")
+    order.short_description = "Order"
+
+    def other_layers(self, obj):
+        if obj is None or obj.attributeinfo_id is None:
+            return "-"
+        layers = obj.attributeinfo.layer_set.exclude(id=obj.layer_id)
+        return ", ".join(str(layer) for layer in layers)
+    other_layers.short_description = "Other layers"
+
+
 class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin):
     fixture_import_session_key = "layers.fixture_import_rows"
 
@@ -1185,7 +1221,7 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
     actions = [export_layer_details]
     
 
-    if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None]:
+    if getattr(settings, 'CATALOG_TECHNOLOGY', None) not in ['default', None, '']:
         # catalog_fields = ('catalog_name', 'catalog_id',)
         # catalog_fields = 'catalog_name'
         basic_fields = (
@@ -1252,19 +1288,6 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
             'classes': ('collapse',),
             'fields': ('utfurl',)
         }),
-        ('ATTRIBUTE REPORTING (Vector/Tile, ArcREST/Feature, and WMS)', {
-            'classes': ('collapse',),
-            'fields': (
-                'label_field',
-                (
-                    'attribute_event',
-                    'attribute_fields',
-                    'mouseover_field',
-                ),
-                # These fields are no longer used, but would have gone here.
-                # ('is_annotated', 'compress_display')
-            )
-        }),
         ('APPEARANCE', {
             'classes': ('collapse',),
             'fields': (
@@ -1275,8 +1298,13 @@ class LayerAdmin(ImportExportMixin, nested_admin.NestedModelAdmin, VersionAdmin)
                 ),
             )
         }),
+        ('FEATURE REPORTING', {
+            'classes': ('feature-reporting',),
+            'description': "To control custom feature reporting behavior for this layer, you can override any Key/Value pair using the 'FEATURE REPORTING ATTRIBUTE FIELDS' section below. If no entries exist, the report will appear unmodified. If any entries exist, no report items will show unless explicitly addressed here.",
+            'fields': ()
+        })
     )
-    inlines = [ArcRESTInline, WMSInline, #XYZInline, 
+    inlines = [LayerAttributeInfoInline, ArcRESTInline, WMSInline, #XYZInline, 
         VectorInline, ArcRESTFeatureServerInline, NestedMultilayerDimensionInline,
         NestedMultilayerAssociationInline, LayerParentInline
     ]
@@ -1608,9 +1636,56 @@ class LookupInfoAdmin(VersionAdmin):
 #     list_display = ('parent_theme', 'content_type', 'object_id', 'order')
 #     form = ChildOrderForm
 
+class LayerInline(admin.TabularInline):
+    model = Layer.attribute_fields.through
+    fk_name = "attributeinfo"
+    fields = ("layer",)
+    autocomplete_fields = ("layer",)
+    verbose_name = "Related layer"
+    verbose_name_plural = "Related layers"
+    extra = 0
+
+
 class AttributeInfoAdmin(VersionAdmin):
-    list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
+    def get_associated_attribute_info_layers(self, obj):
+            associated_layers = [x.name for x in obj.layer_set.all()]
+            layer_count = len(associated_layers)
+            layers_text = "; ".join(associated_layers)
+            if layer_count < 1:
+                layers_text = "(None)"
+            elif layer_count == 1:
+                layers_text += " (1 layer)"
+            else:
+                layers_text += " ({} layers)".format(layer_count)
+            
+            # Return the names of the associated layers if they exist
+            return layers_text
+    get_associated_attribute_info_layers.short_description = 'Layers'  # Sets column name
+    list_display = ('display_name', 'get_associated_attribute_info_layers', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
     search_fields = ('display_name', 'field_name', 'field_label')
+    fieldsets = (
+        (None, {
+            'fields': ('field_name', 'field_label', 'order', 'display_name', 'precision', 'preserve_format')
+        }),
+    )
+    inlines = [LayerInline]
+
+    def save_model(self, request, obj, form, change):
+            layer_ids = []
+            if obj.pk:
+                for layer in obj.layer_set.all():
+                    layer_ids.append(layer.pk)
+            with transaction.atomic():
+                super().save_model(request, obj, form, change)  # Ensure the basic saving functionality.
+                for layer in obj.layer_set.exclude(pk__in=layer_ids):
+                    layer_ids.append(layer.pk)
+                for layer_id in layer_ids:
+                    try:
+                        layer = Layer.objects.get(pk=layer_id)
+                        layer.resetCache()
+                    except Layer.DoesNotExist:
+                        pass
+    
 
 admin.site.register(Theme, ThemeAdmin)
 admin.site.register(Layer, LayerAdmin)

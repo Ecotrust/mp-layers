@@ -697,14 +697,14 @@ class Layer(ChildType, SiteFlags):
     )
     # RDH: Adds a 'title' to the serialize_attributes dict - not sure if that's used.
     # attribute_title = models.CharField(max_length=255, blank=True, null=True)
-    attribute_event = models.CharField(max_length=35, choices=EVENT_CHOICES, default='click')
+    attribute_event = models.CharField(max_length=35, choices=EVENT_CHOICES, default='click', help_text='DEPRECATED: event to trigger attribute display')
     attribute_fields = models.ManyToManyField('AttributeInfo', blank=True)
     # RDH: 2024-05-24: Annotated DOES have visualization logic tied to it,
     #   BUT: all known records are set to 'False'
     annotated = models.BooleanField(default=False)
     # RDH: 2024-05-24: compress_display is NOT USED anymore.
     compress_display = models.BooleanField(default=False)
-    mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='feature level attribute used in mouseover display')
+    mouseover_field = models.CharField(max_length=75, blank=True, null=True, default=None, help_text='DEPRECATED: feature level attribute used in mouseover display')
     
     ######################################################
     #           ESPIS                                    #
@@ -1514,19 +1514,19 @@ class MultilayerDimensionValue(models.Model):
             super(MultilayerDimensionValue, self).delete(*args, **kwargs)
 
 class AttributeInfo(models.Model):
-    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    display_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="Record Name", help_text="How this record will be shown for selection in the admin dashboard")
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    field_name = models.CharField(max_length=255, blank=True, null=True, help_text="The field name (key) sent from the data server")
     field_label = models.CharField(max_length=255, blank=True, null=True, default=None, help_text="How this entry should be labeled in the map reports")
-    field_name = models.CharField(max_length=255, blank=True, null=True)
-    precision = models.IntegerField(blank=True, null=True)
     order = models.IntegerField(default=1)
+    display_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="Record Name", help_text="How this record will be shown for selection in the admin dashboard")
+    precision = models.IntegerField(blank=True, null=True)
     preserve_format = models.BooleanField(default=False, help_text='Prevent portal from making any changes to the data to make it human-readable')
 
     def __unicode__(self):
-        return unicode('{}'.format(self.field_name))
+        return unicode('{}'.format(self.display_name))
 
     def __str__(self):
-        return str(self.field_name)
+        return str(self.display_name)
 
     def resetCache(self):
         if self.pk is None:
