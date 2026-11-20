@@ -1645,8 +1645,23 @@ class LayerInline(admin.TabularInline):
     verbose_name_plural = "Related layers"
     extra = 0
 
+
 class AttributeInfoAdmin(VersionAdmin):
-    list_display = ('display_name', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
+    def get_associated_attribute_info_layers(self, obj):
+            associated_layers = [x.name for x in obj.layer_set.all()]
+            layer_count = len(associated_layers)
+            layers_text = "; ".join(associated_layers)
+            if layer_count < 1:
+                layers_text = "(None)"
+            elif layer_count == 1:
+                layers_text += " (1 layer)"
+            else:
+                layers_text += " ({} layers)".format(layer_count)
+            
+            # Return the names of the associated layers if they exist
+            return layers_text
+    get_associated_attribute_info_layers.short_description = 'Layers'  # Sets column name
+    list_display = ('display_name', 'get_associated_attribute_info_layers', 'field_name', 'field_label', 'precision', 'order', 'preserve_format')
     search_fields = ('display_name', 'field_name', 'field_label')
     fieldsets = (
         (None, {
