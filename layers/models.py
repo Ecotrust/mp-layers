@@ -1523,10 +1523,10 @@ class AttributeInfo(models.Model):
     preserve_format = models.BooleanField(default=False, help_text='Prevent portal from making any changes to the data to make it human-readable')
 
     def __unicode__(self):
-        return unicode('{}'.format(self.field_name))
+        return unicode('{}'.format(self.display_name))
 
     def __str__(self):
-        return str(self.field_name)
+        return str(self.display_name)
 
     def resetCache(self):
         if self.pk is None:

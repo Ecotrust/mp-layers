@@ -1065,8 +1065,8 @@ def export_layer_details(self, request, queryset):
 class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
     model = Layer.attribute_fields.through
     fk_name = "layer"
-    fields = ("attributeinfo", "display_name", "field_name", "field_label", "order", "other_layers")
-    readonly_fields = ("display_name", "field_name", "field_label", "order", "other_layers")
+    fields = ("attributeinfo", "field_name", "field_label", "order", "other_layers")
+    readonly_fields = ("field_name", "field_label", "order", "other_layers")
     autocomplete_fields = ("attributeinfo",)
     verbose_name = "Feature Reporting Attribute Field"
     verbose_name_plural = "Feature Reporting Attribute Fields"
@@ -1079,10 +1079,6 @@ class LayerAttributeInfoInline(nested_admin.NestedTabularInline):
         if obj is None or obj.attributeinfo_id is None:
             return "-"
         return getattr(obj.attributeinfo, field)
-
-    def display_name(self, obj):
-        return self._attributeinfo_value(obj, "display_name")
-    display_name.short_description = "Display name"
 
     def field_name(self, obj):
         return self._attributeinfo_value(obj, "field_name")
