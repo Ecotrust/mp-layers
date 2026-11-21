@@ -868,15 +868,20 @@ class LayerResource(resources.ModelResource):
         return result
 
     def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
+        if all(value is None or value in ("", "None") for value in row.values()):
+            result = self.get_row_result_class()()
+            result.import_type = result.IMPORT_TYPE_SKIP
+            return result
         pop_dict = {}
         pop_keys = self._meta.order_keys + self._meta.specific_keys
         for key in pop_keys:
             if key in row.keys():
                 pop_dict[key] = row.pop(key)
+        
 
         # TODO: When we upgrade to django 4.2 and upgrade django_import_export to 4.2.x, we will need to review this deprecation
         #       Namely that 'raise_errors' is going away.
-        result = super(LayerResource, self).import_row(row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs)
+        result = super(LayerResource, self).import_row(row, instance_loader, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         #############################
         # Related Records
@@ -884,7 +889,7 @@ class LayerResource(resources.ModelResource):
         parent_layer_pk = None
         if result and not result.object_id == None:
             parent_layer_pk = result.object_id
-        if parent_layer_pk == None and row['id'] not in [None, '']:
+        if parent_layer_pk == None and row['id'] not in [None, '', 'None']:
             try:
                 parent_layer_pk = int(float(row['id']))
             except ValueError as e: 
@@ -897,7 +902,7 @@ class LayerResource(resources.ModelResource):
         layer_type = ContentType.objects.get_for_model(Layer)
         co_resource = ChildOrderResource()
         for parent_theme in str(pop_dict['parent_themes']).split(','):
-            if not parent_theme in ['', None]:
+            if not parent_theme in ['', None, 'None']:
                 existing_co_pk = None
                 try:
                     existing_co_pk = ChildOrder.objects.get(parent_theme=int(float(parent_theme)), content_type=layer_type, object_id=parent_layer_pk).pk
@@ -907,7 +912,12 @@ class LayerResource(resources.ModelResource):
                 except ValueError as e:
                     # common case when an 'id' field is not given
                     pass
-                co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', int(float(parent_theme))),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
+
+                try:
+                    parent_theme_id = int(float(parent_theme))
+                except ValueError as e:
+                    parent_theme_id = None
+                co_row = OrderedDict([('id', existing_co_pk), ('parent_theme', parent_theme_id),  ('content_type', layer_type.pk), ('object_id', parent_layer_pk), ('order', int(float(pop_dict['order'])))])
                 result = self.import_related_record(co_resource, co_row, result, using_transactions=using_transactions, dry_run=dry_run, raise_errors=raise_errors, **kwargs)
 
         #############################
@@ -941,7 +951,8 @@ class LayerResource(resources.ModelResource):
             #       should enforce the correct format in the end.
             arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
             for index, layer_id in enumerate(arcgis_layers):
-                arcgis_layers[index] = str(int(float(layer_id)))
+                if layer_id not in ('', None, 'None'):
+                    arcgis_layers[index] = str(int(float(layer_id)))
             arcgis_layers = ','.join(arcgis_layers)
             arl_row = OrderedDict([
                 ('id', existing_arl_pk), ('layer', parent_layer_pk), ('query_by_point', pop_dict['query_by_point']), 
