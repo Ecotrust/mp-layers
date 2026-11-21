@@ -868,7 +868,7 @@ class LayerResource(resources.ModelResource):
         return result
 
     def import_row(self, row, instance_loader, using_transactions=True, dry_run=False, raise_errors=False, **kwargs):
-        if all(value is None or value == "" for value in row.values()):
+        if all(value is None or value in ("", "None") for value in row.values()):
             result = self.get_row_result_class()()
             result.import_type = result.IMPORT_TYPE_SKIP
             return result
