@@ -951,7 +951,8 @@ class LayerResource(resources.ModelResource):
             #       should enforce the correct format in the end.
             arcgis_layers = str(pop_dict['arcgis_layers']).split(',')
             for index, layer_id in enumerate(arcgis_layers):
-                arcgis_layers[index] = str(int(float(layer_id)))
+                if layer_id not in ('', None, 'None'):
+                    arcgis_layers[index] = str(int(float(layer_id)))
             arcgis_layers = ','.join(arcgis_layers)
             arl_row = OrderedDict([
                 ('id', existing_arl_pk), ('layer', parent_layer_pk), ('query_by_point', pop_dict['query_by_point']), 
